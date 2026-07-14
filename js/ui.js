@@ -36,7 +36,14 @@ export function openModal(content, { onClose } = {}) {
   const bg = el('div', { class: 'modal-bg' });
   const modal = el('div', { class: 'modal' }, [content]);
   bg.appendChild(modal);
-  bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
+  // ปิดเมื่อ "กดและปล่อย" บนฉากหลังเท่านั้น — กันเคสลากเมาส์เลือกข้อความ
+  // ในฟอร์มแล้วปล่อยนอกกล่อง (click จะไปลงที่ฉากหลัง ทำให้ modal เด้งหาย)
+  let downOnBg = false;
+  bg.addEventListener('mousedown', (e) => { downOnBg = (e.target === bg); });
+  bg.addEventListener('click', (e) => {
+    if (e.target === bg && downOnBg) close();
+    downOnBg = false;
+  });
   document.body.appendChild(bg);
   function close() { bg.remove(); onClose && onClose(); }
   return { close, el: modal };

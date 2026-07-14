@@ -5,6 +5,7 @@
 import { listen } from './db.js';
 import { el, getSettings, toast } from './ui.js';
 import { computeBooking, todayISO } from './calc.js';
+import { PET_TYPES, capacityOf } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -18,20 +19,26 @@ export function renderCalendar(container) {
   const prev = el('button', { class: 'btn ghost sm', html: icons.chevronLeft + ' ก่อนหน้า', 'aria-label': 'เดือนก่อนหน้า' });
   const next = el('button', { class: 'btn ghost sm', html: 'ถัดไป ' + icons.chevronRight, 'aria-label': 'เดือนถัดไป' });
   const roomSel = el('select', { style: 'max-width:180px' });
+  const petSel = el('select', { style: 'max-width:130px' }, [
+    el('option', { value: '', text: 'ทุกสัตว์' }),
+    ...PET_TYPES.map(p => el('option', { value: p.id, text: `ห้อง${p.label}` })),
+  ]);
   const grid = el('div', {});
   const legend = el('div', { class: 'muted', style: 'font-size:12px;margin-top:8px' });
 
   container.appendChild(el('div', { class: 'page-title' }, [
-    title, el('div', { class: 'row', style: 'gap:8px;align-items:center' }, [roomSel, prev, next]),
+    title, el('div', { class: 'row', style: 'gap:8px;align-items:center' }, [roomSel, petSel, prev, next]),
   ]));
   container.appendChild(el('div', { class: 'card' }, [grid, legend]));
 
   let _bookings = [];
   const refreshRoomOptions = () => {
     const s = getSettings();
+    const cur = roomSel.value; // คงค่าที่เลือกไว้เมื่อ options ถูกสร้างใหม่
     roomSel.innerHTML = '';
     roomSel.appendChild(el('option', { value: '', text: 'ทุกประเภทห้อง' }));
     Object.entries(s?.roomPrices || {}).forEach(([k, r]) => roomSel.appendChild(el('option', { value: k, text: r.label })));
+    roomSel.value = cur;
   };
 
   const draw = () => {
@@ -40,21 +47,33 @@ export function renderCalendar(container) {
     const y = _view.getFullYear(), mth = _view.getMonth();
     title.textContent = _view.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
 
-    // นับห้องที่จองต่อวันต่อประเภท
-    const occ = {}; // 'YYYY-MM-DD' -> { roomType: count }
+    // นับห้องที่จองต่อวัน แยกตาม "ประเภทห้อง|สัตว์" (ห้องสุนัข/แมวแยกกัน)
+    const occ = {}; // 'YYYY-MM-DD' -> { 'roomType|pet': count }
     _bookings.filter(b => b.depositStatus !== 'ยกเลิก').forEach(b => {
       if (!b.checkIn || !b.checkOut) return;
-      const perType = {};
-      b.lineItems.forEach(li => { perType[li.roomType] = (perType[li.roomType] || 0) + (Number(li.rooms) || 0); });
+      const perKey = {};
+      b.lineItems.forEach(li => {
+        const key = `${li.roomType}|${li.petType || 'dog'}`;
+        perKey[key] = (perKey[key] || 0) + (Number(li.rooms) || 0);
+      });
       eachDate(b.checkIn, b.checkOut, iso => {
         occ[iso] = occ[iso] || {};
-        for (const [rt, n] of Object.entries(perType)) occ[iso][rt] = (occ[iso][rt] || 0) + n;
+        for (const [k, n] of Object.entries(perKey)) occ[iso][k] = (occ[iso][k] || 0) + n;
       });
     });
 
     const filterRoom = roomSel.value;
+    const filterPet = petSel.value;
     const capacity = s?.roomCapacity || {};
-    const totalCap = filterRoom ? (capacity[filterRoom] || 0) : Object.values(capacity).reduce((a, b) => a + b, 0);
+    const roomTypes = filterRoom ? [filterRoom] : Object.keys(s?.roomPrices || {});
+    const totalCap = roomTypes.reduce((sum, rt) => sum + capacityOf(capacity, rt, filterPet || undefined), 0);
+    // นับยอดจองตามฟิลเตอร์ (ประเภทห้อง + สัตว์)
+    const usedOf = (dayOcc) => Object.entries(dayOcc).reduce((sum, [k, n]) => {
+      const [rt, pet] = k.split('|');
+      if (filterRoom && rt !== filterRoom) return sum;
+      if (filterPet && pet !== filterPet) return sum;
+      return sum + n;
+    }, 0);
 
     // สร้างกริดเดือน
     grid.innerHTML = '';
@@ -70,7 +89,7 @@ export function renderCalendar(container) {
     for (let d = 1; d <= daysInMonth; d++) {
       const iso = isoOf(y, mth, d);
       const dayOcc = occ[iso] || {};
-      const used = filterRoom ? (dayOcc[filterRoom] || 0) : Object.values(dayOcc).reduce((a, b) => a + b, 0);
+      const used = usedOf(dayOcc);
       const over = totalCap > 0 && used > totalCap;
       const cell = el('div', { class: 'cal-cell' + (iso === todayISO() ? ' today' : '') }, [
         el('div', { class: 'd', text: String(d) }),
@@ -83,12 +102,14 @@ export function renderCalendar(container) {
       cells.push(cell);
     }
     grid.appendChild(el('div', { class: 'cal-grid' }, cells));
-    legend.textContent = `ตัวเลข = ห้องที่ถูกจอง/ความจุ · สีแดง = จองเกินความจุ (ปรับความจุได้ที่หน้า "ตั้งค่า") · ความจุรวม ${filterRoom ? (getSettings()?.roomPrices?.[filterRoom]?.label + ' ' + totalCap) : totalCap} ห้อง`;
+    const petLabel = filterPet ? ` (ห้อง${PET_TYPES.find(p => p.id === filterPet)?.label})` : '';
+    legend.textContent = `ตัวเลข = ห้องที่ถูกจอง/ความจุ · สีแดง = จองเกินความจุ (ปรับความจุแยกห้องสุนัข/แมวได้ที่หน้า "ตั้งค่า") · ความจุรวม ${filterRoom ? (getSettings()?.roomPrices?.[filterRoom]?.label + ' ' + totalCap) : totalCap} ห้อง${petLabel}`;
   };
 
   prev.onclick = () => { _view = new Date(_view.getFullYear(), _view.getMonth() - 1, 1); draw(); };
   next.onclick = () => { _view = new Date(_view.getFullYear(), _view.getMonth() + 1, 1); draw(); };
   roomSel.onchange = draw;
+  petSel.onchange = draw;
 
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); }));
 }

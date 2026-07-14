@@ -192,14 +192,63 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* ── สถิติ ── */
 .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
 .stat {
-  background: var(--card); border-radius: var(--radius); padding: 20px;
+  background: var(--card); border-radius: var(--radius); padding: 18px 20px;
   box-shadow: var(--shadow); border: 1px solid var(--hairline-soft);
+  display: flex; align-items: center; gap: 14px;
 }
 .stat .n {
   font-size: 28px; font-weight: 700; letter-spacing: -0.03em;
   color: var(--ink); font-variant-numeric: tabular-nums;
 }
 .stat .l { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+/* ชิปไอคอนสีสื่อความหมายของแต่ละกล่อง */
+.stat-ico {
+  width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0;
+  display: grid; place-items: center;
+}
+.stat-ico svg { width: 22px; height: 22px; }
+.stat--green .stat-ico  { background: var(--green-tint);  color: #248A3D; }
+.stat--orange .stat-ico { background: var(--orange-tint); color: #C93400; }
+.stat--blue .stat-ico   { background: rgba(0, 122, 255, 0.12); color: #007AFF; }
+.stat--red .stat-ico    { background: var(--red-tint);    color: var(--red); }
+
+/* การ์ดหมวดในแดชบอร์ด: แถบสีซ้ายบอกประเภทเนื้อหา */
+.section-card { border-left: 4px solid transparent; }
+.section--green  { border-left-color: var(--green); }
+.section--orange { border-left-color: var(--orange); }
+.section--red    { border-left-color: var(--red); }
+.section--grey   { border-left-color: #C7C7CC; }
+
+/* ── แถบเครื่องมือเหนือตาราง (ค้นหา + ฟิลเตอร์) ── */
+.toolbar {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding-bottom: 14px; margin-bottom: 6px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.toolbar input, .toolbar select { max-width: 240px; }
+
+/* ── แบนเนอร์โปรพัก 5 คืน (อาบน้ำฟรี) ── */
+.promo-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  background: var(--accent-tint); border: 1px solid rgba(244, 101, 15, 0.25);
+  border-radius: var(--radius-sm); padding: 10px 14px; margin: 10px 0 4px;
+  font-size: 14px; color: var(--accent-dark);
+}
+.promo-banner .promo-text { display: inline-flex; align-items: center; gap: 8px; }
+.promo-banner svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }
+
+/* ── แถวบริการเสริม ── */
+.addon-item .li-head select { max-width: 300px; }
+.addon-total {
+  font-weight: 700; font-variant-numeric: tabular-nums;
+  font-size: 14px; letter-spacing: -0.01em; white-space: nowrap;
+}
+.addon-unit-price {
+  display: inline-block; padding: 10px 0; font-size: 15px;
+  font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap;
+}
 
 /* ── line items ── */
 .lineitem {

@@ -2,7 +2,7 @@
 // summary-card.js — การ์ด "สรุปการเข้าพัก" สำหรับส่งลูกค้า + ดาวน์โหลด PNG
 // ═══════════════════════════════════════════════════════════════
 import { el, toast, getSettings } from './ui.js';
-import { computeBooking, formatBaht, formatDateTH, nightsBetween } from './calc.js';
+import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import { PET_TYPES } from './config-shop.js';
 import { icons } from './icons.js';
 
@@ -42,12 +42,21 @@ export function buildCustomerCard(bookingRaw) {
   push('จำนวนห้อง', `${totalRooms} ห้อง`);
 
   if (b.addOns?.length) {
-    b.addOns.forEach(a => push('บริการเสริม', `${a.name} ${formatBaht(a.price)}`));
+    b.addOns.forEach(a => {
+      const c = computeAddOn(a);
+      const label = c.qty > 1 ? `${a.name} ×${c.qty}` : a.name;
+      push('บริการเสริม', c.total > 0 ? `${label} ${formatBaht(c.total)}` : `${label} — ฟรี`);
+    });
   } else {
     push('Add on', 'ไม่มี');
   }
 
-  if (b.totalDiscount > 0) push('ส่วนลด', `− ${formatBaht(b.totalDiscount)}`);
+  if (b.totalDiscount > 0) push('ยอดเต็ม (ก่อนส่วนลด)', formatBaht(b.grossTotal));
+  if (b.billDiscountAmount > 0) {
+    const pct = (b.billDiscountType || 'percent') === 'percent' ? ` ${Number(b.billDiscountValue) || 0}%` : '';
+    push(`ส่วนลดทั้งบิล${pct}`, `− ${formatBaht(b.billDiscountAmount)}`);
+  }
+  if (b.totalDiscount > 0) push('ส่วนลดรวม', `− ${formatBaht(b.totalDiscount)}`);
 
   const card = el('div', { class: 'cust-card', id: 'customer-card-capture' }, [
     el('div', { class: 'cc-head' }, [

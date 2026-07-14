@@ -12,18 +12,33 @@ export async function renderSettings(container) {
 
   container.appendChild(el('div', { class: 'page-title' }, [el('h1', { text: 'ตั้งค่า' })]));
 
-  // ── ราคาห้อง + ความจุ ──
+  // ── ราคาห้อง + ความจุ (แยกห้องสุนัข/ห้องแมว) ──
+  // ข้อมูลเก่าเก็บความจุเป็นเลขเดียวรวมทุกสัตว์ → แปลงเป็น {dog, cat} ให้แก้ต่อได้
+  s.roomCapacity = s.roomCapacity || {};
+  Object.keys(s.roomPrices).forEach(rt => {
+    const c = s.roomCapacity[rt];
+    if (typeof c === 'number') s.roomCapacity[rt] = { dog: c, cat: c };
+    else if (c == null) s.roomCapacity[rt] = { dog: 0, cat: 0 };
+  });
+
   const priceCard = el('div', { class: 'card' }, [el('h2', { text: 'ราคาห้อง & จำนวนห้อง (ความจุ)' })]);
-  const priceHead = el('tr', {}, [el('th', { text: 'ประเภทห้อง' }), ...PET_TYPES.map(p => el('th', { class: 'num', text: `฿/คืน (${p.label})` })), el('th', { class: 'num', text: 'จำนวนห้องที่มี' })]);
+  const priceHead = el('tr', {}, [
+    el('th', { text: 'ประเภทห้อง' }),
+    ...PET_TYPES.map(p => el('th', { class: 'num', text: `฿/คืน (${p.label})` })),
+    ...PET_TYPES.map(p => el('th', { class: 'num', text: `จำนวนห้อง${p.label}` })),
+  ]);
   const priceRows = Object.entries(s.roomPrices).map(([rt, r]) => {
     const priceInputs = PET_TYPES.map(p => {
       const i = el('input', { type: 'number', min: 0, value: r[p.id] ?? 0, style: 'max-width:110px;text-align:right' });
       i.oninput = () => r[p.id] = Number(i.value) || 0;
       return el('td', { class: 'num' }, [i]);
     });
-    const capInp = el('input', { type: 'number', min: 0, value: s.roomCapacity?.[rt] ?? 0, style: 'max-width:90px;text-align:right' });
-    capInp.oninput = () => { s.roomCapacity = s.roomCapacity || {}; s.roomCapacity[rt] = Number(capInp.value) || 0; };
-    return el('tr', {}, [el('td', {}, [el('strong', { text: r.label })]), ...priceInputs, el('td', { class: 'num' }, [capInp])]);
+    const capInputs = PET_TYPES.map(p => {
+      const i = el('input', { type: 'number', min: 0, value: s.roomCapacity[rt]?.[p.id] ?? 0, style: 'max-width:90px;text-align:right' });
+      i.oninput = () => { s.roomCapacity[rt][p.id] = Number(i.value) || 0; };
+      return el('td', { class: 'num' }, [i]);
+    });
+    return el('tr', {}, [el('td', {}, [el('strong', { text: r.label })]), ...priceInputs, ...capInputs]);
   });
   priceCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('thead', {}, [priceHead]), el('tbody', {}, priceRows)])]));
   // ราคาโปร VIP + มัดจำ%

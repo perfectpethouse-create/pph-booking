@@ -37,9 +37,25 @@ export function computeLineItem(item) {
   return { ...item, gross, discountAmount, subtotal };
 }
 
+// คำนวณบริการเสริม 1 รายการ — รองรับทั้งแบบใหม่ (qty × unitPrice)
+// และแบบเก่า (price ก้อนเดียว) เพื่อไม่ให้ข้อมูลเดิมใน DB พัง
+export function computeAddOn(a) {
+  const qty = a.qty == null ? 1 : (Number(a.qty) || 0);
+  const hasUnit = a.unitPrice != null;
+  const unitPrice = hasUnit ? (Number(a.unitPrice) || 0) : (Number(a.price) || 0);
+  const total = hasUnit ? round2(unitPrice * qty) : round2(Number(a.price) || 0);
+  return { ...a, qty, unitPrice, total };
+}
+
 // ผลรวมบริการเสริม
 export function addOnsTotal(addOns = []) {
-  return round2(addOns.reduce((s, a) => s + (Number(a.price) || 0), 0));
+  return round2(addOns.reduce((s, a) => s + computeAddOn(a).total, 0));
+}
+
+// จำนวนสิทธิ์อาบน้ำฟรี: 1 สิทธิ์/ห้อง ที่พักครบ minNights คืน
+export function freeBathRights(lineItems = [], minNights = 5) {
+  return lineItems.reduce((n, li) =>
+    n + ((Number(li.nights) || 0) >= minNights ? (Number(li.rooms) || 0) : 0), 0);
 }
 
 // คำนวณยอดทั้งการจอง → grandTotal, deposit, balance, และ line items ที่คำนวณแล้ว
@@ -47,19 +63,30 @@ export function computeBooking(booking) {
   const lineItems = (booking.lineItems || []).map(computeLineItem);
   const itemsTotal = round2(lineItems.reduce((s, li) => s + li.subtotal, 0));
   const addonSum = addOnsTotal(booking.addOns);
-  const grandTotal = round2(itemsTotal + addonSum);
+  // ยอดเต็มก่อนหักส่วนลดใดๆ (ค่าห้องเต็ม + บริการเสริม)
+  const grossTotal = round2(lineItems.reduce((s, li) => s + li.gross, 0) + addonSum);
+  const beforeBillDiscount = round2(itemsTotal + addonSum);
+
+  // ส่วนลดทั้งบิล (คิดจากยอดรวมค่าห้อง+บริการเสริม) — % หรือบาท
+  const billDiscountAmount = lineDiscountAmount(
+    beforeBillDiscount, booking.billDiscountType || 'percent', booking.billDiscountValue);
+  const grandTotal = round2(Math.max(0, beforeBillDiscount - billDiscountAmount));
 
   const depositPct = booking.depositPct == null ? 50 : Number(booking.depositPct);
   const depositAmount = round2(grandTotal * depositPct / 100);
   const balanceDue = round2(grandTotal - depositAmount); // จ่ายเพิ่มวันเข้าพัก
 
-  const totalDiscount = round2(lineItems.reduce((s, li) => s + li.discountAmount, 0));
+  const lineDiscounts = round2(lineItems.reduce((s, li) => s + li.discountAmount, 0));
+  const totalDiscount = round2(lineDiscounts + billDiscountAmount);
 
   return {
     ...booking,
     lineItems,
     itemsTotal,
     addOnsTotal: addonSum,
+    grossTotal,
+    beforeBillDiscount,
+    billDiscountAmount,
     totalDiscount,
     grandTotal,
     depositPct,

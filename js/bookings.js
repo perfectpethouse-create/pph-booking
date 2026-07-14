@@ -3,8 +3,13 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser } from './ui.js';
-import { computeBooking, formatBaht, formatDateTH, nightsBetween, todayISO } from './calc.js';
-import { PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE } from './config-shop.js';
+import { computeBooking, computeAddOn, freeBathRights, formatBaht, formatDateTH, nightsBetween, todayISO } from './calc.js';
+import {
+  PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE,
+  FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
+  DAYCARE_SIZES, daycarePrice,
+  FREE_BATH_MIN_NIGHTS, FREE_BATH_ADDON_NAME,
+} from './config-shop.js';
 import { buildCustomerCard, downloadCardPNG } from './summary-card.js';
 import { icons } from './icons.js';
 
@@ -27,9 +32,12 @@ export function renderBookings(container) {
 
   container.appendChild(el('div', { class: 'page-title' }, [
     el('h1', { text: 'การจองทั้งหมด' }),
-    el('div', { class: 'row', style: 'gap:8px' }, [searchInput, statusFilter, addBtn]),
+    addBtn,
   ]));
-  container.appendChild(el('div', { class: 'card' }, [tableWrap]));
+  container.appendChild(el('div', { class: 'card' }, [
+    el('div', { class: 'toolbar' }, [searchInput, statusFilter]),
+    tableWrap,
+  ]));
 
   const draw = () => {
     const q = searchInput.value.trim().toLowerCase();
@@ -99,6 +107,7 @@ function openBookingForm(existing) {
     customerName: '', phone: '', depositDate: todayISO(),
     checkIn: '', checkOut: '', checkInTime: '09:00', checkOutTime: '14:00',
     lineItems: [blankLineItem(s)], addOns: [],
+    billDiscountType: 'percent', billDiscountValue: 0,
     depositPct: s?.depositPctDefault ?? 50,
     depositStatus: 'มัดจำแล้ว', recordStatus: 'ยังไม่ลงระบบ', notes: '',
   };
@@ -117,13 +126,18 @@ function openBookingForm(existing) {
       const line = (k, v, cls = '') => el('div', { class: 'line ' + cls }, [el('span', { text: k }), el('span', { text: v })]);
       summaryBox.innerHTML = '';
       [
-        line('ยอดค่าห้อง (หลังส่วนลด)', formatBaht(b.itemsTotal)),
+        b.totalDiscount ? line('ยอดเต็ม (ก่อนส่วนลด)', formatBaht(b.grossTotal)) : null,
+        line('ยอดค่าห้อง (หลังส่วนลดรายห้อง)', formatBaht(b.itemsTotal)),
         b.addOnsTotal ? line('บริการเสริม', formatBaht(b.addOnsTotal)) : null,
-        b.totalDiscount ? line('รวมส่วนลด', '− ' + formatBaht(b.totalDiscount)) : null,
+        b.billDiscountAmount ? line(
+          `ส่วนลดทั้งบิล${(b.billDiscountType || 'percent') === 'percent' ? ` ${Number(b.billDiscountValue) || 0}%` : ''}`,
+          '− ' + formatBaht(b.billDiscountAmount)) : null,
+        b.totalDiscount ? line('รวมส่วนลดทั้งหมด', '− ' + formatBaht(b.totalDiscount)) : null,
         line('ยอดทั้งหมด', formatBaht(b.grandTotal), 'grand'),
         line(`มัดจำ ${b.depositPct}%`, formatBaht(b.depositAmount)),
         line('จ่ายเพิ่มวัน Check-in', formatBaht(b.balanceDue)),
       ].filter(Boolean).forEach(n => summaryBox.appendChild(n));
+      refreshPromo();
     };
 
     function syncNights() {
@@ -152,50 +166,190 @@ function openBookingForm(existing) {
     const addItemBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มห้อง/สัตว์' });
     addItemBtn.onclick = () => { draft.lineItems.push(blankLineItem(s)); rerender(); };
 
+    // ตัวเลือกราคา/คืน — ล็อกเฉพาะราคามาตรฐานจากหน้าตั้งค่า (+โปร VIP)
+    // กันพนักงานพิมพ์ราคาผิด · ถ้าข้อมูลเก่ามีราคาอื่นอยู่แล้ว ให้คงเป็นตัวเลือกไว้
+    function priceOptions(roomType, petType, current) {
+      const opts = [];
+      const std = priceFor(roomType, petType, s);
+      if (std) opts.push([String(std), `มาตรฐาน ${std.toLocaleString('th-TH')}`]);
+      const promo = s?.vipPromoPrice || VIP_PROMO_PRICE;
+      if (roomType === 'vip' && promo && promo !== std) {
+        opts.push([String(promo), `โปร VIP ${promo.toLocaleString('th-TH')}`]);
+      }
+      const cur = Number(current) || 0;
+      if (cur && !opts.some(([v]) => Number(v) === cur)) {
+        opts.push([String(cur), `ราคาเดิม ${cur.toLocaleString('th-TH')}`]);
+      }
+      return opts.length ? opts : [['0', '0']];
+    }
+
     function lineItemRow(li, idx) {
-      const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), li.petType, v => { li.petType = v; li.pricePerNight = priceFor(li.roomType, v, s); priceInp.value = li.pricePerNight ?? ''; refreshSummary(); });
-      const roomSel = selectEl(Object.entries(s?.roomPrices || {}).map(([k, r]) => [k, r.label]), li.roomType, v => { li.roomType = v; li.pricePerNight = priceFor(v, li.petType, s); priceInp.value = li.pricePerNight ?? ''; refreshSummary(); });
-      const priceInp = numInput(li.pricePerNight, v => { li.pricePerNight = v; refreshSummary(); }, 'ราคา/คืน');
+      const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), li.petType, v => { li.petType = v; li.pricePerNight = priceFor(li.roomType, v, s); rerender(); });
+      const roomSel = selectEl(Object.entries(s?.roomPrices || {}).map(([k, r]) => [k, r.label]), li.roomType, v => { li.roomType = v; li.pricePerNight = priceFor(v, li.petType, s); rerender(); });
+      const priceSel = selectEl(priceOptions(li.roomType, li.petType, li.pricePerNight), String(li.pricePerNight ?? ''), v => { li.pricePerNight = Number(v) || 0; refreshSummary(); });
       const roomsInp = numInput(li.rooms, v => { li.rooms = v; refreshSummary(); }, 'ห้อง', 1);
       const nightsInp = numInput(li.nights, v => { li.nights = v; refreshSummary(); }, 'คืน', 1);
       nightsInp.setAttribute('data-nights', '1');
       const discType = selectEl([['percent', 'ส่วนลด %'], ['amount', 'ส่วนลด บาท']], li.discountType, v => { li.discountType = v; refreshSummary(); });
       const discVal = numInput(li.discountValue, v => { li.discountValue = v; refreshSummary(); });
 
-      const promoBtn = el('button', { class: 'btn sm', html: `${icons.star} โปรวันนี้ VIP ${VIP_PROMO_PRICE.toLocaleString('th-TH')}` });
-      promoBtn.onclick = () => { li.roomType = 'vip'; roomSel.value = 'vip'; li.pricePerNight = s?.vipPromoPrice || VIP_PROMO_PRICE; priceInp.value = li.pricePerNight; refreshSummary(); };
-
       const rmBtn = el('button', { class: 'btn sm danger', html: icons.x, 'aria-label': 'ลบรายการ' });
       rmBtn.onclick = () => { draft.lineItems.splice(idx, 1); if (!draft.lineItems.length) draft.lineItems.push(blankLineItem(s)); rerender(); };
 
       return el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [el('strong', { text: `รายการที่ ${idx + 1}` }), rmBtn]),
-        el('div', { class: 'row' }, [labeled('สัตว์', petSel), labeled('ประเภทห้อง', roomSel), labeled('ราคา/คืน', priceInp)]),
+        el('div', { class: 'row' }, [labeled('สัตว์', petSel), labeled('ประเภทห้อง', roomSel), labeled('ราคา/คืน', priceSel)]),
         el('div', { class: 'row' }, [labeled('จำนวนห้อง', roomsInp), labeled('จำนวนคืน', nightsInp), labeled('ชนิดส่วนลด', discType), labeled('ส่วนลด', discVal)]),
-        el('div', { style: 'margin-top:6px' }, [promoBtn]),
       ]);
+    }
+
+    // ── โปรพัก 5 คืนขึ้นไป: อาบน้ำฟรี 1 สิทธิ์/ห้อง ──
+    const promoBanner = el('div', { class: 'promo-banner hidden' });
+    function refreshPromo() {
+      const rights = freeBathRights(draft.lineItems, FREE_BATH_MIN_NIGHTS);
+      const used = (draft.addOns || []).some(a => a.name === FREE_BATH_ADDON_NAME);
+      promoBanner.innerHTML = '';
+      if (!rights) { promoBanner.classList.add('hidden'); return; }
+      promoBanner.classList.remove('hidden');
+      promoBanner.appendChild(el('span', { class: 'promo-text', html: `${icons.star} พักครบ ${FREE_BATH_MIN_NIGHTS} คืน — ได้สิทธิ์<strong>อาบน้ำฟรี ${rights} สิทธิ์</strong> (1 สิทธิ์/ห้อง)` }));
+      if (used) {
+        promoBanner.appendChild(el('span', { class: 'pill green', text: 'ใช้สิทธิ์แล้ว' }));
+      } else {
+        const useBtn = el('button', { class: 'btn sm primary', text: 'ใช้สิทธิ์' });
+        useBtn.onclick = () => {
+          draft.addOns.push({ kind: 'custom', name: FREE_BATH_ADDON_NAME, qty: rights, unitPrice: 0 });
+          rerender();
+        };
+        promoBanner.appendChild(useBtn);
+      }
     }
 
     // ── บริการเสริม ──
     const addonsWrap = el('div', {});
-    const addonOpts = s?.addOnServices || [];
+    const addonOpts = (s?.addOnServices || []).filter(o => o.name);
     draft.addOns.forEach((a, idx) => addonsWrap.appendChild(addonRow(a, idx)));
     const addAddonBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มบริการเสริม' });
-    addAddonBtn.onclick = () => { draft.addOns.push({ name: addonOpts[0]?.name || '', price: addonOpts[0]?.price || 0 }); rerender(); };
+    addAddonBtn.onclick = () => {
+      const a = {};
+      applyAddonKind(a, 'bath');
+      draft.addOns.push(a);
+      rerender();
+    };
+
+    // ตั้งค่ารายการบริการตามชนิดที่เลือก (ล้างค่าเก่าที่ไม่เกี่ยวออก)
+    function applyAddonKind(a, key) {
+      const nights = nightsBetween(draft.checkIn, draft.checkOut) || Number(draft.lineItems[0]?.nights) || 1;
+      delete a.price; delete a.pet; delete a.size; delete a.coat; delete a.unit;
+      if (key === 'bath' || key === 'groom') {
+        const pet = draft.lineItems[0]?.petType || 'dog';
+        Object.assign(a, {
+          kind: key, name: key === 'bath' ? 'อาบน้ำ' : 'อาบน้ำตัดขน',
+          pet, size: 'm', coat: 'short', qty: 1, unit: 'ตัว',
+          unitPrice: groomingPrice(pet, 'm', 'short', key === 'groom'),
+        });
+      } else if (key === 'daycare') {
+        const pet = draft.lineItems[0]?.petType || 'dog';
+        Object.assign(a, {
+          kind: 'daycare', name: 'Day Care เหมาวัน',
+          pet, size: 'm', qty: 1, unit: 'วัน',
+          unitPrice: daycarePrice(pet, 'm'),
+        });
+      } else if (key.startsWith('fixed:')) {
+        const f = FIXED_ADDONS.find(f => f.name === key.slice(6));
+        Object.assign(a, {
+          kind: 'fixed', name: f.name, unit: f.unit, unitPrice: f.unitPrice,
+          qty: f.unit === 'คืน' ? nights : 1,
+        });
+      } else if (key.startsWith('svc:')) {
+        const o = addonOpts.find(o => o.name === key.slice(4));
+        Object.assign(a, { kind: 'svc', name: o?.name || '', unit: 'ครั้ง', unitPrice: o?.price || 0, qty: 1 });
+      } else {
+        Object.assign(a, { kind: 'custom', name: a.name || '', unit: 'ครั้ง', unitPrice: 0, qty: 1 });
+      }
+    }
+
+    function addonKindKey(a) {
+      if (a.kind === 'bath' || a.kind === 'groom' || a.kind === 'daycare') return a.kind;
+      if (a.kind === 'fixed') return 'fixed:' + a.name;
+      if (a.kind === 'svc') return 'svc:' + a.name;
+      return 'custom';
+    }
 
     function addonRow(a, idx) {
-      const nameInp = el('input', { list: 'addon-names', value: a.name || '', placeholder: 'ชื่อบริการ' });
-      nameInp.oninput = () => { a.name = nameInp.value; const o = addonOpts.find(o => o.name === a.name); if (o) { a.price = o.price; priceInp.value = o.price; } refreshSummary(); };
-      const priceInp = el('input', { type: 'number', min: 0, value: a.price ?? 0, style: 'max-width:120px' });
-      priceInp.oninput = () => { a.price = Number(priceInp.value) || 0; refreshSummary(); };
+      // ข้อมูลเก่า (name+price ก้อนเดียว) → แสดงเป็นแบบกำหนดเอง
+      if (!a.kind) { a.kind = 'custom'; a.qty = a.qty ?? 1; a.unitPrice = a.unitPrice ?? (Number(a.price) || 0); delete a.price; }
+
+      const choices = [
+        ['bath', 'อาบน้ำ (ราคาตามไซส์)'],
+        ['groom', 'อาบน้ำตัดขน (ราคาตามไซส์)'],
+        ['daycare', 'Day Care เหมาวัน (ราคาตามไซส์)'],
+        ...FIXED_ADDONS.map(f => ['fixed:' + f.name, `${f.name} (${f.unitPrice}/${f.unit})`]),
+        ...addonOpts.map(o => ['svc:' + o.name, o.name]),
+        ['custom', 'กำหนดเอง'],
+      ];
+      const svcSel = selectEl(choices, addonKindKey(a), key => { applyAddonKind(a, key); rerender(); });
+
       const rm = el('button', { class: 'btn sm danger', html: icons.x, 'aria-label': 'ลบ' });
       rm.onclick = () => { draft.addOns.splice(idx, 1); rerender(); };
-      return el('div', { class: 'row', style: 'align-items:flex-end;margin-bottom:8px' }, [
-        el('div', { class: 'field', style: 'flex:2' }, [nameInp]),
-        el('div', { class: 'field' }, [priceInp]), rm,
-        el('datalist', { id: 'addon-names' }, addonOpts.map(o => el('option', { value: o.name }))),
+
+      const totalSpan = el('span', { class: 'addon-total', text: formatBaht(computeAddOn(a).total) });
+      const refreshRow = () => { totalSpan.textContent = formatBaht(computeAddOn(a).total); refreshSummary(); };
+
+      const controls = [];
+      if (a.kind === 'bath' || a.kind === 'groom') {
+        // เลือกสัตว์/ไซส์/ขน → ราคาอัตโนมัติจากตารางร้าน
+        const recalc = () => { a.unitPrice = groomingPrice(a.pet, a.size, a.coat, a.kind === 'groom'); };
+        const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), a.pet, v => {
+          a.pet = v;
+          if (!GROOMING_SIZES[v].some(x => x.id === a.size)) a.size = 'm';
+          if (!COAT_TYPES[v].some(x => x.id === a.coat)) a.coat = 'short';
+          recalc(); rerender();
+        });
+        const sizeSel = selectEl(GROOMING_SIZES[a.pet].map(x => [x.id, x.label]), a.size, v => { a.size = v; recalc(); priceTag.textContent = `฿${a.unitPrice.toLocaleString('th-TH')}/ตัว`; refreshRow(); });
+        const coatSel = selectEl(COAT_TYPES[a.pet].map(x => [x.id, x.label]), a.coat, v => { a.coat = v; recalc(); priceTag.textContent = `฿${a.unitPrice.toLocaleString('th-TH')}/ตัว`; refreshRow(); });
+        const qtyInp = numInput(a.qty, v => { a.qty = v; refreshRow(); }, '', 1);
+        const priceTag = el('span', { class: 'addon-unit-price', text: `฿${(a.unitPrice || 0).toLocaleString('th-TH')}/ตัว` });
+        controls.push(labeled('สัตว์', petSel), labeled('ไซส์', sizeSel), labeled('ขน', coatSel), labeled('จำนวน (ตัว)', qtyInp), el('div', { class: 'field', style: 'margin:0' }, [el('label', { text: 'ราคา' }), priceTag]));
+      } else if (a.kind === 'daycare') {
+        // Day Care: ไซส์คนละชุดกับ grooming (S-XL) ราคาเหมาวันจากตารางร้าน
+        const recalc = () => { a.unitPrice = daycarePrice(a.pet, a.size); };
+        const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), a.pet, v => {
+          a.pet = v;
+          if (!DAYCARE_SIZES[v].some(x => x.id === a.size)) a.size = 'm';
+          recalc(); rerender();
+        });
+        const sizeSel = selectEl(DAYCARE_SIZES[a.pet].map(x => [x.id, x.label]), a.size, v => { a.size = v; recalc(); priceTag.textContent = `฿${a.unitPrice.toLocaleString('th-TH')}/วัน`; refreshRow(); });
+        const qtyInp = numInput(a.qty, v => { a.qty = v; refreshRow(); }, '', 1);
+        const priceTag = el('span', { class: 'addon-unit-price', text: `฿${(a.unitPrice || 0).toLocaleString('th-TH')}/วัน` });
+        controls.push(labeled('สัตว์', petSel), labeled('ไซส์', sizeSel), labeled('จำนวน (วัน)', qtyInp), el('div', { class: 'field', style: 'margin:0' }, [el('label', { text: 'ราคา' }), priceTag]));
+      } else if (a.kind === 'fixed') {
+        const qtyInp = numInput(a.qty, v => { a.qty = v; refreshRow(); }, '', 1);
+        const priceTag = el('span', { class: 'addon-unit-price', text: `฿${(a.unitPrice || 0).toLocaleString('th-TH')}/${a.unit}` });
+        controls.push(labeled(`จำนวน (${a.unit})`, qtyInp), el('div', { class: 'field', style: 'margin:0' }, [el('label', { text: 'ราคา' }), priceTag]));
+      } else {
+        // svc / custom: แก้ชื่อ (custom) + ราคา/หน่วย + จำนวน
+        if (a.kind === 'custom') {
+          const nameInp = el('input', { value: a.name || '', placeholder: 'ชื่อบริการ' });
+          nameInp.oninput = () => { a.name = nameInp.value; };
+          controls.push(el('div', { class: 'field', style: 'margin:0;flex:1.6' }, [el('label', { text: 'ชื่อบริการ' }), nameInp]));
+        }
+        const priceInp = numInput(a.unitPrice, v => { a.unitPrice = v; refreshRow(); }, 'ราคา');
+        const qtyInp = numInput(a.qty, v => { a.qty = v; refreshRow(); }, '', 1);
+        controls.push(labeled('ราคา/หน่วย', priceInp), labeled('จำนวน', qtyInp));
+      }
+
+      return el('div', { class: 'lineitem addon-item' }, [
+        el('div', { class: 'li-head' }, [svcSel, el('div', { class: 'row', style: 'gap:8px;align-items:center' }, [totalSpan, rm])]),
+        el('div', { class: 'row', style: 'align-items:flex-end' }, controls),
       ]);
     }
+
+    // ── ส่วนลดทั้งบิล ──
+    const billDiscType = selectEl(
+      [['percent', '% ของทั้งบิล'], ['amount', 'บาท']],
+      draft.billDiscountType || 'percent',
+      v => { draft.billDiscountType = v; refreshSummary(); });
+    const billDiscVal = numInput(draft.billDiscountValue, v => { draft.billDiscountValue = v; refreshSummary(); }, 'เช่น 5');
 
     // ── สถานะ + หมายเหตุ ──
     const depStatus = labeled('สถานะมัดจำ', selectEl(DEPOSIT_STATUSES.map(x => [x, x]), draft.depositStatus, v => draft.depositStatus = v));
@@ -220,7 +374,12 @@ function openBookingForm(existing) {
       el('div', { class: 'row' }, [depDateField, inDateField, outDateField]),
       el('div', { class: 'row' }, [inTimeField, outTimeField, depPctField]),
       el('label', { text: 'รายการห้องพัก', style: 'margin-top:6px' }), itemsWrap, addItemBtn,
+      promoBanner,
       el('label', { text: 'บริการเสริม', style: 'margin-top:14px' }), addonsWrap, addAddonBtn,
+      el('div', { class: 'row', style: 'margin-top:14px' }, [
+        labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType),
+        labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal),
+      ]),
       el('div', { class: 'row', style: 'margin-top:14px' }, [depStatus, recStatus]),
       el('div', { class: 'field' }, [el('label', { text: 'รายละเอียด/หมายเหตุ' }), notesInp]),
       el('label', { text: 'สรุปยอด', style: 'margin-top:10px' }), summaryBox,
