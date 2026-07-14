@@ -89,7 +89,7 @@ function openCustomerForm(existing) {
         el('div', { class: 'field', style: 'flex:2' }, [el('label', { text: 'ชื่อ' }), nameInp]),
         el('div', { class: 'field' }, [el('label', { text: 'เบอร์โทร' }), phoneInp]),
       ]),
-      el('label', { text: 'สัตว์เลี้ยง' }), petsWrap, addPet,
+      el('label', { class: 'form-section', text: 'สัตว์เลี้ยง' }), petsWrap, addPet,
       el('div', { class: 'field', style: 'margin-top:12px' }, [el('label', { text: 'หมายเหตุ' }), notesInp]),
       el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:16px;gap:8px' }, [delBtn, saveBtn].filter(Boolean)),
     );

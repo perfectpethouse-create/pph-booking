@@ -373,16 +373,16 @@ function openBookingForm(existing) {
       el('div', { class: 'row' }, [nameField, phoneField]),
       el('div', { class: 'row' }, [depDateField, inDateField, outDateField]),
       el('div', { class: 'row' }, [inTimeField, outTimeField, depPctField]),
-      el('label', { text: 'รายการห้องพัก', style: 'margin-top:6px' }), itemsWrap, addItemBtn,
+      el('label', { class: 'form-section', text: 'รายการห้องพัก' }), itemsWrap, addItemBtn,
       promoBanner,
-      el('label', { text: 'บริการเสริม', style: 'margin-top:14px' }), addonsWrap, addAddonBtn,
+      el('label', { class: 'form-section', text: 'บริการเสริม' }), addonsWrap, addAddonBtn,
       el('div', { class: 'row', style: 'margin-top:14px' }, [
         labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType),
         labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal),
       ]),
       el('div', { class: 'row', style: 'margin-top:14px' }, [depStatus, recStatus]),
       el('div', { class: 'field' }, [el('label', { text: 'รายละเอียด/หมายเหตุ' }), notesInp]),
-      el('label', { text: 'สรุปยอด', style: 'margin-top:10px' }), summaryBox,
+      el('label', { class: 'form-section', text: 'สรุปยอด' }), summaryBox,
       el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:16px;gap:8px' }, [delBtn, cardBtn, saveBtn].filter(Boolean)),
     );
     refreshSummary();

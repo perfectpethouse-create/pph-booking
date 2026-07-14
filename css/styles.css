@@ -111,6 +111,14 @@ textarea { resize: vertical; min-height: 64px; }
 .row { display: flex; gap: 12px; flex-wrap: wrap; }
 .row > .field { flex: 1; min-width: 140px; }
 
+/* หัวข้อกลุ่มในฟอร์ม — ให้ต่างจาก label ช่องกรอกชัดเจน */
+.form-section {
+  display: block; font-size: 15px; font-weight: 700; color: var(--ink);
+  margin: 20px 0 10px; padding-top: 16px;
+  border-top: 1px solid var(--hairline-soft);
+  letter-spacing: -0.01em;
+}
+
 /* ── การ์ด ── */
 .card {
   background: var(--card); border-radius: var(--radius);
@@ -372,20 +380,54 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 /* ── มือถือ ── */
 @media (max-width: 760px) {
   #app { flex-direction: column; }
+
+  /* เมนูบน: ไอคอน + ชื่อเมนูตัวเล็กใต้ไอคอน (รู้ว่าแต่ละปุ่มคืออะไร) */
   #sidebar {
     width: 100%; height: auto; flex-direction: row; overflow-x: auto;
     border-right: none; border-bottom: 1px solid var(--hairline-soft);
-    padding: 10px 12px; gap: 4px; align-items: center;
+    padding: 8px 10px; gap: 2px; align-items: stretch;
     position: sticky; top: 0; z-index: 30;
+    -webkit-overflow-scrolling: touch;
   }
-  #sidebar .brand { padding: 0 6px 0 0; font-size: 0; gap: 0; }
-  #sidebar .brand .logo { width: 32px; height: 32px; }
+  #sidebar .brand { padding: 0 6px 0 0; font-size: 0; gap: 0; align-self: center; flex-shrink: 0; }
+  #sidebar .brand .logo { width: 34px; height: 34px; }
   #sidebar .spacer, #sidebar .who { display: none; }
-  .navlink { padding: 9px 11px; white-space: nowrap; min-width: 44px; min-height: 44px; justify-content: center; }
-  .navlink span.txt { display: none; }
-  .navlink .ico svg { width: 21px; height: 21px; }
-  #content { padding: 18px 16px; }
+  .navlink {
+    flex-direction: column; gap: 3px; padding: 7px 8px;
+    width: auto; min-width: 68px; min-height: 52px; flex-shrink: 0;
+    justify-content: center; align-items: center; text-align: center;
+  }
+  .navlink span.txt { font-size: 10px; line-height: 1.2; white-space: nowrap; font-weight: 500; }
+  .navlink .ico svg { width: 20px; height: 20px; }
+
+  #content { padding: 16px 14px; }
   .page-title h1 { font-size: 21px; }
-  .cal-cell { min-height: 56px; padding: 5px; }
-  .modal { padding: 20px; border-radius: 18px; }
+  .card { padding: 16px; }
+
+  /* กล่องสถิติ: 2 คอลัมน์เท่ากันเสมอ ขนาดสม่ำเสมอ */
+  .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat { padding: 12px 14px; gap: 10px; min-height: 74px; }
+  .stat .n { font-size: 19px; }
+  .stat .l { font-size: 11.5px; }
+  .stat-ico { width: 34px; height: 34px; border-radius: 10px; }
+  .stat-ico svg { width: 18px; height: 18px; }
+
+  /* ช่องกรอกในฟอร์ม: ตาราง 2 คอลัมน์เท่ากันเสมอ (เลิกยืดหดไม่เท่ากัน) */
+  .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .row > .field, .row > * { min-width: 0; }
+  .row .field { margin: 0; }
+  .row .btn { width: 100%; }
+
+  /* แถบค้นหา/ฟิลเตอร์เต็มความกว้าง */
+  .toolbar { gap: 8px; }
+  .toolbar input, .toolbar select { max-width: none; flex: 1 1 100%; }
+
+  .lineitem { padding: 12px; }
+  .addon-item .li-head { flex-wrap: wrap; gap: 8px; }
+  .addon-item .li-head select { max-width: none; flex: 1; }
+
+  .cal-cell { min-height: 52px; padding: 4px; }
+  .cal-occ { font-size: 10px; padding: 2px 6px; margin-top: 3px; }
+  .modal { padding: 18px 16px; border-radius: 16px; max-height: calc(100dvh - 20px); }
+  .form-section { margin-top: 16px; padding-top: 12px; }
 }
