@@ -246,6 +246,11 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .promo-banner .promo-text { display: inline-flex; align-items: center; gap: 8px; }
 .promo-banner svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }
+.promo-banner.warn {
+  background: var(--orange-tint); border-color: rgba(255, 149, 0, 0.35);
+  color: #C93400;
+}
+.promo-banner.warn svg { color: #C93400; }
 
 /* ── แถวบริการเสริม ── */
 .addon-item .li-head select { max-width: 300px; }

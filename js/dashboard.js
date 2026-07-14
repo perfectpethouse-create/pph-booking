@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════
 // dashboard.js — แดชบอร์ดวันนี้: เช็คอิน/เอาท์วันนี้ + ยอดค้าง/ยังไม่ลงระบบ
 // ═══════════════════════════════════════════════════════════════
-import { listen } from './db.js';
-import { el, getSettings } from './ui.js';
+import { listen, save } from './db.js';
+import { el, getSettings, toast, confirmDialog } from './ui.js';
 import { computeBooking, formatBaht, formatDateTH, todayISO } from './calc.js';
 import { icons } from './icons.js';
 
@@ -47,14 +47,52 @@ export function renderDashboard(container) {
 
     body.innerHTML = '';
     body.append(
-      section('เช็คอินวันนี้', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', false, 'green'),
-      section('เช็คเอาท์วันนี้ · เก็บยอดคงเหลือ', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, 'orange'),
+      section('เช็คอินวันนี้', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', false, 'green', 'checkin'),
+      section('เช็คเอาท์วันนี้ · เก็บยอดคงเหลือ', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, 'orange', 'checkout'),
       section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, 'red'),
       section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, 'grey'),
     );
   }
 
-  function section(title, list, emptyText, showBalance, color = 'grey') {
+  // ปุ่มลัดเปลี่ยนสถานะเข้าพักจริง — บันทึกเวลาไว้ด้วย (มุมมองแดชบอร์ดอัปเดตเอง)
+  function actionCell(b, mode) {
+    const td = el('td', { class: 'num' });
+    const time = (ts) => ts ? new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
+    if (mode === 'checkin') {
+      if (b.stayStatus === 'checked-in' || b.stayStatus === 'checked-out') {
+        td.appendChild(el('span', { class: 'pill green', text: `เช็คอินแล้ว ${time(b.checkedInAt)}` }));
+      } else {
+        const btn = el('button', { class: 'btn sm primary', text: 'เช็คอิน' });
+        btn.onclick = async () => {
+          await save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() });
+          toast(`เช็คอิน ${b.customerName} แล้ว`);
+        };
+        td.appendChild(btn);
+      }
+    } else if (mode === 'checkout') {
+      if (b.stayStatus === 'checked-out') {
+        td.appendChild(el('span', { class: 'pill grey', text: `เช็คเอาท์แล้ว ${time(b.checkedOutAt)}` }));
+      } else {
+        const btn = el('button', { class: 'btn sm primary', text: 'เช็คเอาท์' });
+        btn.onclick = async () => {
+          const needPay = b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
+          const msg = needPay
+            ? `รับยอดคงเหลือ ${formatBaht(b.balanceDue)} จาก ${b.customerName} แล้วใช่ไหม? (ระบบจะบันทึกเป็น "จ่ายครบแล้ว")`
+            : `เช็คเอาท์ ${b.customerName}?`;
+          if (!await confirmDialog(msg, { okText: 'เช็คเอาท์' })) return;
+          await save('bookings', {
+            ...b, stayStatus: 'checked-out', checkedOutAt: Date.now(),
+            ...(needPay ? { depositStatus: 'จ่ายครบแล้ว' } : {}),
+          });
+          toast(`เช็คเอาท์ ${b.customerName} เรียบร้อย`);
+        };
+        td.appendChild(btn);
+      }
+    }
+    return td;
+  }
+
+  function section(title, list, emptyText, showBalance, color = 'grey', mode = null) {
     const card = el('div', { class: `card section-card section--${color}` }, [el('h2', { text: `${title} (${list.length})` })]);
     if (!list.length) { card.appendChild(el('p', { class: 'muted', text: emptyText })); return card; }
     const rows = list.map(b => el('tr', {}, [
@@ -62,6 +100,7 @@ export function renderDashboard(container) {
       el('td', { text: `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)}` }),
       el('td', { text: roomsDesc(b) }),
       el('td', { class: 'num', text: showBalance ? formatBaht(b.balanceDue) : formatBaht(b.grandTotal) }),
+      ...(mode ? [actionCell(b, mode)] : []),
     ]));
     card.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('tbody', {}, rows)])]));
     return card;

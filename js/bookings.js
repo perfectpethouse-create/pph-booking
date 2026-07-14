@@ -10,7 +10,8 @@ import {
   DAYCARE_SIZES, daycarePrice,
   FREE_BATH_MIN_NIGHTS, FREE_BATH_ADDON_NAME,
 } from './config-shop.js';
-import { buildCustomerCard, downloadCardPNG } from './summary-card.js';
+import { buildCustomerCard, downloadCardPNG, copySummaryText } from './summary-card.js';
+import { vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 
 let _bookings = [];
@@ -138,6 +139,7 @@ function openBookingForm(existing) {
         line('จ่ายเพิ่มวัน Check-in', formatBaht(b.balanceDue)),
       ].filter(Boolean).forEach(n => summaryBox.appendChild(n));
       refreshPromo();
+      refreshVaccine();
     };
 
     function syncNights() {
@@ -148,10 +150,29 @@ function openBookingForm(existing) {
       }
     }
 
+    // ── เตือนวัคซีนของสัตว์เลี้ยงลูกค้ารายนี้ (เทียบกับวันที่พักถึง) ──
+    const vaccineBanner = el('div', { class: 'promo-banner warn hidden' });
+    function refreshVaccine() {
+      const norm = (t) => (t || '').replace(/\D/g, '');
+      const c = _customers.find(c =>
+        (draft.phone && c.phone && norm(c.phone) === norm(draft.phone)) ||
+        (c.name && c.name === draft.customerName));
+      vaccineBanner.innerHTML = '';
+      const ref = draft.checkOut || todayISO();
+      const bad = (c?.pets || [])
+        .map(p => ({ p, st: vaccineStatus(p, ref) }))
+        .filter(x => x.st === 'expired' || x.st === 'soon');
+      if (!bad.length) { vaccineBanner.classList.add('hidden'); return; }
+      vaccineBanner.classList.remove('hidden');
+      const names = bad.map(x => x.p.name || 'สัตว์เลี้ยง').join(', ');
+      vaccineBanner.appendChild(el('span', { class: 'promo-text', html:
+        `${icons.alert} วัคซีนของ <strong>${names}</strong> ${bad.some(x => x.st === 'expired') ? 'หมดอายุก่อนวันเข้าพัก' : 'ใกล้หมดอายุ'} — แจ้งลูกค้าเตรียมสมุดวัคซีน/ฉีดกระตุ้น` }));
+    }
+
     // ── หัวลูกค้า ──
-    const nameField = field('ชื่อลูกค้า', draft.customerName, v => { draft.customerName = v; const c = _customers.find(c => c.name === v); if (c?.phone && !draft.phone) { draft.phone = c.phone; phoneField.querySelector('input').value = c.phone; } }, { list: 'cust-names' });
+    const nameField = field('ชื่อลูกค้า', draft.customerName, v => { draft.customerName = v; const c = _customers.find(c => c.name === v); if (c?.phone && !draft.phone) { draft.phone = c.phone; phoneField.querySelector('input').value = c.phone; } refreshVaccine(); }, { list: 'cust-names' });
     nameField.appendChild(el('datalist', { id: 'cust-names' }, _customers.map(c => el('option', { value: c.name }))));
-    const phoneField = field('เบอร์โทร', draft.phone, v => draft.phone = v);
+    const phoneField = field('เบอร์โทร', draft.phone, v => { draft.phone = v; refreshVaccine(); });
 
     const depDateField = field('วันที่โอนมัดจำ', draft.depositDate, v => draft.depositDate = v, { type: 'date' });
     const inDateField = field('วันที่ Check-in', draft.checkIn, v => { draft.checkIn = v; syncNights(); refreshSummary(); }, { type: 'date' });
@@ -371,6 +392,7 @@ function openBookingForm(existing) {
     form.append(
       el('h2', { text: isNew ? 'เพิ่มการจอง' : 'แก้ไขการจอง' }),
       el('div', { class: 'row' }, [nameField, phoneField]),
+      vaccineBanner,
       el('div', { class: 'row' }, [depDateField, inDateField, outDateField]),
       el('div', { class: 'row' }, [inTimeField, outTimeField, depPctField]),
       el('label', { class: 'form-section', text: 'รายการห้องพัก' }), itemsWrap, addItemBtn,
@@ -440,11 +462,13 @@ function openCardPreview(draft) {
   if (!draft.checkIn || !draft.checkOut) return toast('กรอกวันเข้า-ออกก่อนสร้างการ์ด');
   const card = buildCustomerCard(draft);
   const dlBtn = el('button', { class: 'btn primary', html: icons.download + ' ดาวน์โหลดรูป PNG' });
+  const copyBtn = el('button', { class: 'btn', html: icons.copy + ' คัดลอกข้อความ' });
   openModal(el('div', {}, [
     el('h2', { text: 'การ์ดสรุปส่งลูกค้า' }),
-    el('p', { class: 'muted', style: 'margin-top:-6px', text: 'บันทึกเป็นรูปแล้วส่งทาง Line ได้เลย' }),
+    el('p', { class: 'muted', style: 'margin-top:-6px', text: 'ส่งเป็นรูป หรือคัดลอกเป็นข้อความวางใน Line ก็ได้' }),
     el('div', { style: 'display:flex;justify-content:center;margin:10px 0' }, [card]),
-    el('div', { class: 'row', style: 'justify-content:center' }, [dlBtn]),
+    el('div', { class: 'row', style: 'justify-content:center' }, [copyBtn, dlBtn]),
   ]));
   dlBtn.onclick = () => downloadCardPNG(card, `สรุป-${draft.customerName || 'ลูกค้า'}.png`);
+  copyBtn.onclick = () => copySummaryText(draft);
 }
