@@ -1,0 +1,70 @@
+// ═══════════════════════════════════════════════════════════════
+// ui.js — เครื่องมือช่วยงาน DOM ที่ใช้ร่วมกันทุกหน้า + แคช settings/user
+// (แยกจาก app.js เพื่อกันการ import วนกัน)
+// ═══════════════════════════════════════════════════════════════
+
+// สร้าง element แบบสั้น: el('div', {class:'x'}, [child, 'text'])
+export function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') node.className = v;
+    else if (k === 'html') node.innerHTML = v;
+    else if (k === 'text') node.textContent = v;
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+    else if (v != null && v !== false) node.setAttribute(k, v);
+  }
+  for (const c of [].concat(children)) {
+    if (c == null || c === false) continue;
+    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  }
+  return node;
+}
+
+export function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, m =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+export function toast(msg, ms = 2200) {
+  const t = el('div', { class: 'toast', text: msg });
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+// modal ทั่วไป: content = element ; คืน object { close }
+export function openModal(content, { onClose } = {}) {
+  const bg = el('div', { class: 'modal-bg' });
+  const modal = el('div', { class: 'modal' }, [content]);
+  bg.appendChild(modal);
+  bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
+  document.body.appendChild(bg);
+  function close() { bg.remove(); onClose && onClose(); }
+  return { close, el: modal };
+}
+
+// กล่องยืนยัน (คืน Promise<boolean>)
+export function confirmDialog(message, { okText = 'ยืนยัน', danger = false } = {}) {
+  return new Promise((resolve) => {
+    const okBtn = el('button', { class: 'btn ' + (danger ? 'danger' : 'primary'), text: okText });
+    const cancelBtn = el('button', { class: 'btn ghost', text: 'ยกเลิก' });
+    const content = el('div', {}, [
+      el('p', { text: message, style: 'margin-top:0;font-size:16px' }),
+      el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:8px' }, [cancelBtn, okBtn]),
+    ]);
+    const m = openModal(content);
+    okBtn.onclick = () => { m.close(); resolve(true); };
+    cancelBtn.onclick = () => { m.close(); resolve(false); };
+  });
+}
+
+// ── แคช settings ที่อัปเดตแบบเรียลไทม์ (app.js เป็นคนเซ็ต) ──
+let _settings = null;
+const _settingsSubs = new Set();
+export function setSettingsCache(s) { _settings = s; _settingsSubs.forEach(cb => cb(s)); }
+export function getSettings() { return _settings; }
+export function onSettings(cb) { _settingsSubs.add(cb); if (_settings) cb(_settings); return () => _settingsSubs.delete(cb); }
+
+// ── ผู้ใช้ปัจจุบัน ──
+let _user = null;
+export function setUser(u) { _user = u; }
+export function currentUser() { return _user; }
