@@ -120,3 +120,15 @@ export function todayISO() {
   const off = d.getTimezoneOffset() * 60000;
   return new Date(d - off).toISOString().slice(0, 10);
 }
+
+// บวก/ลบวันจาก ISO 'YYYY-MM-DD' → คืน ISO ใหม่ (ใช้เวลาท้องถิ่น กัน off-by-one)
+export function addDaysISO(iso, n) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  if (isNaN(d)) return '';
+  d.setDate(d.getDate() + n);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}

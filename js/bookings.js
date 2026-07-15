@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser } from './ui.js';
-import { computeBooking, computeAddOn, freeBathRights, formatBaht, formatDateTH, nightsBetween, todayISO } from './calc.js';
+import { computeBooking, computeAddOn, freeBathRights, formatBaht, formatDateTH, nightsBetween, todayISO, addDaysISO } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE,
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
@@ -103,7 +103,8 @@ function priceFor(roomType, petType, s) { return s?.roomPrices?.[roomType]?.[pet
 
 function openBookingForm(existing) {
   const s = getSettings();
-  const isNew = !existing;
+  // "ใบใหม่" = ไม่มี id (รวมกรณีจองซ้ำที่ก็อปข้อมูลมาแต่ยังไม่บันทึก)
+  const isNew = !existing?.id;
   const draft = existing ? structuredClone(existing) : {
     customerName: '', phone: '', depositDate: todayISO(),
     checkIn: '', checkOut: '', checkInTime: '09:00', checkOutTime: '14:00',
@@ -122,6 +123,8 @@ function openBookingForm(existing) {
   function build() {
     // กล่องสรุป (ประกาศก่อน เพื่อให้ handler ทุกตัวเรียก refreshSummary ได้)
     const summaryBox = el('div', { class: 'summary-box' });
+    const stickyTotal = el('span', { class: 'ss-total' });   // แถบลอยล่าง: ยอดทั้งหมด
+    const stickyDeposit = el('span', { class: 'ss-deposit' }); // แถบลอยล่าง: มัดจำ
     const refreshSummary = () => {
       const b = computeBooking(draft);
       const line = (k, v, cls = '') => el('div', { class: 'line ' + cls }, [el('span', { text: k }), el('span', { text: v })]);
@@ -138,6 +141,9 @@ function openBookingForm(existing) {
         line(`มัดจำ ${b.depositPct}%`, formatBaht(b.depositAmount)),
         line('จ่ายเพิ่มวัน Check-in', formatBaht(b.balanceDue)),
       ].filter(Boolean).forEach(n => summaryBox.appendChild(n));
+      // อัปเดตแถบสรุปลอยล่าง
+      stickyTotal.innerHTML = `ยอดทั้งหมด <b>${formatBaht(b.grandTotal)}</b>`;
+      stickyDeposit.textContent = `มัดจำ ${formatBaht(b.depositAmount)}`;
       refreshPromo();
       refreshVaccine();
     };
@@ -175,7 +181,16 @@ function openBookingForm(existing) {
     const phoneField = field('เบอร์โทร', draft.phone, v => { draft.phone = v; refreshVaccine(); });
 
     const depDateField = field('วันที่โอนมัดจำ', draft.depositDate, v => draft.depositDate = v, { type: 'date' });
-    const inDateField = field('วันที่ Check-in', draft.checkIn, v => { draft.checkIn = v; syncNights(); refreshSummary(); }, { type: 'date' });
+    const inDateField = field('วันที่ Check-in', draft.checkIn, v => {
+      draft.checkIn = v;
+      // ฟังก์ชัน A: เลือกเช็คอินแล้วเด้งเช็คเอาท์เป็น +1 คืนอัตโนมัติ (ถ้ายังว่างหรือไม่หลังเช็คอิน)
+      if (v && (!draft.checkOut || draft.checkOut <= v)) {
+        draft.checkOut = addDaysISO(v, 1);
+        const outInp = outDateField.querySelector('input');
+        if (outInp) outInp.value = draft.checkOut;
+      }
+      syncNights(); refreshSummary();
+    }, { type: 'date' });
     const outDateField = field('วันที่ Check-out', draft.checkOut, v => { draft.checkOut = v; syncNights(); refreshSummary(); }, { type: 'date' });
     const inTimeField = field('เวลาเข้า', draft.checkInTime, v => draft.checkInTime = v, { type: 'time' });
     const outTimeField = field('เวลาออก', draft.checkOutTime, v => draft.checkOutTime = v, { type: 'time' });
@@ -382,36 +397,73 @@ function openBookingForm(existing) {
     // ── ปุ่ม ──
     const saveBtn = el('button', { class: 'btn primary', html: icons.save + ' บันทึก' });
     saveBtn.onclick = () => doSave(draft, isNew, m);
-    const cardBtn = el('button', { class: 'btn', html: icons.image + ' การ์ดส่งลูกค้า' });
+    const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ด' });
     cardBtn.onclick = () => openCardPreview(draft);
-    const delBtn = existing ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
+    // ฟังก์ชัน C: จองซ้ำ — ก็อปการจองเดิม เปิดใบใหม่ให้แก้เฉพาะวัน
+    const dupBtn = existing?.id ? el('button', { class: 'btn ghost', html: icons.copy + ' จองซ้ำ' }) : null;
+    if (dupBtn) dupBtn.onclick = () => {
+      const clone = structuredClone(draft);
+      delete clone.id;
+      delete clone.checkedInAt; delete clone.checkedOutAt; delete clone.stayStatus;
+      clone.checkIn = ''; clone.checkOut = '';
+      clone.depositDate = todayISO();
+      clone.depositStatus = 'มัดจำแล้ว'; clone.recordStatus = 'ยังไม่ลงระบบ';
+      m.close();
+      openBookingForm(clone);
+      toast('ก็อปการจองแล้ว — กรอกวันเข้าพักใหม่');
+    };
+    const delBtn = existing?.id ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
     if (delBtn) delBtn.onclick = async () => {
       if (await confirmDialog('ลบการจองนี้?', { danger: true, okText: 'ลบ' })) { await remove('bookings', existing.id); m.close(); toast('ลบแล้ว'); }
     };
 
+    // ฟังก์ชัน B: แถบสรุปยอด+มัดจำ ลอยติดล่าง (มีปุ่มบันทึกในตัว)
+    const stickyBar = el('div', { class: 'sticky-summary' }, [
+      el('div', { class: 'ss-figures' }, [stickyTotal, stickyDeposit]),
+      saveBtn,
+    ]);
+
     form.append(
       el('h2', { text: isNew ? 'เพิ่มการจอง' : 'แก้ไขการจอง' }),
-      el('div', { class: 'row' }, [nameField, phoneField]),
-      vaccineBanner,
-      el('div', { class: 'row' }, [depDateField, inDateField, outDateField]),
-      el('div', { class: 'row' }, [inTimeField, outTimeField, depPctField]),
-      el('label', { class: 'form-section', text: 'รายการห้องพัก' }), itemsWrap, addItemBtn,
-      promoBanner,
-      el('label', { class: 'form-section', text: 'บริการเสริม' }), addonsWrap, addAddonBtn,
-      el('div', { class: 'row', style: 'margin-top:14px' }, [
-        labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType),
-        labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal),
-      ]),
-      el('div', { class: 'row', style: 'margin-top:14px' }, [depStatus, recStatus]),
-      el('div', { class: 'field' }, [el('label', { text: 'รายละเอียด/หมายเหตุ' }), notesInp]),
-      el('label', { class: 'form-section', text: 'สรุปยอด' }), summaryBox,
-      el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:16px;gap:8px' }, [delBtn, cardBtn, saveBtn].filter(Boolean)),
+      formGroup(icons.users, 'ข้อมูลลูกค้า', 'blue',
+        el('div', { class: 'row' }, [nameField, phoneField]), vaccineBanner),
+      formGroup(icons.calendar, 'ช่วงเข้าพัก', 'green',
+        el('div', { class: 'row' }, [inDateField, outDateField]),
+        el('div', { class: 'row' }, [inTimeField, outTimeField])),
+      formGroup(icons.home, 'ห้องพัก', 'orange',
+        itemsWrap, addItemBtn, promoBanner),
+      formGroup(icons.star, 'บริการเสริม', 'purple',
+        addonsWrap, addAddonBtn),
+      formGroup(icons.banknote, 'การชำระเงิน / มัดจำ', 'gold',
+        el('div', { class: 'row' }, [depDateField, depPctField]),
+        el('div', { class: 'row' }, [
+          labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType),
+          labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal),
+        ]),
+        el('div', { class: 'row' }, [depStatus])),
+      formGroup(icons.bookings, 'หมายเหตุ & สรุปยอด', 'grey',
+        el('div', { class: 'row' }, [recStatus]),
+        el('div', { class: 'field' }, [el('label', { text: 'รายละเอียด/หมายเหตุ' }), notesInp]),
+        summaryBox),
+      el('div', { class: 'row', style: 'justify-content:flex-end;gap:8px;flex-wrap:wrap' }, [delBtn, dupBtn, cardBtn].filter(Boolean)),
+      stickyBar,
     );
     refreshSummary();
   }
 }
 
 // ────────── helpers ──────────
+// การ์ดกลุ่มในฟอร์ม — หัวสี+ไอคอน แยกประเภทชัดเจน (color = blue|green|orange|purple|gold|grey)
+function formGroup(icon, title, color, ...children) {
+  return el('div', { class: `form-group form-group--${color}` }, [
+    el('div', { class: 'form-group-head' }, [
+      el('span', { class: 'fg-ico', html: icon }),
+      el('span', { text: title }),
+    ]),
+    el('div', { class: 'form-group-body' }, children),
+  ]);
+}
+
 function field(label, value, onInput, extra = {}) {
   const inp = el('input', { value: value ?? '', ...extra });
   inp.oninput = () => onInput(inp.value);
@@ -448,6 +500,8 @@ async function doSave(draft, isNew, modal) {
   await upsertCustomer(draft);
   modal.close();
   toast(isNew ? 'บันทึกการจองแล้ว' : 'อัปเดตแล้ว');
+  // ฟังก์ชัน D: บันทึกแล้วเปิดการ์ดส่งลูกค้าทันที (ส่ง Line ต่อได้เลย)
+  openCardPreview(rec);
 }
 
 async function upsertCustomer(draft) {

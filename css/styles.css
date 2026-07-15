@@ -119,6 +119,52 @@ textarea { resize: vertical; min-height: 64px; }
   letter-spacing: -0.01em;
 }
 
+/* ── การ์ดกลุ่มในฟอร์มจอง (มีสี+ไอคอน แยกประเภทชัดเจน) ── */
+.form-group {
+  border: 1px solid var(--hairline); border-radius: 14px;
+  margin-bottom: 14px; overflow: hidden;
+  border-left: 4px solid var(--fg-color, var(--hairline));
+}
+.form-group-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 14px; font-weight: 700; font-size: 14.5px;
+  letter-spacing: -0.01em; color: var(--fg-ink, var(--ink));
+  background: var(--fg-tint, var(--bg));
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.form-group-head .fg-ico { display: grid; place-items: center; color: var(--fg-color, var(--muted)); }
+.form-group-head .fg-ico svg { width: 18px; height: 18px; }
+.form-group-body { padding: 14px; }
+.form-group-body > .row:last-child .field { margin-bottom: 0; }
+
+/* สีประจำกลุ่ม — ใช้ tint อ่อนเป็นพื้นหัว + เส้นซ้าย/ไอคอนสีเข้ม */
+.form-group--blue   { --fg-color: #007AFF; --fg-tint: rgba(0,122,255,0.08);  --fg-ink: #0A63C9; }
+.form-group--green  { --fg-color: var(--green);  --fg-tint: var(--green-tint);  --fg-ink: #248A3D; }
+.form-group--orange { --fg-color: var(--accent); --fg-tint: var(--accent-tint); --fg-ink: var(--accent-dark); }
+.form-group--purple { --fg-color: #AF52DE; --fg-tint: rgba(175,82,222,0.10); --fg-ink: #8A38B8; }
+.form-group--gold   { --fg-color: #FF9500; --fg-tint: var(--orange-tint); --fg-ink: #B25E00; }
+.form-group--grey   { --fg-color: #C7C7CC; --fg-tint: var(--fill); --fg-ink: var(--muted); }
+
+/* ── แถบสรุปยอด+มัดจำ ลอยติดล่าง modal ── */
+.sticky-summary {
+  position: sticky; bottom: calc(var(--modal-pad-b, 18px) * -1);
+  margin: 8px calc(var(--modal-pad-x, 16px) * -1) calc(var(--modal-pad-b, 18px) * -1);
+  padding: 12px var(--modal-pad-x, 16px) calc(var(--modal-pad-b, 18px) + env(safe-area-inset-bottom));
+  background: rgba(255, 255, 255, 0.92);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border-top: 1px solid var(--hairline);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  z-index: 5;
+}
+.sticky-summary .ss-figures { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.sticky-summary .ss-total { font-size: 12px; color: var(--muted); }
+.sticky-summary .ss-total b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.sticky-summary .ss-deposit {
+  font-size: 17px; font-weight: 700; letter-spacing: -0.02em;
+  color: var(--accent-dark); font-variant-numeric: tabular-nums;
+}
+.sticky-summary .btn { flex-shrink: 0; }
+
 /* ── การ์ด ── */
 .card {
   background: var(--card); border-radius: var(--radius);
@@ -287,6 +333,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   animation: fadeIn .2s var(--ease);
 }
 .modal {
+  --modal-pad-x: 26px; --modal-pad-b: 26px;
   background: var(--card); border-radius: 20px; max-width: 580px; width: 100%;
   max-height: 90vh; max-height: 90dvh; overflow: auto; padding: 26px;
   box-shadow: var(--shadow-modal);
@@ -433,6 +480,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 
   .cal-cell { min-height: 52px; padding: 4px; }
   .cal-occ { font-size: 10px; padding: 2px 6px; margin-top: 3px; }
-  .modal { padding: 18px 16px; border-radius: 16px; max-height: calc(100dvh - 20px); }
+  .modal { --modal-pad-x: 16px; --modal-pad-b: 18px; padding: 18px 16px; border-radius: 16px; max-height: calc(100dvh - 20px); }
   .form-section { margin-top: 16px; padding-top: 12px; }
+  .form-group-body { padding: 12px; }
 }
