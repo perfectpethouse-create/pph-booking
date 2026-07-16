@@ -19,9 +19,23 @@ const PET_LABELS = {
   vaccine: 'วัคซีน', vaccineDate: 'ฉีดวัคซีนล่าสุด', flea: 'ป้องกันเห็บหมัด',
   temperament: 'อุปนิสัย', socialize: 'เข้ากับสัตว์อื่น', behaviors: 'พฤติกรรมพิเศษ',
   stressTriggers: 'สิ่งที่ทำให้เครียด', behaviorNote: 'หมายเหตุพฤติกรรม',
-  meals: 'มื้อ/วัน', feedTime: 'เวลาให้อาหาร', food: 'อาหาร', foodBrand: 'ยี่ห้ออาหาร',
-  allergyFlag: 'มีอาการแพ้', allergyList: 'สิ่งที่แพ้', room: 'ห้องที่เลือก',
+  meals: 'มื้อ/วัน', feedTime: 'เวลาให้อาหาร', amount: 'ปริมาณต่อมื้อ',
+  food: 'อาหาร', foodBrand: 'ยี่ห้ออาหาร', supplements: 'ยา & วิตามินเสริม',
+  allergyFlag: 'มีอาหารที่แพ้/ห้ามกิน', allergyList: 'อาหารที่แพ้/ห้ามกิน',
+  room: 'ห้องที่เลือก', items: 'สิ่งของที่นำมา', itemsDetail: 'รายละเอียดสิ่งของ',
 };
+
+// จัดกลุ่มฟิลด์สัตว์เป็นหมวด (ตามฟอร์มจริง) — พนักงานอ่านง่าย ไม่ตาลาย
+const PET_SECTIONS = [
+  { title: 'ข้อมูลตัว', color: 'blue', keys: ['species', 'breed', 'gender', 'age', 'weight', 'microchip', 'neutered'] },
+  { title: 'สุขภาพ & วัคซีน', color: 'green', keys: ['health', 'disease', 'medication', 'vaccine', 'vaccineDate', 'flea'] },
+  { title: 'อาหาร', color: 'orange', keys: ['meals', 'feedTime', 'amount', 'allergyFlag', 'allergyList', 'food', 'foodBrand', 'supplements'] },
+  { title: 'พฤติกรรม & ข้อควรระวัง', color: 'purple', keys: ['temperament', 'socialize', 'behaviors', 'stressTriggers', 'behaviorNote'] },
+  { title: 'ห้อง & สิ่งของ', color: 'grey', keys: ['room', 'items', 'itemsDetail'] },
+];
+
+// ฟิลด์ที่ "สำคัญต่อการดูแล" — เน้นสีให้พนักงานไม่พลาด (ถ้ามีข้อมูล)
+const PET_CRITICAL = new Set(['disease', 'medication', 'allergyList', 'stressTriggers']);
 const OWNER_LABELS = {
   fullname: 'ชื่อ-นามสกุล', nickname: 'ชื่อเล่น', phone: 'เบอร์โทร', line: 'Line',
   email: 'อีเมล', address: 'ที่อยู่', emgName: 'ผู้ติดต่อฉุกเฉิน', emgPhone: 'เบอร์ฉุกเฉิน',
@@ -105,21 +119,41 @@ function openDetail(f) {
     stay.specialRequest ? el('div', { class: 'cc-row' }, [el('span', { class: 'k', text: 'คำขอพิเศษ' }), el('span', { class: 'v', text: stay.specialRequest })]) : null,
   ].filter(Boolean)));
 
-  // สัตว์แต่ละตัว
+  // สัตว์แต่ละตัว — จัดกลุ่มเป็นหมวด + เน้นจุดสำคัญ
+  const hasVal = (v) => !(v == null || v === '' || (Array.isArray(v) && !v.length));
   pets.forEach((p, i) => {
     const cat = isCat(p.species);
-    const box = el('div', { class: 'lineitem' }, [
+    const box = el('div', { class: 'lineitem pet-detail' }, [
       el('div', { class: 'li-head' }, [
         el('span', { class: `pet-chip pet-${cat ? 'cat' : 'dog'} pet-chip-lg`, html: `${cat ? icons.cat : icons.dog} ${p.name || `ตัวที่ ${i + 1}`}` }),
       ]),
     ]);
-    Object.entries(p).forEach(([k, v]) => {
-      if (k === 'name' || v == null || v === '' || (Array.isArray(v) && !v.length)) return;
+
+    const shown = new Set(['name']);
+    const rowFor = (k) => {
+      const v = p[k];
+      if (!hasVal(v)) return null;
+      shown.add(k);
       const val = k === 'vaccineDate' ? formatDateTH(v) : fmtVal(v);
-      box.appendChild(el('div', { class: 'cc-row' }, [
-        el('span', { class: 'k', text: PET_LABELS[k] || k }), el('span', { class: 'v', style: 'white-space:normal;max-width:60%', text: val }),
-      ]));
+      const critical = PET_CRITICAL.has(k);
+      return el('div', { class: 'cc-row' + (critical ? ' cc-row-critical' : '') }, [
+        el('span', { class: 'k', text: PET_LABELS[k] || k }),
+        el('span', { class: 'v', style: 'white-space:normal;max-width:60%', text: val }),
+      ]);
+    };
+
+    PET_SECTIONS.forEach(sec => {
+      const rows = sec.keys.map(rowFor).filter(Boolean);
+      if (!rows.length) return;
+      box.appendChild(el('div', { class: `reg-sec reg-sec-${sec.color}`, text: sec.title }));
+      rows.forEach(r => box.appendChild(r));
     });
+    // ฟิลด์อื่นที่ไม่อยู่ในหมวด (กันข้อมูลตกหล่นเมื่อฟอร์มเพิ่มฟิลด์ใหม่)
+    const extra = Object.keys(p).filter(k => !shown.has(k)).map(rowFor).filter(Boolean);
+    if (extra.length) {
+      box.appendChild(el('div', { class: 'reg-sec reg-sec-grey', text: 'อื่นๆ' }));
+      extra.forEach(r => box.appendChild(r));
+    }
     wrap.appendChild(box);
   });
 

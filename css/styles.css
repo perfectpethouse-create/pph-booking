@@ -417,6 +417,38 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .day-guest { cursor: pointer; transition: border-color .15s var(--ease); }
 .day-guest:hover { border-color: var(--accent); }
 
+/* หัวข้อหมวดในใบลงทะเบียน (ข้อมูลตัว/สุขภาพ/อาหาร/พฤติกรรม) */
+.reg-sec {
+  font-size: 12px; font-weight: 700; letter-spacing: .02em;
+  margin: 14px 0 6px; padding: 3px 10px; border-radius: 980px;
+  display: inline-block;
+}
+.reg-sec:first-of-type { margin-top: 8px; }
+.reg-sec-blue   { background: rgba(0,122,255,.12);  color: #0A63C9; }
+.reg-sec-green  { background: var(--green-tint);    color: #248A3D; }
+.reg-sec-orange { background: var(--orange-tint);   color: #C93400; }
+.reg-sec-purple { background: rgba(175,82,222,.12); color: #8A38B8; }
+.reg-sec-grey   { background: var(--fill);          color: var(--muted); }
+
+/* แถวข้อมูลสำคัญต่อการดูแล (ยา/โรค/อาหารที่แพ้/สิ่งที่ทำให้เครียด) */
+.cc-row-critical {
+  background: var(--red-tint); border-radius: 8px;
+  padding: 8px 10px; margin: 3px 0; border-bottom: none;
+}
+.cc-row-critical .k { color: var(--red); font-weight: 700; }
+.cc-row-critical .v { color: #B30000; font-weight: 600; }
+
+/* แถว label:value ในใบลงทะเบียน (นอกการ์ดลูกค้า ต้องกำหนด layout เอง) */
+.lineitem .cc-row {
+  display: flex; justify-content: space-between; gap: 14px;
+  padding: 6px 2px; font-size: 14px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.lineitem .cc-row:last-child { border-bottom: none; }
+.lineitem .cc-row .k { color: var(--muted); flex-shrink: 0; }
+.lineitem .cc-row .v { text-align: right; font-weight: 500; }
+.lineitem .cc-row-critical { border-bottom: none; }
+
 /* ── login ── */
 #login-screen { display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; padding: 20px; }
 #login-screen .card { max-width: 360px; width: 100%; text-align: center; padding: 34px 28px; border-radius: 24px; }
