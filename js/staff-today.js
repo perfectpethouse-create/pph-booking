@@ -3,7 +3,7 @@
 // เน้นสิ่งที่คนดูแลสัตว์ต้องรู้: ใครเข้า/ออก/พักอยู่ · น้องชื่ออะไร · ต้องระวังอะไร
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
-import { el, getSettings } from './ui.js';
+import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO } from './calc.js';
 import { icons } from './icons.js';
 
@@ -76,7 +76,7 @@ export function renderStaffToday(container) {
     list.forEach(b => {
       const rooms = b.lineItems.map(li => el('span', {
         class: `pet-chip pet-${li.petType || 'dog'} pet-chip-lg`,
-        html: `${PET_ICONS[li.petType] || icons.paw} ${(s?.roomPrices?.[li.roomType]?.label || li.roomType)} × ${li.rooms || 1}`,
+        html: `${PET_ICONS[li.petType] || icons.paw} ${escapeHtml(s?.roomPrices?.[li.roomType]?.label || li.roomType)} × ${Number(li.rooms) || 1}`,
       }));
       const box = el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
@@ -96,7 +96,7 @@ export function renderStaffToday(container) {
       petsOf(b).forEach(p => {
         const cat = p.species === 'cat';
         const line = el('div', { class: 'row', style: 'gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap' }, [
-          el('span', { class: `pet-chip pet-${cat ? 'cat' : 'dog'}`, html: `${cat ? icons.cat : icons.dog} ${p.name || '-'}` }),
+          el('span', { class: `pet-chip pet-${cat ? 'cat' : 'dog'}`, html: `${cat ? icons.cat : icons.dog} ${escapeHtml(p.name || '-')}` }),
           p.breed ? el('span', { class: 'muted', style: 'font-size:12px', text: p.breed }) : null,
         ].filter(Boolean));
         box.appendChild(line);

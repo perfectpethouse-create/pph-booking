@@ -2,7 +2,7 @@
 // bookings.js — หน้ารายการจอง + ฟอร์มเพิ่ม/แก้ไข (หัวใจของระบบ)
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
-import { el, toast, openModal, confirmDialog, getSettings, currentUser } from './ui.js';
+import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml } from './ui.js';
 import { computeBooking, computeAddOn, freeBathRights, formatBaht, formatDateTH, nightsBetween, todayISO, addDaysISO } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE,
@@ -70,7 +70,7 @@ function buildTable(rows) {
   if (!rows.length) {
     return el('p', { class: 'muted', style: 'padding:20px;text-align:center', text: 'ยังไม่มีการจอง — กด "เพิ่มการจอง" เพื่อเริ่ม' });
   }
-  const cols = ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'มัดจำ', 'คงเหลือ', 'สถานะ', ''];
+  const cols = ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
   const head = el('tr', {}, cols.map((h, i) => el('th', { class: [4, 5, 6].includes(i) ? 'num' : '', text: h })));
   const body = rows.map(raw => {
     const b = computeBooking(raw);
@@ -85,7 +85,6 @@ function buildTable(rows) {
       el('td', { class: 'num', text: formatBaht(b.depositAmount) }),
       el('td', { class: 'num', text: formatBaht(b.balanceDue) }),
       el('td', {}, [statusPill(b.depositStatus)]),
-      el('td', {}, [el('button', { class: 'btn sm ghost', text: '⋯' })]),
     ]);
     tr.onclick = () => openBookingForm(raw);
     return tr;
@@ -180,7 +179,7 @@ export function openBookingForm(existing) {
       vaccineBanner.classList.remove('hidden');
       const names = bad.map(x => x.p.name || 'สัตว์เลี้ยง').join(', ');
       vaccineBanner.appendChild(el('span', { class: 'promo-text', html:
-        `${icons.alert} วัคซีนของ <strong>${names}</strong> ${bad.some(x => x.st === 'expired') ? 'หมดอายุก่อนวันเข้าพัก' : 'ใกล้หมดอายุ'} — แจ้งลูกค้าเตรียมสมุดวัคซีน/ฉีดกระตุ้น` }));
+        `${icons.alert} วัคซีนของ <strong>${escapeHtml(names)}</strong> ${bad.some(x => x.st === 'expired') ? 'หมดอายุก่อนวันเข้าพัก' : 'ใกล้หมดอายุ'} — แจ้งลูกค้าเตรียมสมุดวัคซีน/ฉีดกระตุ้น` }));
     }
 
     // ── หัวลูกค้า ──

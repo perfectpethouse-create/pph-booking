@@ -3,7 +3,7 @@
 // ห้องถูกจองในช่วง [checkIn, checkOut) — วันเช็คเอาท์นับว่าห้องว่าง
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
-import { el, getSettings, toast, openModal, isStaff } from './ui.js';
+import { el, getSettings, toast, openModal, isStaff, escapeHtml } from './ui.js';
 import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween } from './calc.js';
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
@@ -175,7 +175,7 @@ export function renderCalendar(container) {
       const roomChips = el('div', { class: 'row', style: 'gap:6px;margin:8px 0 6px;flex-wrap:wrap' },
         b.lineItems.map(li => el('span', {
           class: `pet-chip pet-${li.petType || 'dog'} pet-chip-lg`,
-          html: `${PET_ICONS[li.petType] || icons.paw} ${(s?.roomPrices?.[li.roomType]?.label || li.roomType)} × ${li.rooms || 1} ห้อง`,
+          html: `${PET_ICONS[li.petType] || icons.paw} ${escapeHtml(s?.roomPrices?.[li.roomType]?.label || li.roomType)} × ${Number(li.rooms) || 1} ห้อง`,
         })));
       const nights = nightsBetween(b.checkIn, b.checkOut);
       // พี่เลี้ยงไม่เห็นยอดเงิน

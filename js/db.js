@@ -203,15 +203,16 @@ export function listenSettings(cb) {
 
 // ─── สำรอง/นำเข้าข้อมูล ───
 export async function exportAll() {
-  const [bookings, customers, settings] = await Promise.all([
-    getAll('bookings'), getAll('customers'), getSettings(),
+  const [bookings, customers, checkinForms, settings] = await Promise.all([
+    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getSettings(),
   ]);
-  return { exportedAt: new Date().toISOString(), bookings, customers, settings };
+  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, settings };
 }
 
 export async function importAll(data) {
   if (!data || (!data.bookings && !data.customers)) throw new Error('ไฟล์ไม่ถูกต้อง');
   for (const b of (data.bookings || [])) await save('bookings', b);
   for (const c of (data.customers || [])) await save('customers', c);
+  for (const f of (data.checkinForms || [])) await save('checkinForms', f);
   if (data.settings) await saveSettings(data.settings);
 }

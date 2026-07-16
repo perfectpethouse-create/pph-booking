@@ -3,7 +3,7 @@
 // ลูกค้ากรอกเองก่อนมาถึง → พนักงานเปิดดูรายละเอียด + กดนำเข้าเป็นลูกค้า/สัตว์เลี้ยง
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
-import { el, toast, openModal, confirmDialog } from './ui.js';
+import { el, toast, openModal, confirmDialog, escapeHtml } from './ui.js';
 import { formatDateTH } from './calc.js';
 import { icons } from './icons.js';
 
@@ -125,7 +125,7 @@ function openDetail(f) {
     const cat = isCat(p.species);
     const box = el('div', { class: 'lineitem pet-detail' }, [
       el('div', { class: 'li-head' }, [
-        el('span', { class: `pet-chip pet-${cat ? 'cat' : 'dog'} pet-chip-lg`, html: `${cat ? icons.cat : icons.dog} ${p.name || `ตัวที่ ${i + 1}`}` }),
+        el('span', { class: `pet-chip pet-${cat ? 'cat' : 'dog'} pet-chip-lg`, html: `${cat ? icons.cat : icons.dog} ${escapeHtml(p.name || `ตัวที่ ${i + 1}`)}` }),
       ]),
     ]);
 

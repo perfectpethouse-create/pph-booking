@@ -2,7 +2,7 @@
 // app.js — จุดเริ่มต้น: boot DB, ล็อกอิน, และ router สลับหน้า
 // ═══════════════════════════════════════════════════════════════
 import { initDb, MODE, onAuthChanged, signIn, signOutUser, listenSettings } from './db.js';
-import { setSettingsCache, setUser, toast, escapeHtml, isStaff, STAFF_ROUTES } from './ui.js';
+import { setSettingsCache, setUser, toast, escapeHtml, isStaff, STAFF_ROUTES, getSettings } from './ui.js';
 import { icons } from './icons.js';
 
 import { renderDashboard } from './dashboard.js';
@@ -81,14 +81,27 @@ function showApp(user) {
   appEl.classList.remove('hidden');
 
   // subscribe settings เรียลไทม์ → เก็บในแคชให้ทุกหน้าใช้
-  // สิทธิ์ (staffEmails) อยู่ใน settings ซึ่งโหลดแบบ async → ต้องคำนวณเมนูใหม่ทุกครั้งที่ค่ามา
+  // สิทธิ์ (staffEmails) อยู่ใน settings ซึ่งโหลดแบบ async →
+  // "รอ settings รอบแรกก่อน" ค่อยเปิดหน้าแรก ไม่งั้นพี่เลี้ยงจะเห็น
+  // แดชบอร์ดเจ้าของ (มียอดเงิน) แวบหนึ่งก่อนถูกเด้งออก
+  let firstNavPending = !getSettings();
   if (!settingsUnsub) settingsUnsub = listenSettings((s) => {
     setSettingsCache(s);
     applyRoleUI();
+    if (firstNavPending) {
+      firstNavPending = false;
+      navigate(location.hash.replace('#', '') || defaultRoute());
+    }
   });
 
-  applyRoleUI();
-  navigate(location.hash.replace('#', '') || defaultRoute());
+  if (!firstNavPending) {
+    applyRoleUI();
+    navigate(location.hash.replace('#', '') || defaultRoute());
+  } else {
+    // ระหว่างรอ: ซ่อนเมนูทั้งหมดไว้ก่อน กันข้อมูลแวบ
+    document.querySelectorAll('.navlink').forEach(b => b.classList.add('hidden'));
+    contentEl.innerHTML = '<p class="muted" style="padding:30px;text-align:center">กำลังโหลด…</p>';
+  }
 }
 
 // หน้าเริ่มต้นตามสิทธิ์: พี่เลี้ยง = งานวันนี้ · เจ้าของ = แดชบอร์ด

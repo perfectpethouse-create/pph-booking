@@ -17,7 +17,8 @@ export function vaccineStatus(pet, refDateISO = todayISO()) {
   if (pet.vaccineExpiry < refDateISO) return 'expired';
   const soon = new Date(refDateISO + 'T00:00:00');
   soon.setDate(soon.getDate() + 30);
-  const soonISO = soon.toISOString().slice(0, 10);
+  // ฟอร์แมตแบบเวลาท้องถิ่น (toISOString เป็น UTC จะเพี้ยน 1 วันในไทย)
+  const soonISO = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(soon.getDate()).padStart(2, '0')}`;
   return pet.vaccineExpiry <= soonISO ? 'soon' : 'ok';
 }
 
