@@ -34,6 +34,7 @@ async function initFirestore() {
 const LS = {
   bookings: 'pph_bookings',
   customers: 'pph_customers',
+  checkinForms: 'pph_checkin_forms', // ใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
   settings: 'pph_settings',
   user: 'pph_mock_user',
 };
@@ -52,7 +53,7 @@ function emit(col, arr) {
 }
 // ซิงค์ข้ามแท็บในเครื่องเดียวกัน
 window.addEventListener('storage', (e) => {
-  for (const col of ['bookings', 'customers', 'settings']) {
+  for (const col of ['bookings', 'customers', 'checkinForms', 'settings']) {
     if (e.key === LS[col]) emit(col, mockRead(col));
   }
 });

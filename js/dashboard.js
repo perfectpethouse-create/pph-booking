@@ -2,7 +2,7 @@
 // dashboard.js — แดชบอร์ดวันนี้: เช็คอิน/เอาท์วันนี้ + ยอดค้าง/ยังไม่ลงระบบ
 // ═══════════════════════════════════════════════════════════════
 import { listen, save } from './db.js';
-import { el, getSettings, toast, confirmDialog } from './ui.js';
+import { el, getSettings, toast, confirmDialog, openModal } from './ui.js';
 import { computeBooking, formatBaht, formatDateTH, todayISO } from './calc.js';
 import { icons } from './icons.js';
 
@@ -15,9 +15,23 @@ export function renderDashboard(container) {
     el('h1', { text: 'แดชบอร์ดวันนี้' }),
     el('span', { class: 'muted', text: formatDateTH(todayISO()) }),
   ]));
+  // แจ้งเตือนใบลงทะเบียนใหม่จากเว็บ (perfectbkk.com/checkin.html)
+  const regBanner = el('div', { class: 'promo-banner hidden', style: 'margin-bottom:14px;cursor:pointer' });
+  regBanner.onclick = () => window.__go && window.__go('registrations');
+
   const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
   const body = el('div', {});
-  container.append(statGrid, body);
+  container.append(regBanner, statGrid, body);
+
+  _unsub.push(listen('checkinForms', forms => {
+    const n = forms.filter(f => (f.status || 'new') === 'new').length;
+    regBanner.innerHTML = '';
+    if (!n) { regBanner.classList.add('hidden'); return; }
+    regBanner.classList.remove('hidden');
+    regBanner.appendChild(el('span', { class: 'promo-text', html:
+      `${icons.inbox} มีใบลงทะเบียนเข้าพักใหม่จากเว็บ <strong>${n} ใบ</strong> — กดเพื่อเปิดดู` }));
+    regBanner.appendChild(el('span', { class: 'btn sm primary', text: 'เปิดดู' }));
+  }));
 
   _unsub.push(listen('bookings', raw => draw(raw.map(computeBooking))));
 
@@ -47,9 +61,9 @@ export function renderDashboard(container) {
 
     body.innerHTML = '';
     body.append(
-      section('เช็คอินวันนี้', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', false, 'green', 'checkin'),
-      section('เช็คเอาท์วันนี้ · เก็บยอดคงเหลือ', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, 'orange', 'checkout'),
-      section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, 'red'),
+      section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, 'green', 'checkin'),
+      section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, 'orange', 'checkout'),
+      section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, 'red', 'pay'),
       section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, 'grey'),
     );
   }
@@ -61,12 +75,13 @@ export function renderDashboard(container) {
     if (mode === 'checkin') {
       if (b.stayStatus === 'checked-in' || b.stayStatus === 'checked-out') {
         td.appendChild(el('span', { class: 'pill green', text: `เช็คอินแล้ว ${time(b.checkedInAt)}` }));
+        // เตือนถ้าเช็คอินไปแล้วแต่ยังไม่ได้อัปเดตยอด
+        if (b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0) {
+          td.appendChild(el('div', { style: 'margin-top:4px' }, [payNowBtn(b)]));
+        }
       } else {
         const btn = el('button', { class: 'btn sm primary', text: 'เช็คอิน' });
-        btn.onclick = async () => {
-          await save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() });
-          toast(`เช็คอิน ${b.customerName} แล้ว`);
-        };
+        btn.onclick = () => openCheckinDialog(b);
         td.appendChild(btn);
       }
     } else if (mode === 'checkout') {
@@ -88,8 +103,57 @@ export function renderDashboard(container) {
         };
         td.appendChild(btn);
       }
+    } else if (mode === 'pay') {
+      td.appendChild(payNowBtn(b));
     }
     return td;
+  }
+
+  // กล่องเช็คอิน: นโยบายร้านคือลูกค้าจ่ายส่วนที่เหลือ "วันเช็คอิน"
+  // → ถามตอนกดเช็คอินเลย จะได้ไม่ลืมอัปเดตยอด
+  function openCheckinDialog(b) {
+    const unpaid = b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
+    if (!unpaid) {
+      // จ่ายครบแล้ว → เช็คอินได้เลย
+      save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() })
+        .then(() => toast(`เช็คอิน ${b.customerName} แล้ว`));
+      return;
+    }
+    const paidBtn = el('button', { class: 'btn primary block', text: `รับเงิน ${formatBaht(b.balanceDue)} แล้ว — เช็คอิน` });
+    const laterBtn = el('button', { class: 'btn block', text: 'ยังไม่รับเงิน — เช็คอินก่อน' });
+    const cancelBtn = el('button', { class: 'btn ghost block', text: 'ยกเลิก' });
+    const m = openModal(el('div', {}, [
+      el('h2', { text: `เช็คอิน ${b.customerName}` }),
+      el('div', { class: 'summary-box', style: 'margin:12px 0' }, [
+        el('div', { class: 'line' }, [el('span', { text: 'ยอดทั้งหมด' }), el('span', { text: formatBaht(b.grandTotal) })]),
+        el('div', { class: 'line' }, [el('span', { text: `มัดจำแล้ว ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) })]),
+        el('div', { class: 'line grand' }, [el('span', { text: 'ต้องเก็บวันนี้' }), el('span', { text: formatBaht(b.balanceDue) })]),
+      ]),
+      el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, [paidBtn, laterBtn, cancelBtn]),
+    ]));
+    paidBtn.onclick = async () => {
+      await save('bookings', {
+        ...b, stayStatus: 'checked-in', checkedInAt: Date.now(),
+        depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(),
+      });
+      m.close(); toast(`เช็คอิน ${b.customerName} + รับยอด ${formatBaht(b.balanceDue)} เรียบร้อย`);
+    };
+    laterBtn.onclick = async () => {
+      await save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() });
+      m.close(); toast(`เช็คอินแล้ว — ยอด ${formatBaht(b.balanceDue)} ยังค้างอยู่ (จะเตือนในหน้านี้)`);
+    };
+    cancelBtn.onclick = () => m.close();
+  }
+
+  // ปุ่ม "รับเงิน" สำหรับคนที่เช็คอินไปแล้วแต่ยังไม่จ่ายครบ
+  function payNowBtn(b) {
+    const btn = el('button', { class: 'btn sm danger', text: `รับเงิน ${formatBaht(b.balanceDue)}` });
+    btn.onclick = async () => {
+      if (!await confirmDialog(`รับยอดคงเหลือ ${formatBaht(b.balanceDue)} จาก ${b.customerName} แล้วใช่ไหม?`, { okText: 'รับแล้ว' })) return;
+      await save('bookings', { ...b, depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now() });
+      toast(`อัปเดตยอด ${b.customerName} เป็นจ่ายครบแล้ว`);
+    };
+    return btn;
   }
 
   function section(title, list, emptyText, showBalance, color = 'grey', mode = null) {

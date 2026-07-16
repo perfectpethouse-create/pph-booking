@@ -9,6 +9,7 @@ import { renderDashboard } from './dashboard.js';
 import { renderBookings } from './bookings.js';
 import { renderCalendar } from './calendar.js';
 import { renderCustomers } from './customers.js';
+import { renderRegistrations } from './registrations.js';
 import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { renderBackup } from './backup.js';
@@ -18,6 +19,7 @@ const ROUTES = {
   bookings: renderBookings,
   calendar: renderCalendar,
   customers: renderCustomers,
+  registrations: renderRegistrations,
   reports: renderReports,
   settings: renderSettings,
   backup: renderBackup,
@@ -33,6 +35,7 @@ const NAV_ICONS = {
   bookings: icons.bookings,
   calendar: icons.calendar,
   customers: icons.paw,
+  registrations: icons.inbox,
   reports: icons.chart,
   settings: icons.settings,
   backup: icons.backup,

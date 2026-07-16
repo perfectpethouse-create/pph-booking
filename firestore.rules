@@ -1,9 +1,17 @@
 rules_version = '2';
 // กฎความปลอดภัย Firestore สำหรับ Perfect Pet House
-// อนุญาตให้อ่าน/เขียนได้เฉพาะผู้ใช้ที่ล็อกอินแล้วเท่านั้น (พนักงานร้าน)
 // วางกฎนี้ที่: Firebase Console → Firestore Database → แท็บ Rules → Publish
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // กล่องรับใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
+    // ลูกค้า (ไม่ล็อกอิน) "ส่งเข้า" ได้อย่างเดียว — อ่าน/แก้/ลบได้เฉพาะพนักงาน
+    match /checkinForms/{doc} {
+      allow create: if true;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // ข้อมูลภายในทั้งหมด: เฉพาะพนักงานที่ล็อกอินแล้ว
     match /{document=**} {
       allow read, write: if request.auth != null;
     }
