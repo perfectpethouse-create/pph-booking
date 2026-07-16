@@ -71,7 +71,7 @@ export function renderRegistrations(container) {
     });
   };
 
-  _unsub.push(listen('checkinForms', arr => { _forms = arr; draw(); }));
+  _unsub.push(listen('checkinForms', arr => { _forms = arr; draw(); }, { orderBy: null }));
   _unsub.push(listen('customers', arr => { _customers = arr; }));
 }
 

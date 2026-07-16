@@ -102,10 +102,16 @@ export async function signOutUser() {
 
 // ─── Realtime listener ต่อ collection ───
 // คืนค่า unsubscribe()
-export function listen(col, cb) {
+// opts.orderBy: ฟิลด์สำหรับเรียงลำดับ (ดีฟอลต์ 'createdAt')
+//   ส่ง null = ไม่ orderBy → ดึงทุกเอกสารแม้ไม่มีฟิลด์ createdAt
+//   (จำเป็นสำหรับ checkinForms ที่เขียนจากเว็บภายนอกผ่าน REST ซึ่งไม่มี createdAt)
+export function listen(col, cb, opts = {}) {
   if (MODE === 'firestore') {
     const { collection, onSnapshot, query, orderBy } = fb.fsMod;
-    const q = query(collection(fb.store, col), orderBy('createdAt', 'desc'));
+    const orderField = opts.orderBy === undefined ? 'createdAt' : opts.orderBy;
+    const q = orderField
+      ? query(collection(fb.store, col), orderBy(orderField, 'desc'))
+      : query(collection(fb.store, col));
     return onSnapshot(q, (snap) => {
       cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });

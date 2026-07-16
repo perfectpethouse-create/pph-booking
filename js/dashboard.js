@@ -31,7 +31,7 @@ export function renderDashboard(container) {
     regBanner.appendChild(el('span', { class: 'promo-text', html:
       `${icons.inbox} มีใบลงทะเบียนเข้าพักใหม่จากเว็บ <strong>${n} ใบ</strong> — กดเพื่อเปิดดู` }));
     regBanner.appendChild(el('span', { class: 'btn sm primary', text: 'เปิดดู' }));
-  }));
+  }, { orderBy: null }));
 
   _unsub.push(listen('bookings', raw => draw(raw.map(computeBooking))));
 
