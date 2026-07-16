@@ -396,6 +396,27 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .cal-occ.muted { background: transparent; color: #C7C7CC; padding: 2px 0; font-weight: 500; }
 .cal-occ.over { background: var(--red-tint); color: var(--red); }
 
+/* ช่องวันกดได้ → ดูรายชื่อผู้เข้าพัก */
+.cal-cell.clickable { cursor: pointer; transition: border-color .15s var(--ease), background .15s var(--ease); }
+.cal-cell.clickable:hover { border-color: var(--accent); background: #FFFDFB; }
+
+/* ชิปสุนัข/แมว — ฟ้า = สุนัข · ม่วง = แมว */
+.cal-pets { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.pet-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 980px;
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.pet-chip svg { width: 12px; height: 12px; flex-shrink: 0; }
+.pet-chip.pet-dog { background: rgba(0, 122, 255, 0.12); color: #0A63C9; }
+.pet-chip.pet-cat { background: rgba(175, 82, 222, 0.12); color: #8A38B8; }
+.pet-chip-lg { font-size: 13px; padding: 4px 11px; gap: 5px; }
+.pet-chip-lg svg { width: 15px; height: 15px; }
+
+/* แถวผู้เข้าพักในหน้าต่างรายวัน */
+.day-guest { cursor: pointer; transition: border-color .15s var(--ease); }
+.day-guest:hover { border-color: var(--accent); }
+
 /* ── login ── */
 #login-screen { display: grid; place-items: center; min-height: 100vh; min-height: 100dvh; padding: 20px; }
 #login-screen .card { max-width: 360px; width: 100%; text-align: center; padding: 34px 28px; border-radius: 24px; }

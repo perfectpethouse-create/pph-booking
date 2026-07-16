@@ -101,7 +101,15 @@ function blankLineItem(s) {
 }
 function priceFor(roomType, petType, s) { return s?.roomPrices?.[roomType]?.[petType] ?? 0; }
 
-function openBookingForm(existing) {
+// โหลดรายชื่อลูกค้าถ้ายังไม่มี (กรณีเปิดฟอร์มจากหน้าอื่น เช่น ปฏิทิน
+// โดยยังไม่เคยเข้าหน้าการจอง) — เพื่อให้ autocomplete + เตือนวัคซีนทำงาน
+let _custSub = null;
+function ensureCustomersLoaded() {
+  if (!_custSub) _custSub = listen('customers', arr => { _customers = arr; });
+}
+
+export function openBookingForm(existing) {
+  ensureCustomersLoaded();
   const s = getSettings();
   // "ใบใหม่" = ไม่มี id (รวมกรณีจองซ้ำที่ก็อปข้อมูลมาแต่ยังไม่บันทึก)
   const isNew = !existing?.id;
