@@ -75,6 +75,37 @@ export async function renderSettings(container) {
   svcCard.append(svcWrap, addSvc);
   container.appendChild(svcCard);
 
+  // ── สิทธิ์พนักงาน (พี่เลี้ยง) ──
+  // อีเมลในลิสต์นี้จะเห็นเฉพาะ: งานวันนี้ / ปฏิทินห้องว่าง / ลูกค้า & สัตว์เลี้ยง / ลงทะเบียนเช็คอิน
+  // (ไม่เห็นราคา ยอดเงิน รายงาน ตั้งค่า สำรองข้อมูล) — ลิสต์ว่าง = ทุกคนเป็นเจ้าของร้าน
+  s.staffEmails = s.staffEmails || [];
+  const staffCard = el('div', { class: 'card' }, [
+    el('h2', { text: 'สิทธิ์พนักงาน (พี่เลี้ยง)' }),
+    el('p', { class: 'muted', style: 'font-size:13px;margin-top:-6px', text:
+      'อีเมลในลิสต์นี้จะเห็นแค่ งานวันนี้ · ปฏิทินห้องว่าง · ลูกค้า & สัตว์เลี้ยง · ลงทะเบียนเช็คอิน — ไม่เห็นราคา ยอดเงิน รายงาน และตั้งค่า (ต้องสร้างบัญชีให้เขาใน Firebase Console ก่อน)' }),
+  ]);
+  const staffWrap = el('div', {});
+  const drawStaff = () => {
+    staffWrap.innerHTML = '';
+    if (!s.staffEmails.length) {
+      staffWrap.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีพนักงาน — ตอนนี้ทุกคนที่ล็อกอินเห็นทุกเมนู' }));
+    }
+    s.staffEmails.forEach((email, idx) => {
+      const inp = el('input', { value: email, placeholder: 'staff@example.com', type: 'email' });
+      inp.oninput = () => s.staffEmails[idx] = inp.value.trim();
+      const rm = el('button', { class: 'btn sm danger', html: icons.x, 'aria-label': 'ลบ' });
+      rm.onclick = () => { s.staffEmails.splice(idx, 1); drawStaff(); };
+      staffWrap.appendChild(el('div', { class: 'row', style: 'align-items:flex-end;margin-bottom:8px' }, [
+        el('div', { class: 'field', style: 'flex:2' }, [inp]), rm,
+      ]));
+    });
+  };
+  drawStaff();
+  const addStaff = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มอีเมลพนักงาน' });
+  addStaff.onclick = () => { s.staffEmails.push(''); drawStaff(); };
+  staffCard.append(staffWrap, addStaff);
+  container.appendChild(staffCard);
+
   // ── ข้อมูลร้าน ──
   const shopCard = el('div', { class: 'card' }, [el('h2', { text: 'ข้อมูลร้าน (แสดงบนการ์ดลูกค้า)' })]);
   s.shopInfo = s.shopInfo || {};
@@ -90,6 +121,10 @@ export async function renderSettings(container) {
 
   // ── บันทึก ──
   const saveBtn = el('button', { class: 'btn primary', html: icons.save + ' บันทึกการตั้งค่า' });
-  saveBtn.onclick = async () => { await saveSettings(s); toast('บันทึกการตั้งค่าแล้ว'); };
+  saveBtn.onclick = async () => {
+    s.staffEmails = (s.staffEmails || []).map(e => String(e).trim()).filter(Boolean);
+    await saveSettings(s);
+    toast('บันทึกการตั้งค่าแล้ว');
+  };
   container.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end' }, [saveBtn]));
 }

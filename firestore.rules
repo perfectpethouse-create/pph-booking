@@ -4,16 +4,53 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // กล่องรับใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
-    // ลูกค้า (ไม่ล็อกอิน) "ส่งเข้า" ได้อย่างเดียว — อ่าน/แก้/ลบได้เฉพาะพนักงาน
-    match /checkinForms/{doc} {
-      allow create: if true;
-      allow read, update, delete: if request.auth != null;
+    // ── ตัวช่วยเช็คสิทธิ์ ──
+    function signedIn() {
+      return request.auth != null;
+    }
+    // "พี่เลี้ยง" = อีเมลอยู่ใน settings/app.staffEmails (ตั้งได้ในหน้า "ตั้งค่า")
+    // ลิสต์ว่าง/ไม่มีเอกสาร settings = ทุกคนเป็นเจ้าของร้าน (กันล็อกตัวเองออก)
+    function staffEmails() {
+      return exists(/databases/$(database)/documents/settings/app)
+        ? get(/databases/$(database)/documents/settings/app).data.get('staffEmails', [])
+        : [];
+    }
+    function isStaff() {
+      return signedIn() && request.auth.token.email in staffEmails();
+    }
+    function isOwner() {
+      return signedIn() && !isStaff();
     }
 
-    // ข้อมูลภายในทั้งหมด: เฉพาะพนักงานที่ล็อกอินแล้ว
+    // ── กล่องรับใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html ──
+    // ลูกค้า (ไม่ล็อกอิน) "ส่งเข้า" ได้อย่างเดียว — อ่าน/แก้/ลบได้เฉพาะพนักงานที่ล็อกอิน
+    match /checkinForms/{doc} {
+      allow create: if true;
+      allow read, update, delete: if signedIn();
+    }
+
+    // ── การจอง (มีราคา/ยอดเงิน) ──
+    // พี่เลี้ยงอ่านได้ (ต้องใช้ดูปฏิทิน/งานวันนี้) แต่แก้ไขไม่ได้ — เจ้าของร้านเท่านั้น
+    match /bookings/{doc} {
+      allow read: if signedIn();
+      allow write: if isOwner();
+    }
+
+    // ── ตั้งค่า (ราคา/สิทธิ์พนักงาน) — เจ้าของร้านเท่านั้นที่แก้ได้ ──
+    // (กันพี่เลี้ยงลบอีเมลตัวเองออกจากลิสต์เพื่อเลื่อนสิทธิ์)
+    match /settings/{doc} {
+      allow read: if signedIn();
+      allow write: if isOwner();
+    }
+
+    // ── ลูกค้า & สัตว์เลี้ยง — พี่เลี้ยงแก้ได้ (อัปเดตโน้ตสุขภาพ/วัคซีน) ──
+    match /customers/{doc} {
+      allow read, write: if signedIn();
+    }
+
+    // ── อื่นๆ: ต้องล็อกอิน ──
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if signedIn();
     }
   }
 }

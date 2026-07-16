@@ -179,5 +179,6 @@ export function defaultSettings() {
     depositPctDefault: DEFAULT_DEPOSIT_PCT,
     vipPromoPrice: VIP_PROMO_PRICE,
     shopInfo: structuredClone(SHOP_INFO),
+    staffEmails: [], // อีเมลพนักงาน (พี่เลี้ยง) — เห็นเฉพาะเมนูที่ไม่เกี่ยวกับเงิน
   };
 }

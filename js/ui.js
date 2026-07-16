@@ -75,3 +75,17 @@ export function onSettings(cb) { _settingsSubs.add(cb); if (_settings) cb(_setti
 let _user = null;
 export function setUser(u) { _user = u; }
 export function currentUser() { return _user; }
+
+// ── สิทธิ์การใช้งาน ──
+// อีเมลที่อยู่ใน settings.staffEmails = "พี่เลี้ยง" (เห็นเฉพาะเมนูที่ไม่เกี่ยวกับเงิน)
+// ที่เหลือ = เจ้าของร้าน (เห็นทุกอย่าง) — ค่าเริ่มต้นลิสต์ว่าง จึงไม่มีทางล็อกตัวเองออก
+export function isStaff() {
+  const email = (_user?.email || '').trim().toLowerCase();
+  if (!email) return false;
+  const list = _settings?.staffEmails || [];
+  return list.some(e => String(e).trim().toLowerCase() === email);
+}
+export function isOwner() { return !isStaff(); }
+
+// เมนูที่พี่เลี้ยงเข้าได้ (นอกเหนือจากนี้เป็นของเจ้าของร้าน)
+export const STAFF_ROUTES = ['today', 'calendar', 'customers', 'registrations'];

@@ -2,10 +2,11 @@
 // app.js — จุดเริ่มต้น: boot DB, ล็อกอิน, และ router สลับหน้า
 // ═══════════════════════════════════════════════════════════════
 import { initDb, MODE, onAuthChanged, signIn, signOutUser, listenSettings } from './db.js';
-import { setSettingsCache, setUser, toast, escapeHtml } from './ui.js';
+import { setSettingsCache, setUser, toast, escapeHtml, isStaff, STAFF_ROUTES } from './ui.js';
 import { icons } from './icons.js';
 
 import { renderDashboard } from './dashboard.js';
+import { renderStaffToday } from './staff-today.js';
 import { renderBookings } from './bookings.js';
 import { renderCalendar } from './calendar.js';
 import { renderCustomers } from './customers.js';
@@ -16,6 +17,7 @@ import { renderBackup } from './backup.js';
 
 const ROUTES = {
   dashboard: renderDashboard,
+  today: renderStaffToday,
   bookings: renderBookings,
   calendar: renderCalendar,
   customers: renderCustomers,
@@ -32,6 +34,7 @@ const contentEl = document.getElementById('content');
 // ใส่ไอคอน SVG ให้เมนูตาม route (แทน emoji — คมชัด/สม่ำเสมอทุกเครื่อง)
 const NAV_ICONS = {
   dashboard: icons.home,
+  today: icons.home,
   bookings: icons.bookings,
   calendar: icons.calendar,
   customers: icons.paw,
@@ -78,13 +81,35 @@ function showApp(user) {
   appEl.classList.remove('hidden');
 
   // subscribe settings เรียลไทม์ → เก็บในแคชให้ทุกหน้าใช้
-  if (!settingsUnsub) settingsUnsub = listenSettings((s) => setSettingsCache(s));
+  // สิทธิ์ (staffEmails) อยู่ใน settings ซึ่งโหลดแบบ async → ต้องคำนวณเมนูใหม่ทุกครั้งที่ค่ามา
+  if (!settingsUnsub) settingsUnsub = listenSettings((s) => {
+    setSettingsCache(s);
+    applyRoleUI();
+  });
 
-  navigate(location.hash.replace('#', '') || 'dashboard');
+  applyRoleUI();
+  navigate(location.hash.replace('#', '') || defaultRoute());
+}
+
+// หน้าเริ่มต้นตามสิทธิ์: พี่เลี้ยง = งานวันนี้ · เจ้าของ = แดชบอร์ด
+function defaultRoute() { return isStaff() ? 'today' : 'dashboard'; }
+
+// พี่เลี้ยงเข้าได้เฉพาะ STAFF_ROUTES · เจ้าของเข้าได้ทุกหน้ายกเว้น "งานวันนี้" (ใช้แดชบอร์ดแทน)
+function routeAllowed(route) {
+  return isStaff() ? STAFF_ROUTES.includes(route) : route !== 'today';
+}
+
+// ซ่อน/แสดงเมนูตามสิทธิ์ + เด้งออกจากหน้าที่ไม่มีสิทธิ์ (เผื่อ settings มาทีหลัง)
+function applyRoleUI() {
+  document.querySelectorAll('.navlink').forEach(b =>
+    b.classList.toggle('hidden', !routeAllowed(b.dataset.route)));
+  const cur = location.hash.replace('#', '');
+  if (cur && !appEl.classList.contains('hidden') && !routeAllowed(cur)) navigate(defaultRoute());
 }
 
 function navigate(route) {
-  if (!ROUTES[route]) route = 'dashboard';
+  if (!ROUTES[route]) route = defaultRoute();
+  if (!routeAllowed(route)) route = defaultRoute(); // กันพิมพ์ URL ตรงเข้าหน้าต้องห้าม
   location.hash = route;
   document.querySelectorAll('.navlink').forEach(b =>
     b.classList.toggle('active', b.dataset.route === route));

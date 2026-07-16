@@ -3,7 +3,7 @@
 // ห้องถูกจองในช่วง [checkIn, checkOut) — วันเช็คเอาท์นับว่าห้องว่าง
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
-import { el, getSettings, toast, openModal } from './ui.js';
+import { el, getSettings, toast, openModal, isStaff } from './ui.js';
 import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween } from './calc.js';
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
@@ -167,7 +167,8 @@ export function renderCalendar(container) {
         el('div', { class: 'row', style: 'gap:6px;align-items:center' }, [
           b.checkIn === iso ? el('span', { class: 'pill green', text: 'เช็คอินวันนี้' }) : null,
           b.checkOut === iso ? el('span', { class: 'pill yellow', text: 'เช็คเอาท์วันนี้' }) : null,
-          el('span', { class: 'pill ' + (statusMap[b.depositStatus] || 'grey'), text: b.depositStatus || '-' }),
+          // สถานะมัดจำ = ข้อมูลการเงิน → เจ้าของร้านเท่านั้น
+          isStaff() ? null : el('span', { class: 'pill ' + (statusMap[b.depositStatus] || 'grey'), text: b.depositStatus || '-' }),
         ].filter(Boolean)),
       ]);
       // ห้องแต่ละรายการ — ชิปสี+ไอคอนตามชนิดสัตว์
@@ -177,13 +178,20 @@ export function renderCalendar(container) {
           html: `${PET_ICONS[li.petType] || icons.paw} ${(s?.roomPrices?.[li.roomType]?.label || li.roomType)} × ${li.rooms || 1} ห้อง`,
         })));
       const nights = nightsBetween(b.checkIn, b.checkOut);
+      // พี่เลี้ยงไม่เห็นยอดเงิน
+      const money = isStaff() ? '' : ` · ยอด ${formatBaht(b.grandTotal)} · ค้างชำระ ${formatBaht(b.balanceDue)}`;
       const info = el('div', { class: 'muted', style: 'font-size:13px', text:
-        `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)} · ${nights} คืน · ยอด ${formatBaht(b.grandTotal)} · ค้างชำระ ${formatBaht(b.balanceDue)}` });
+        `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)} · ${nights} คืน${money}` });
       const row = el('div', { class: 'lineitem day-guest' }, [
         head, roomChips, info,
         b.notes ? el('div', { class: 'muted', style: 'font-size:12px;margin-top:4px', text: `หมายเหตุ: ${b.notes}` }) : null,
       ].filter(Boolean));
-      row.onclick = () => { m.close(); openBookingForm(b); };
+      // พี่เลี้ยงกดแล้วไม่เปิดฟอร์มจอง (มีราคา/ส่วนลด) — ดูอย่างเดียว
+      if (!isStaff()) {
+        row.onclick = () => { m.close(); openBookingForm(b); };
+      } else {
+        row.style.cursor = 'default';
+      }
       wrap.appendChild(row);
     });
   }
