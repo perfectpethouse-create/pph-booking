@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings, toast, openModal, isStaff, escapeHtml } from './ui.js';
-import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween } from './calc.js';
+import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween, eachDate, isoOf } from './calc.js';
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { icons } from './icons.js';
@@ -197,19 +197,4 @@ export function renderCalendar(container) {
   }
 
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); }));
-}
-
-// วนทุกวันในช่วง [start, end) — end ไม่รวม (วันเช็คเอาท์ห้องว่าง)
-// ใช้เวลาท้องถิ่นในการฟอร์แมต (ไม่ใช้ toISOString ที่เป็น UTC — กัน off-by-one)
-function eachDate(startISO, endISO, cb) {
-  let d = new Date(startISO + 'T00:00:00');
-  const end = new Date(endISO + 'T00:00:00');
-  let guard = 0;
-  while (d < end && guard++ < 400) {
-    cb(isoOf(d.getFullYear(), d.getMonth(), d.getDate()));
-    d.setDate(d.getDate() + 1);
-  }
-}
-function isoOf(y, m, d) {
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }

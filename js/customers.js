@@ -3,8 +3,8 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog } from './ui.js';
-import { PET_TYPES } from './config-shop.js';
-import { computeBooking, formatBaht, formatDateTH, todayISO } from './calc.js';
+import { PET_TYPES, LOYAL_CUSTOMER_MIN_STAYS } from './config-shop.js';
+import { computeBooking, formatBaht, formatDateTH, todayISO, nightsBetween } from './calc.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -51,8 +51,12 @@ export function renderCustomers(container) {
       } else if ((c.pets || []).some(p => vaccineStatus(p) === 'soon')) {
         petCell.appendChild(el('span', { class: 'pill yellow', style: 'margin-left:6px', text: 'วัคซีนใกล้หมด' }));
       }
+      const nameCell = el('td', {}, [el('strong', { text: c.name || '-' })]);
+      if (stays >= LOYAL_CUSTOMER_MIN_STAYS) {
+        nameCell.appendChild(el('span', { class: 'pill gold', style: 'margin-left:6px', text: 'ลูกค้าประจำ' }));
+      }
       const tr = el('tr', { style: 'cursor:pointer' }, [
-        el('td', {}, [el('strong', { text: c.name || '-' })]),
+        nameCell,
         el('td', { text: c.phone || '-' }),
         petCell,
         el('td', { class: 'num', text: `${stays} ครั้ง` }),
@@ -70,8 +74,16 @@ export function renderCustomers(container) {
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id || ''; }
 
+// นับจำนวนครั้งที่เคยพักจริง (ไม่นับที่ยกเลิก) — ใช้ตัดสินว่าเป็น "ลูกค้าประจำ"
+export function stayCountOf(c, bookings) {
+  return bookings.filter(b => matchCustomer(b, c) && b.depositStatus !== 'ยกเลิก').length;
+}
+export function isLoyal(c, bookings) {
+  return stayCountOf(c, bookings) >= LOYAL_CUSTOMER_MIN_STAYS;
+}
+
 // จับคู่การจองกับลูกค้า: เบอร์ตรงกันก่อน (แม่นสุด) ไม่มีเบอร์ค่อยเทียบชื่อ
-function matchCustomer(b, c) {
+export function matchCustomer(b, c) {
   if (c.phone && b.phone) return c.phone.replace(/\D/g, '') === b.phone.replace(/\D/g, '');
   return (b.customerName || '').trim() === (c.name || '').trim();
 }
@@ -132,11 +144,31 @@ function openCustomerForm(existing) {
       .sort((a, b) => (b.checkIn || '').localeCompare(a.checkIn || ''));
     const active = list.filter(b => b.depositStatus !== 'ยกเลิก');
     const totalSpent = active.reduce((s, b) => s + (b.grandTotal || 0), 0);
+    const totalNights = active.reduce((s, b) =>
+      s + b.lineItems.reduce((n, li) => n + (Number(li.rooms) || 0) * (Number(li.nights) || 0), 0), 0);
+    const lastStay = active[0]?.checkIn; // list เรียง checkIn ใหม่→เก่า อยู่แล้ว
+    const loyal = active.length >= LOYAL_CUSTOMER_MIN_STAYS;
 
-    wrap.appendChild(el('label', {
-      class: 'form-section',
-      text: `ประวัติการจอง — ${active.length} ครั้ง · รวม ${formatBaht(totalSpent)}`,
-    }));
+    const histHead = el('label', { class: 'form-section', text: 'ประวัติการจอง' });
+    if (loyal) histHead.appendChild(el('span', { class: 'pill gold', style: 'margin-left:8px', text: 'ลูกค้าประจำ' }));
+    wrap.appendChild(histHead);
+
+    // สรุปสถิติ — ไว้ดูแลลูกค้าประจำ (ไม่ใช่ส่วนลด ตามกฎแบรนด์)
+    if (active.length) {
+      const stat = (n, l) => el('div', { class: 'mini-stat' }, [
+        el('div', { class: 'n', text: n }), el('div', { class: 'l', text: l }),
+      ]);
+      wrap.appendChild(el('div', { class: 'mini-stat-grid' }, [
+        stat(`${active.length}`, 'ครั้งที่พัก'),
+        stat(formatBaht(totalSpent), 'ยอดสะสม'),
+        stat(`${totalNights}`, 'ห้อง-คืนสะสม'),
+        stat(lastStay ? formatDateTH(lastStay) : '-', 'ครั้งล่าสุด'),
+      ]));
+      if (!loyal) {
+        wrap.appendChild(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text:
+          `อีก ${LOYAL_CUSTOMER_MIN_STAYS - active.length} ครั้ง จะเป็นลูกค้าประจำ` }));
+      }
+    }
     if (!list.length) {
       wrap.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีประวัติการจอง' }));
       return wrap;

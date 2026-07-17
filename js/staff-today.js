@@ -4,7 +4,8 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
-import { computeBooking, formatDateTH, todayISO } from './calc.js';
+import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
+import { matchCustomer } from './customers.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -26,9 +27,12 @@ export function renderStaffToday(container) {
   let _bookings = [];
   const draw = () => {
     const today = todayISO();
+    const tomorrow = addDaysISO(today, 1);
     const active = _bookings.filter(b => b.depositStatus !== 'ยกเลิก');
     const checkinToday = active.filter(b => b.checkIn === today);
     const checkoutToday = active.filter(b => b.checkOut === today);
+    const checkinTomorrow = active.filter(b => b.checkIn === tomorrow);
+    const checkoutTomorrow = active.filter(b => b.checkOut === tomorrow);
     const staying = active.filter(b => b.checkIn <= today && today < b.checkOut);
 
     // นับจำนวนห้องแยกสุนัข/แมวที่ต้องดูแลวันนี้
@@ -55,16 +59,15 @@ export function renderStaffToday(container) {
       section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', 'green'),
       section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', 'orange'),
       section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', 'blue'),
+      section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', 'purple'),
+      section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', 'grey'),
     );
   };
 
   // จับคู่ลูกค้าเพื่อดึงข้อมูลสัตว์ (ชื่อน้อง/โน้ตสุขภาพ) มาแสดงให้พี่เลี้ยง
+  // ใช้ matchCustomer ตัวเดียวกับหน้าลูกค้า — กติกาจับคู่จะได้ไม่หลุดกัน
   function petsOf(b) {
-    const norm = (t) => (t || '').replace(/\D/g, '');
-    const c = _customers.find(c =>
-      (b.phone && c.phone && norm(c.phone) === norm(b.phone)) ||
-      (c.name && c.name === b.customerName));
-    return c?.pets || [];
+    return _customers.find(c => matchCustomer(b, c))?.pets || [];
   }
 
   function section(title, list, emptyText, color) {

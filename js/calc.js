@@ -114,6 +114,24 @@ export function formatDateTH(iso) {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+// ─── ตัววนวันที่ (ใช้ร่วมกันระหว่างปฏิทินและรายงาน) ───
+// ประกอบ ISO จากปี/เดือน/วัน แบบเวลาท้องถิ่น (ไม่ใช้ toISOString ที่เป็น UTC — กัน off-by-one)
+export function isoOf(y, m, d) {
+  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+// วนทุกวันในช่วง [start, end) — end ไม่รวม (วันเช็คเอาท์ห้องว่างแล้ว)
+export function eachDate(startISO, endISO, cb) {
+  if (!startISO || !endISO) return;
+  let d = new Date(startISO + 'T00:00:00');
+  const end = new Date(endISO + 'T00:00:00');
+  let guard = 0;
+  while (d < end && guard++ < 400) {
+    cb(isoOf(d.getFullYear(), d.getMonth(), d.getDate()));
+    d.setDate(d.getDate() + 1);
+  }
+}
+
 // วันนี้เป็น ISO 'YYYY-MM-DD' (โซนเวลาเครื่อง)
 export function todayISO() {
   const d = new Date();

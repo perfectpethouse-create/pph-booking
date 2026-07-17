@@ -9,8 +9,10 @@ import {
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
   DAYCARE_SIZES, daycarePrice,
   FREE_BATH_MIN_NIGHTS, FREE_BATH_ADDON_NAME,
+  PAYMENT_METHODS, DEFAULT_DEPOSIT_METHOD,
 } from './config-shop.js';
-import { buildCustomerCard, downloadCardPNG, copySummaryText } from './summary-card.js';
+import { buildCustomerCard, downloadCardPNG, copySummaryText, shareCard } from './summary-card.js';
+import { openIntakeForm } from './intake-form.js';
 import { vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 
@@ -117,6 +119,7 @@ export function openBookingForm(existing) {
     checkIn: '', checkOut: '', checkInTime: '09:00', checkOutTime: '14:00',
     lineItems: [blankLineItem(s)], addOns: [],
     billDiscountType: 'percent', billDiscountValue: 0,
+    depositMethod: DEFAULT_DEPOSIT_METHOD,
     depositPct: s?.depositPctDefault ?? 50,
     depositStatus: 'มัดจำแล้ว', recordStatus: 'ยังไม่ลงระบบ', notes: '',
   };
@@ -202,6 +205,7 @@ export function openBookingForm(existing) {
     const inTimeField = field('เวลาเข้า', draft.checkInTime, v => draft.checkInTime = v, { type: 'time' });
     const outTimeField = field('เวลาออก', draft.checkOutTime, v => draft.checkOutTime = v, { type: 'time' });
     const depPctField = field('มัดจำ (%)', draft.depositPct, v => { draft.depositPct = Number(v) || 0; refreshSummary(); }, { type: 'number', min: 0, max: 100 });
+    const depMethodSel = selectEl(PAYMENT_METHODS.map(m => [m, m]), draft.depositMethod || DEFAULT_DEPOSIT_METHOD, v => draft.depositMethod = v);
 
     // ── รายการห้อง ──
     const itemsWrap = el('div', {});
@@ -443,6 +447,7 @@ export function openBookingForm(existing) {
         addonsWrap, addAddonBtn),
       formGroup(icons.banknote, 'การชำระเงิน / มัดจำ', 'gold',
         el('div', { class: 'row' }, [depDateField, depPctField]),
+        el('div', { class: 'row' }, [labeled('ช่องทางโอนมัดจำ', depMethodSel)]),
         el('div', { class: 'row' }, [
           labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType),
           labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal),
@@ -522,14 +527,19 @@ async function upsertCustomer(draft) {
 function openCardPreview(draft) {
   if (!draft.checkIn || !draft.checkOut) return toast('กรอกวันเข้า-ออกก่อนสร้างการ์ด');
   const card = buildCustomerCard(draft);
-  const dlBtn = el('button', { class: 'btn primary', html: icons.download + ' ดาวน์โหลดรูป PNG' });
+  const shareBtn = el('button', { class: 'btn primary', html: icons.share + ' แชร์เข้า Line' });
+  const dlBtn = el('button', { class: 'btn', html: icons.download + ' ดาวน์โหลด PNG' });
   const copyBtn = el('button', { class: 'btn', html: icons.copy + ' คัดลอกข้อความ' });
+  const intakeBtn = el('button', { class: 'btn ghost', html: icons.print + ' พิมพ์ใบรับฝาก' });
   openModal(el('div', {}, [
     el('h2', { text: 'การ์ดสรุปส่งลูกค้า' }),
-    el('p', { class: 'muted', style: 'margin-top:-6px', text: 'ส่งเป็นรูป หรือคัดลอกเป็นข้อความวางใน Line ก็ได้' }),
+    el('p', { class: 'muted', style: 'margin-top:-6px', text: 'กดแชร์ส่งเข้า Line ได้เลย หรือดาวน์โหลด/คัดลอกเป็นข้อความ' }),
     el('div', { style: 'display:flex;justify-content:center;margin:10px 0' }, [card]),
-    el('div', { class: 'row', style: 'justify-content:center' }, [copyBtn, dlBtn]),
+    el('div', { class: 'row', style: 'justify-content:center;gap:8px' }, [copyBtn, dlBtn, shareBtn]),
+    el('div', { class: 'row', style: 'justify-content:center;margin-top:4px' }, [intakeBtn]),
   ]));
+  shareBtn.onclick = () => shareCard(card, draft);
   dlBtn.onclick = () => downloadCardPNG(card, `สรุป-${draft.customerName || 'ลูกค้า'}.png`);
   copyBtn.onclick = () => copySummaryText(draft);
+  intakeBtn.onclick = () => openIntakeForm(draft, _customers); // ส่งลูกค้าไปด้วยเพื่อดึงข้อมูลสัตว์มาลงใบ
 }

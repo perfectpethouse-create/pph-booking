@@ -3,8 +3,16 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save } from './db.js';
 import { el, getSettings, toast, confirmDialog, openModal } from './ui.js';
-import { computeBooking, formatBaht, formatDateTH, todayISO } from './calc.js';
+import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO } from './calc.js';
+import { PAYMENT_METHODS } from './config-shop.js';
 import { icons } from './icons.js';
+
+// เลือกช่องทางรับเงิน — ใช้ร่วมกันทุกจุดที่ปิดยอด (เช็คอิน/เช็คเอาท์/รับเงินตามหลัง)
+function methodSelect(value = PAYMENT_METHODS[0]) {
+  const sel = el('select', {}, PAYMENT_METHODS.map(m => el('option', { value: m, text: m })));
+  sel.value = value;
+  return sel;
+}
 
 let _unsub = [];
 
@@ -37,9 +45,12 @@ export function renderDashboard(container) {
 
   function draw(bookings) {
     const today = todayISO();
+    const tomorrow = addDaysISO(today, 1);
     const active = bookings.filter(b => b.depositStatus !== 'ยกเลิก');
     const checkinToday = active.filter(b => b.checkIn === today);
     const checkoutToday = active.filter(b => b.checkOut === today);
+    const checkinTomorrow = active.filter(b => b.checkIn === tomorrow);
+    const checkoutTomorrow = active.filter(b => b.checkOut === tomorrow);
     const staying = active.filter(b => b.checkIn <= today && today < b.checkOut);
     const unpaid = active.filter(b => b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0);
     const notRecorded = active.filter(b => b.recordStatus === 'ยังไม่ลงระบบ');
@@ -64,6 +75,9 @@ export function renderDashboard(container) {
       section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, 'green', 'checkin'),
       section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, 'orange', 'checkout'),
       section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, 'red', 'pay'),
+      // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
+      section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', true, 'blue'),
+      section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', true, 'purple'),
       section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, 'grey'),
     );
   }
@@ -91,14 +105,19 @@ export function renderDashboard(container) {
         const btn = el('button', { class: 'btn sm primary', text: 'เช็คเอาท์' });
         btn.onclick = async () => {
           const needPay = b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
-          const msg = needPay
-            ? `รับยอดคงเหลือ ${formatBaht(b.balanceDue)} จาก ${b.customerName} แล้วใช่ไหม? (ระบบจะบันทึกเป็น "จ่ายครบแล้ว")`
-            : `เช็คเอาท์ ${b.customerName}?`;
-          if (!await confirmDialog(msg, { okText: 'เช็คเอาท์' })) return;
-          await save('bookings', {
-            ...b, stayStatus: 'checked-out', checkedOutAt: Date.now(),
-            ...(needPay ? { depositStatus: 'จ่ายครบแล้ว' } : {}),
-          });
+          if (needPay) {
+            // ยังค้างยอด → ต้องเก็บเงิน + ระบุช่องทาง ก่อนเช็คเอาท์
+            const method = await askPayMethod(b, 'เช็คเอาท์');
+            if (!method) return;
+            await save('bookings', {
+              ...b, stayStatus: 'checked-out', checkedOutAt: Date.now(),
+              depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(), balanceMethod: method,
+            });
+            toast(`เช็คเอาท์ ${b.customerName} + รับ ${formatBaht(b.balanceDue)} (${method})`);
+            return;
+          }
+          if (!await confirmDialog(`เช็คเอาท์ ${b.customerName}?`, { okText: 'เช็คเอาท์' })) return;
+          await save('bookings', { ...b, stayStatus: 'checked-out', checkedOutAt: Date.now() });
           toast(`เช็คเอาท์ ${b.customerName} เรียบร้อย`);
         };
         td.appendChild(btn);
@@ -119,6 +138,7 @@ export function renderDashboard(container) {
         .then(() => toast(`เช็คอิน ${b.customerName} แล้ว`));
       return;
     }
+    const methodSel = methodSelect();
     const paidBtn = el('button', { class: 'btn primary block', text: `รับเงิน ${formatBaht(b.balanceDue)} แล้ว — เช็คอิน` });
     const laterBtn = el('button', { class: 'btn block', text: 'ยังไม่รับเงิน — เช็คอินก่อน' });
     const cancelBtn = el('button', { class: 'btn ghost block', text: 'ยกเลิก' });
@@ -129,14 +149,16 @@ export function renderDashboard(container) {
         el('div', { class: 'line' }, [el('span', { text: `มัดจำแล้ว ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) })]),
         el('div', { class: 'line grand' }, [el('span', { text: 'ต้องเก็บวันนี้' }), el('span', { text: formatBaht(b.balanceDue) })]),
       ]),
+      el('div', { class: 'field' }, [el('label', { text: 'รับเงินทางช่องทางไหน' }), methodSel]),
       el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, [paidBtn, laterBtn, cancelBtn]),
     ]));
     paidBtn.onclick = async () => {
+      const method = methodSel.value;
       await save('bookings', {
         ...b, stayStatus: 'checked-in', checkedInAt: Date.now(),
-        depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(),
+        depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(), balanceMethod: method,
       });
-      m.close(); toast(`เช็คอิน ${b.customerName} + รับยอด ${formatBaht(b.balanceDue)} เรียบร้อย`);
+      m.close(); toast(`เช็คอิน ${b.customerName} + รับ ${formatBaht(b.balanceDue)} (${method})`);
     };
     laterBtn.onclick = async () => {
       await save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() });
@@ -145,13 +167,34 @@ export function renderDashboard(container) {
     cancelBtn.onclick = () => m.close();
   }
 
+  // ถามช่องทางรับเงิน → คืนชื่อช่องทาง หรือ null ถ้ายกเลิก (ใช้ร่วมหลายจุด)
+  function askPayMethod(b, okText = 'รับแล้ว') {
+    return new Promise(resolve => {
+      // เก็บค่าไว้ก่อนปิด แล้วให้ onClose เป็นคนตอบทางเดียว
+      // (ปิดด้วยการคลิกฉากหลังก็จะได้ null = ยกเลิก โดยไม่ต้องมี resolve ซ้อน)
+      let picked = null;
+      const methodSel = methodSelect();
+      const okBtn = el('button', { class: 'btn primary', text: okText });
+      const cancelBtn = el('button', { class: 'btn ghost', text: 'ยกเลิก' });
+      const m = openModal(el('div', {}, [
+        el('h2', { text: `รับยอดคงเหลือ ${formatBaht(b.balanceDue)}` }),
+        el('p', { class: 'muted', style: 'margin-top:-6px', text: `จาก ${b.customerName} — ระบบจะบันทึกเป็น "จ่ายครบแล้ว"` }),
+        el('div', { class: 'field' }, [el('label', { text: 'รับเงินทางช่องทางไหน' }), methodSel]),
+        el('div', { class: 'row', style: 'justify-content:flex-end;gap:8px' }, [cancelBtn, okBtn]),
+      ]), { onClose: () => resolve(picked) });
+      okBtn.onclick = () => { picked = methodSel.value; m.close(); };
+      cancelBtn.onclick = () => m.close();
+    });
+  }
+
   // ปุ่ม "รับเงิน" สำหรับคนที่เช็คอินไปแล้วแต่ยังไม่จ่ายครบ
   function payNowBtn(b) {
     const btn = el('button', { class: 'btn sm danger', text: `รับเงิน ${formatBaht(b.balanceDue)}` });
     btn.onclick = async () => {
-      if (!await confirmDialog(`รับยอดคงเหลือ ${formatBaht(b.balanceDue)} จาก ${b.customerName} แล้วใช่ไหม?`, { okText: 'รับแล้ว' })) return;
-      await save('bookings', { ...b, depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now() });
-      toast(`อัปเดตยอด ${b.customerName} เป็นจ่ายครบแล้ว`);
+      const method = await askPayMethod(b);
+      if (!method) return;
+      await save('bookings', { ...b, depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(), balanceMethod: method });
+      toast(`รับยอด ${b.customerName} แล้ว (${method})`);
     };
     return btn;
   }
