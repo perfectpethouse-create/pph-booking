@@ -615,18 +615,23 @@ body.modal-open { overflow: hidden; }
   .intake-box h3 { font-size: 11.5px; margin-bottom: 4px; padding-bottom: 3px; }
   .intake-row { padding: 1px 0; }
   .intake-grid { gap: 8px; }
-  .intake-terms { font-size: 8.5px; line-height: 1.3; }
-  .intake-terms h4 { font-size: 9px; margin: 4px 0 1px; }
-  .intake-terms ul { padding-left: 12px; }
-  .intake-terms li { margin-bottom: 0; }
+  /* ข้อตกลงคือตัวกินที่สุด — จัด 2 คอลัมน์ ความสูงลดครึ่ง เนื้อหาเท่าเดิม */
+  .intake-terms {
+    font-size: 8px; line-height: 1.3;
+    column-count: 2; column-gap: 7mm; column-rule: 1px solid #ddd;
+  }
+  .intake-terms h3 { column-span: all; }
+  .intake-terms h4 { font-size: 8.5px; margin: 3px 0 1px; break-after: avoid; }
+  .intake-terms ul { padding-left: 11px; margin-bottom: 3px; }
+  .intake-terms li { margin-bottom: 0; break-inside: avoid; }
   /* ช่องเซ็นต้องอยู่แผ่นเดียวกับข้อตกลง ไม่หลุดไปแผ่นใหม่ */
-  .intake-signs { margin-top: 12px; gap: 26px; }
-  .sign-line { height: 26px; }
+  .intake-signs { margin-top: 10px; gap: 26px; }
+  .sign-line { height: 24px; }
   .sign-label { font-size: 10px; }
   .sign-date { font-size: 9px; margin-top: 3px; }
   /* footer เคยดันขึ้นแผ่นใหม่ตัวเดียว — ผูกให้อยู่กับช่องเซ็น */
   .intake-foot {
-    margin-top: 10px; padding-top: 5px; font-size: 9px;
+    margin-top: 8px; padding-top: 5px; font-size: 9px;
     break-before: avoid; page-break-before: avoid;
   }
 }

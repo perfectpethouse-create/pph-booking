@@ -31,6 +31,7 @@ export function buildCustomerCard(bookingRaw) {
   ]));
 
   push('ชื่อลูกค้า', b.customerName || '-');
+  if (b.phone) push('เบอร์โทร', b.phone); // เบอร์ลูกค้า — ไว้ยืนยันว่าจองถูกคน
   push('Check-in', `${formatDateTH(b.checkIn)}  ${inTime} น.`);
   push('Check-out', `${formatDateTH(b.checkOut)}  ${outTime} น.`);
   push('จำนวนคืน', `${nights} คืน`);
@@ -94,6 +95,7 @@ export function buildSummaryText(bookingRaw) {
   const L = [];
   L.push(`🐾 สรุปการเข้าพัก — ${s?.shopInfo?.name || 'Perfect Pet House'}`);
   L.push(`ชื่อลูกค้า: ${b.customerName || '-'}`);
+  if (b.phone) L.push(`เบอร์โทร: ${b.phone}`);
   L.push(`Check-in: ${formatDateTH(b.checkIn)} เวลา ${b.checkInTime || '09:00'} น.`);
   L.push(`Check-out: ${formatDateTH(b.checkOut)} เวลา ${b.checkOutTime || '14:00'} น.`);
   L.push(`จำนวนคืน: ${nights} คืน · จำนวนห้อง: ${totalRooms} ห้อง`);
