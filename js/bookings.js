@@ -72,8 +72,10 @@ function buildTable(rows) {
   if (!rows.length) {
     return el('p', { class: 'muted', style: 'padding:20px;text-align:center', text: 'ยังไม่มีการจอง — กด "เพิ่มการจอง" เพื่อเริ่ม' });
   }
-  const cols = ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
-  const head = el('tr', {}, cols.map((h, i) => el('th', { class: [4, 5, 6].includes(i) ? 'num' : '', text: h })));
+  // "วันที่โอน" อยู่ในกลุ่มการเงิน (ติดกับมัดจำ) ไม่วางชิดวันเข้าพัก/ออก — กันอ่านสลับกัน
+  const cols = ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'วันที่โอน', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
+  const numCols = [4, 6, 7];
+  const head = el('tr', {}, cols.map((h, i) => el('th', { class: numCols.includes(i) ? 'num' : '', text: h })));
   const body = rows.map(raw => {
     const b = computeBooking(raw);
     const s = getSettings();
@@ -84,6 +86,8 @@ function buildTable(rows) {
       el('td', { text: formatDateTH(b.checkOut) }),
       el('td', { style: 'max-width:180px;white-space:normal', text: roomsDesc }),
       el('td', { class: 'num', text: formatBaht(b.grandTotal) }),
+      // ยังไม่โอน = ไม่มีวัน → ขีดจางๆ ไม่ใช่วันมั่ว
+      el('td', { class: b.depositDate ? '' : 'muted', text: b.depositDate ? formatDateTH(b.depositDate) : '—' }),
       el('td', { class: 'num', text: formatBaht(b.depositAmount) }),
       el('td', { class: 'num', text: formatBaht(b.balanceDue) }),
       el('td', {}, [statusPill(b.depositStatus)]),
