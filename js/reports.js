@@ -43,10 +43,19 @@ export function renderReports(container) {
     if (cur) monthSel.value = cur;
 
     // ── เงิน: อิงเดือนของ check-in ──
+    // นับตาม "สถานะที่รับจริง" ไม่ใช่ตัวเลขตามสูตร:
+    //   ยังไม่มัดจำ → รับ 0 · ค้างทั้งก้อน
+    //   มัดจำแล้ว   → รับมัดจำ · ค้างครึ่งหลัง
+    //   จ่ายครบแล้ว → รับเต็ม · ไม่ค้าง
     const inMonth = active.filter(b => b.checkIn.slice(0, 7) === cur);
     const revenue = inMonth.reduce((s, b) => s + b.grandTotal, 0);
-    const deposit = inMonth.reduce((s, b) => s + b.depositAmount, 0);
-    const balance = inMonth.reduce((s, b) => s + b.balanceDue, 0);
+    const paidFull = b => b.depositStatus === 'จ่ายครบแล้ว';
+    const paidDeposit = b => b.depositStatus === 'มัดจำแล้ว' || paidFull(b);
+    const deposit = inMonth.reduce((s, b) => s + (paidDeposit(b) ? b.depositAmount : 0), 0);
+    const balance = inMonth.reduce((s, b) =>
+      s + (paidFull(b) ? 0 : paidDeposit(b) ? b.balanceDue : b.grandTotal), 0);
+    const received = inMonth.reduce((s, b) =>
+      s + (paidFull(b) ? b.grandTotal : paidDeposit(b) ? b.depositAmount : 0), 0);
     const discount = inMonth.reduce((s, b) => s + (b.totalDiscount || 0), 0);
 
     // ── อัตราเข้าพัก: นับคืนที่นอนจริงในเดือนนี้ (กระจายรายวัน) ──
@@ -75,7 +84,8 @@ export function renderReports(container) {
     summary.innerHTML = '';
     [
       ['จำนวนการจอง', String(inMonth.length), icons.bookings, 'blue'],
-      ['รายได้รวม (ยอดเต็ม)', formatBaht(revenue), icons.banknote, 'green'],
+      ['ยอดขายรวม (ยอดเต็ม)', formatBaht(revenue), icons.chart, 'blue'],
+      ['รับเงินแล้วจริง', formatBaht(received), icons.banknote, 'green'],
       ['รับมัดจำแล้ว', formatBaht(deposit), icons.check, 'green'],
       ['ยอดค้างรับ', formatBaht(balance), icons.alert, 'red'],
       ['รวมส่วนลด', formatBaht(discount), icons.star, 'orange'],

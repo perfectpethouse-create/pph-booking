@@ -65,9 +65,11 @@ export function renderDashboard(container) {
     const checkinTomorrow = active.filter(b => b.checkIn === tomorrow);
     const checkoutTomorrow = active.filter(b => b.checkOut === tomorrow);
     const staying = active.filter(b => b.checkIn <= today && today < b.checkOut);
-    const unpaid = active.filter(b => b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0);
+    const unpaid = active.filter(b => b.depositStatus !== 'จ่ายครบแล้ว' && b.grandTotal > 0);
     const notRecorded = active.filter(b => b.recordStatus === 'ยังไม่ลงระบบ');
-    const balanceSum = unpaid.reduce((s, b) => s + b.balanceDue, 0);
+    // ค้างเท่าไหร่จริง: ยังไม่มัดจำ = ค้างทั้งก้อน · มัดจำแล้ว = ค้างครึ่งหลัง
+    const owedOf = b => b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal;
+    const balanceSum = unpaid.reduce((s, b) => s + owedOf(b), 0);
 
     // สีสื่อความหมาย: เขียว=เข้าพัก · ส้ม=ออกวันนี้ · ฟ้า=กำลังพัก · แดง=ยอดค้าง
     statGrid.innerHTML = '';

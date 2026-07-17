@@ -434,6 +434,10 @@ export function openBookingForm(existing) {
       saveBtn,
     ]);
 
+    // ใบใหม่ที่เปิดมาพร้อมวันครบแล้ว (เช่น สร้างจากคำขอเว็บ / จองซ้ำ) ต้องคิดคืนให้เลย
+    // — syncNights ทำงานเฉพาะตอน "เปลี่ยนวันที่" ถ้าไม่เรียกตรงนี้จะค้างที่ 1 คืน = คิดเงินขาด
+    if (isNew && draft.checkIn && draft.checkOut) syncNights();
+
     form.append(
       el('h2', { text: isNew ? 'เพิ่มการจอง' : 'แก้ไขการจอง' }),
       formGroup(icons.users, 'ข้อมูลลูกค้า', 'blue',

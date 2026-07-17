@@ -6,9 +6,9 @@
 //   ฟอร์มบนเว็บไม่มีประเภทห้อง/จำนวนห้อง/ราคา และบางคำขอไม่ใช่ที่พักด้วยซ้ำ
 //   (อาบน้ำ, โซนออกกำลังกาย) → พนักงานต้องตรวจ+เติมข้อมูลก่อนจึงเป็นการจองจริง
 // ═══════════════════════════════════════════════════════════════
-import { listen, save, remove } from './db.js';
+import { listen, save, remove, getAll } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings } from './ui.js';
-import { formatDateTH, todayISO } from './calc.js';
+import { formatDateTH, todayISO, nightsBetween } from './calc.js';
 import { REQUEST_TYPES, classifyRequest, petIdFromWeb, DEFAULT_DEPOSIT_METHOD } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { icons } from './icons.js';
@@ -127,10 +127,17 @@ function openRequestDetail(r) {
   const m = openModal(wrap);
 
   makeBtn.onclick = async () => {
-    await save('bookingRequests', { ...r, status: 'done', handledAt: Date.now() });
-    m.close();
-    openBookingForm(draftFromRequest(r)); // เปิดฟอร์มจองที่เติมข้อมูลลูกค้าให้แล้ว
-    toast('เติมข้อมูลลูกค้าให้แล้ว — เลือกห้อง/ราคา แล้วกดบันทึก');
+    try {
+      await save('bookingRequests', { ...r, status: 'done', handledAt: Date.now() });
+      await upsertPetFromRequest(r); // เก็บชื่อน้อง/พันธุ์ไว้ในฐานลูกค้า ไม่ให้ข้อมูลหาย
+      m.close();
+      openBookingForm(draftFromRequest(r)); // เปิดฟอร์มจองที่เติมข้อมูลลูกค้าให้แล้ว
+      toast('เติมข้อมูลลูกค้าให้แล้ว — เลือกห้อง/ราคา แล้วกดบันทึก');
+    } catch (e) {
+      // ถ้าไม่ดัก error ใน async onclick จะเงียบหาย ปุ่มดูเหมือนกดไม่ติด
+      console.error(e);
+      toast('สร้างการจองไม่สำเร็จ: ' + e.message);
+    }
   };
   doneBtn.onclick = async () => {
     await save('bookingRequests', { ...r, status: r.status === 'done' ? 'new' : 'done', handledAt: Date.now() });
@@ -140,6 +147,35 @@ function openRequestDetail(r) {
     if (!await confirmDialog('ลบคำขอนี้?', { danger: true, okText: 'ลบ' })) return;
     await remove('bookingRequests', r.id); m.close(); toast('ลบแล้ว');
   };
+}
+
+// บันทึกชื่อน้อง/สายพันธุ์จากคำขอเข้าฐานลูกค้า
+// (ถ้าไม่ทำ พี่เลี้ยงจะไม่เห็นชื่อน้องในหน้างานวันนี้ และใบรับฝากจะไม่มีหมวดสัตว์เลี้ยง)
+async function upsertPetFromRequest(r) {
+  if (!r.petname) return;
+  const norm = t => (t || '').replace(/\D/g, '');
+  const customers = await getAll('customers'); // อ่านสดตอนใช้ — ไฟล์นี้ไม่ได้ subscribe ลูกค้าไว้
+  const existing = customers.find(c =>
+    (r.phone && c.phone && norm(c.phone) === norm(r.phone)) || (c.name && c.name === r.owner));
+
+  const pet = {
+    name: r.petname,
+    species: petIdFromWeb(r.pet),
+    breed: r.breed || '',
+    weight: '',
+    healthNotes: r.note || '',
+    vaccineNotes: '',
+    vaccineExpiry: '', // ให้พนักงานกรอกตอนตรวจสมุดวัคซีน
+  };
+
+  if (!existing) {
+    await save('customers', { name: r.owner || '', phone: r.phone || '', pets: [pet], notes: '' });
+    return;
+  }
+  // มีลูกค้าแล้ว — เพิ่มน้องเฉพาะที่ยังไม่มีชื่อนี้ (กันซ้ำเมื่อจองหลายรอบ)
+  const pets = existing.pets || [];
+  if (pets.some(p => (p.name || '').trim() === pet.name.trim())) return;
+  await save('customers', { ...existing, pets: [...pets, pet] });
 }
 
 // แปลงคำขอ → draft ของฟอร์มจอง (เติมเท่าที่รู้จริง ที่เหลือพนักงานกรอก)
@@ -179,7 +215,11 @@ export function draftFromRequest(r) {
     checkInTime: '09:00', checkOutTime: '14:00',
     lineItems: [{
       petType: pet, roomType, pricePerNight: price,
-      rooms: 1, nights: 1, discountType: 'percent', discountValue: 0,
+      rooms: 1,
+      // คำนวณคืนจากวันที่ลูกค้าเลือกมาเลย — ตัว syncNights ในฟอร์มทำงานเฉพาะตอน
+      // "เปลี่ยนวันที่" ถ้าไม่คิดตรงนี้ จะได้ 1 คืนเสมอ = คิดเงินขาด
+      nights: nightsBetween(r.checkin, r.checkout) || 1,
+      discountType: 'percent', discountValue: 0,
     }],
     addOns: [],
     billDiscountType: 'percent', billDiscountValue: 0,
