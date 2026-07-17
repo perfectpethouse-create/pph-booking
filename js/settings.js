@@ -111,10 +111,14 @@ export async function renderSettings(container) {
   s.shopInfo = s.shopInfo || {};
   const shopName = el('input', { value: s.shopInfo.name || '', placeholder: 'ชื่อร้าน' });
   shopName.oninput = () => s.shopInfo.name = shopName.value;
+  // เบอร์โทรร้าน — แสดงบนการ์ดที่ส่งให้ลูกค้า ลูกค้าจะได้ติดต่อกลับได้ทันที
+  const shopPhone = el('input', { value: s.shopInfo.phone || '', placeholder: 'เช่น 02-xxx-xxxx', type: 'tel' });
+  shopPhone.oninput = () => s.shopInfo.phone = shopPhone.value;
   const shopNote = el('input', { value: s.shopInfo.note || '', placeholder: 'ข้อความท้ายการ์ด' });
   shopNote.oninput = () => s.shopInfo.note = shopNote.value;
   shopCard.appendChild(el('div', { class: 'row' }, [
     el('div', { class: 'field' }, [el('label', { text: 'ชื่อร้าน' }), shopName]),
+    el('div', { class: 'field' }, [el('label', { text: 'เบอร์โทรร้าน (แสดงบนการ์ด)' }), shopPhone]),
     el('div', { class: 'field' }, [el('label', { text: 'ข้อความท้ายการ์ด' }), shopNote]),
   ]));
   container.appendChild(shopCard);

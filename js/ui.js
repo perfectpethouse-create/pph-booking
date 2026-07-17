@@ -8,8 +8,10 @@ export function el(tag, attrs = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
     if (k === 'class') node.className = v;
-    else if (k === 'html') node.innerHTML = v;
-    else if (k === 'text') node.textContent = v;
+    // กัน html/text ที่เป็น undefined ไม่ให้พิมพ์คำว่า "undefined" ออกจอ
+    // (เคยหลุดไปโผล่บนการ์ดที่ส่งให้ลูกค้าตอนไอคอนหาย)
+    else if (k === 'html') node.innerHTML = v ?? '';
+    else if (k === 'text') node.textContent = v ?? '';
     else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
     else if (v != null && v !== false) node.setAttribute(k, v);
   }

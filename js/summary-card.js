@@ -75,6 +75,11 @@ export function buildCustomerCard(bookingRaw) {
       el('span', { class: 'k', text: 'จ่ายเพิ่มวัน Check-in' }),
       el('span', { class: 'v', text: formatBaht(b.balanceDue) }),
     ]),
+    // เบอร์ร้าน — ลูกค้าจะได้โทรกลับได้ทันทีจากการ์ด (ตั้งเบอร์ที่หน้า "ตั้งค่า")
+    ...(s?.shopInfo?.phone ? [el('div', { class: 'cc-contact' }, [
+      el('span', { class: 'cc-contact-ico', html: icons.phone }),
+      el('span', { text: `โทรสอบถาม ${s.shopInfo.phone}` }),
+    ])] : []),
     el('div', { class: 'cc-foot', text: s?.shopInfo?.note || 'ขอบคุณที่ไว้วางใจ Perfect Pet House' }),
   ]);
   return card;
@@ -105,6 +110,7 @@ export function buildSummaryText(bookingRaw) {
   L.push(`ยอดทั้งหมด: ${formatBaht(b.grandTotal)}`);
   L.push(`มัดจำ ${b.depositPct}%: ${formatBaht(b.depositAmount)}`);
   L.push(`จ่ายเพิ่มวัน Check-in: ${formatBaht(b.balanceDue)}`);
+  if (s?.shopInfo?.phone) L.push(`📞 โทรสอบถาม ${s.shopInfo.phone}`);
   if (s?.shopInfo?.note) L.push(s.shopInfo.note);
   return L.join('\n');
 }
