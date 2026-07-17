@@ -34,8 +34,12 @@ export function toast(msg, ms = 2200) {
 // modal ทั่วไป: content = element ; คืน object { close }
 export function openModal(content, { onClose } = {}) {
   const bg = el('div', { class: 'modal-bg' });
-  const modal = el('div', { class: 'modal' }, [content]);
+  // ปุ่มปิด (X) มุมขวาบน — จำเป็นมากบนมือถือที่แทบไม่มีฉากหลังให้กด
+  const closeBtn = el('button', { class: 'modal-close', 'aria-label': 'ปิด', html: CLOSE_ICON });
+  const modal = el('div', { class: 'modal' }, [closeBtn, content]);
   bg.appendChild(modal);
+  closeBtn.onclick = () => close();
+
   // ปิดเมื่อ "กดและปล่อย" บนฉากหลังเท่านั้น — กันเคสลากเมาส์เลือกข้อความ
   // ในฟอร์มแล้วปล่อยนอกกล่อง (click จะไปลงที่ฉากหลัง ทำให้ modal เด้งหาย)
   let downOnBg = false;
@@ -44,10 +48,26 @@ export function openModal(content, { onClose } = {}) {
     if (e.target === bg && downOnBg) close();
     downOnBg = false;
   });
+
+  // กด Esc ปิดได้ (เดสก์ท็อป) — ปิดเฉพาะ modal บนสุด
+  const onKey = (e) => { if (e.key === 'Escape' && isTop()) close(); };
+  document.addEventListener('keydown', onKey);
+  const isTop = () => [...document.querySelectorAll('.modal-bg')].pop() === bg;
+
   document.body.appendChild(bg);
-  function close() { bg.remove(); onClose && onClose(); }
+  // ล็อกไม่ให้หน้าหลังเลื่อนตาม (มือถือ)
+  document.body.classList.add('modal-open');
+
+  function close() {
+    bg.remove();
+    document.removeEventListener('keydown', onKey);
+    if (!document.querySelector('.modal-bg')) document.body.classList.remove('modal-open');
+    onClose && onClose();
+  }
   return { close, el: modal };
 }
+
+const CLOSE_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 
 // กล่องยืนยัน (คืน Promise<boolean>)
 export function confirmDialog(message, { okText = 'ยืนยัน', danger = false } = {}) {

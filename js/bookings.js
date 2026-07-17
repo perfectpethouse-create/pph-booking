@@ -517,7 +517,7 @@ async function doSave(draft, isNew, modal) {
   modal.close();
   toast(isNew ? 'บันทึกการจองแล้ว' : 'อัปเดตแล้ว');
   // ฟังก์ชัน D: บันทึกแล้วเปิดการ์ดส่งลูกค้าทันที (ส่ง Line ต่อได้เลย)
-  openCardPreview(rec);
+  openCardPreview(rec, true); // savedMode → มีปุ่ม "เสร็จแล้ว" ให้กลับหน้ารายการจอง
 }
 
 async function upsertCustomer(draft) {
@@ -528,22 +528,31 @@ async function upsertCustomer(draft) {
 }
 
 // ────────── การ์ดสรุป ──────────
-function openCardPreview(draft) {
+// savedMode = เปิดหลังบันทึกเสร็จ → ต้องมีทางออกชัดเจนว่า "จบงานแล้ว ไปไหนต่อ"
+function openCardPreview(draft, savedMode = false) {
   if (!draft.checkIn || !draft.checkOut) return toast('กรอกวันเข้า-ออกก่อนสร้างการ์ด');
   const card = buildCustomerCard(draft);
   const shareBtn = el('button', { class: 'btn primary', html: icons.share + ' แชร์เข้า Line' });
   const dlBtn = el('button', { class: 'btn', html: icons.download + ' ดาวน์โหลด PNG' });
   const copyBtn = el('button', { class: 'btn', html: icons.copy + ' คัดลอกข้อความ' });
   const intakeBtn = el('button', { class: 'btn ghost', html: icons.print + ' พิมพ์ใบรับฝาก' });
-  openModal(el('div', {}, [
-    el('h2', { text: 'การ์ดสรุปส่งลูกค้า' }),
-    el('p', { class: 'muted', style: 'margin-top:-6px', text: 'กดแชร์ส่งเข้า Line ได้เลย หรือดาวน์โหลด/คัดลอกเป็นข้อความ' }),
+  const doneBtn = el('button', { class: 'btn primary block', html: icons.check + ' เสร็จแล้ว — กลับหน้ารายการจอง' });
+
+  const m = openModal(el('div', {}, [
+    el('h2', { text: savedMode ? 'บันทึกการจองแล้ว ✓' : 'การ์ดสรุปส่งลูกค้า' }),
+    el('p', { class: 'muted', style: 'margin-top:-6px', text: savedMode
+      ? 'ส่งการ์ดให้ลูกค้าได้เลย — หรือกด "เสร็จแล้ว" เพื่อกลับไปหน้ารายการจอง'
+      : 'กดแชร์ส่งเข้า Line ได้เลย หรือดาวน์โหลด/คัดลอกเป็นข้อความ' }),
     el('div', { style: 'display:flex;justify-content:center;margin:10px 0' }, [card]),
     el('div', { class: 'row', style: 'justify-content:center;gap:8px' }, [copyBtn, dlBtn, shareBtn]),
     el('div', { class: 'row', style: 'justify-content:center;margin-top:4px' }, [intakeBtn]),
+    // ทางออกชัดๆ หลังบันทึก — กันงงว่า "แล้วไปไหนต่อ" โดยเฉพาะบนมือถือ
+    ...(savedMode ? [el('div', { style: 'margin-top:14px' }, [doneBtn])] : []),
   ]));
+
   shareBtn.onclick = () => shareCard(card, draft);
   dlBtn.onclick = () => downloadCardPNG(card, `สรุป-${draft.customerName || 'ลูกค้า'}.png`);
   copyBtn.onclick = () => copySummaryText(draft);
   intakeBtn.onclick = () => openIntakeForm(draft, _customers); // ส่งลูกค้าไปด้วยเพื่อดึงข้อมูลสัตว์มาลงใบ
+  doneBtn.onclick = () => { m.close(); window.__go && window.__go('bookings'); };
 }

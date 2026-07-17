@@ -84,7 +84,7 @@ export function renderReports(container) {
     summary.innerHTML = '';
     [
       ['จำนวนการจอง', String(inMonth.length), icons.bookings, 'blue'],
-      ['ยอดขายรวม (ยอดเต็ม)', formatBaht(revenue), icons.chart, 'blue'],
+      ['ยอดขายรวม', formatBaht(revenue), icons.chart, 'blue'],
       ['รับเงินแล้วจริง', formatBaht(received), icons.banknote, 'green'],
       ['รับมัดจำแล้ว', formatBaht(deposit), icons.check, 'green'],
       ['ยอดค้างรับ', formatBaht(balance), icons.alert, 'red'],
@@ -108,7 +108,8 @@ export function renderReports(container) {
       return el('tr', {}, [
         el('td', { text: s?.roomPrices?.[rt]?.label || rt }),
         el('td', { class: 'num', text: `${used} / ${capN}` }),
-        el('td', {}, [el('div', { class: 'bar' }, [el('div', { class: 'bar-fill', style: `width:${Math.min(100, pct)}%` })])]),
+        // แถบกราฟซ่อนบนมือถือ (จอแคบ ตารางจะล้น) — ตัวเลข % ยังอยู่ครบ
+        el('td', { class: 'bar-cell' }, [el('div', { class: 'bar' }, [el('div', { class: 'bar-fill', style: `width:${Math.min(100, pct)}%` })])]),
         el('td', { class: 'num', text: `${pct.toFixed(1)}%` }),
       ]);
     });
@@ -116,7 +117,7 @@ export function renderReports(container) {
       occCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [
         el('thead', {}, [el('tr', {}, [
           el('th', { text: 'ประเภทห้อง' }), el('th', { class: 'num', text: 'ห้อง-คืน / ขายได้' }),
-          el('th', { text: '' }), el('th', { class: 'num', text: 'อัตรา' }),
+          el('th', { class: 'bar-cell', text: '' }), el('th', { class: 'num', text: 'อัตรา' }),
         ])]),
         el('tbody', {}, occRows),
       ])]));

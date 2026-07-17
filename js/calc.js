@@ -73,7 +73,10 @@ export function computeBooking(booking) {
   const grandTotal = round2(Math.max(0, beforeBillDiscount - billDiscountAmount));
 
   const depositPct = booking.depositPct == null ? 50 : Number(booking.depositPct);
-  const depositAmount = round2(grandTotal * depositPct / 100);
+  // ปัดมัดจำเป็นบาทเต็ม (ร้านเก็บเงินจริงไม่มีเศษสตางค์) แล้วให้ยอดคงเหลือ
+  // เป็นส่วนต่างที่เหลือ → มัดจำ + คงเหลือ = ยอดทั้งหมด เป๊ะเสมอ ไม่มีบาทหาย
+  // เช่น ยอด 9,651 → มัดจำ 4,826 + คงเหลือ 4,825 (ไม่ใช่ 4,825.5 ทั้งคู่)
+  const depositAmount = Math.round(grandTotal * depositPct / 100);
   const balanceDue = round2(grandTotal - depositAmount); // จ่ายเพิ่มวันเข้าพัก
 
   const lineDiscounts = round2(lineItems.reduce((s, li) => s + li.discountAmount, 0));
