@@ -35,6 +35,7 @@ const LS = {
   bookings: 'pph_bookings',
   customers: 'pph_customers',
   checkinForms: 'pph_checkin_forms', // ใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
+  bookingRequests: 'pph_booking_requests', // คำขอจองจากฟอร์มจองบนเว็บ (index/app/exercise-zone)
   settings: 'pph_settings',
   user: 'pph_mock_user',
 };
@@ -53,7 +54,7 @@ function emit(col, arr) {
 }
 // ซิงค์ข้ามแท็บในเครื่องเดียวกัน
 window.addEventListener('storage', (e) => {
-  for (const col of ['bookings', 'customers', 'checkinForms', 'settings']) {
+  for (const col of ['bookings', 'customers', 'checkinForms', 'bookingRequests', 'settings']) {
     if (e.key === LS[col]) emit(col, mockRead(col));
   }
 });
@@ -203,10 +204,10 @@ export function listenSettings(cb) {
 
 // ─── สำรอง/นำเข้าข้อมูล ───
 export async function exportAll() {
-  const [bookings, customers, checkinForms, settings] = await Promise.all([
-    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getSettings(),
+  const [bookings, customers, checkinForms, bookingRequests, settings] = await Promise.all([
+    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getAll('bookingRequests'), getSettings(),
   ]);
-  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, settings };
+  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, bookingRequests, settings };
 }
 
 export async function importAll(data) {
@@ -214,5 +215,6 @@ export async function importAll(data) {
   for (const b of (data.bookings || [])) await save('bookings', b);
   for (const c of (data.customers || [])) await save('customers', c);
   for (const f of (data.checkinForms || [])) await save('checkinForms', f);
+  for (const r of (data.bookingRequests || [])) await save('bookingRequests', r);
   if (data.settings) await saveSettings(data.settings);
 }

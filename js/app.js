@@ -11,6 +11,7 @@ import { renderBookings } from './bookings.js';
 import { renderCalendar } from './calendar.js';
 import { renderCustomers } from './customers.js';
 import { renderRegistrations } from './registrations.js';
+import { renderBookingRequests } from './booking-requests.js';
 import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { renderBackup } from './backup.js';
@@ -21,6 +22,7 @@ const ROUTES = {
   bookings: renderBookings,
   calendar: renderCalendar,
   customers: renderCustomers,
+  requests: renderBookingRequests,
   registrations: renderRegistrations,
   reports: renderReports,
   settings: renderSettings,
@@ -38,6 +40,7 @@ const NAV_ICONS = {
   bookings: icons.bookings,
   calendar: icons.calendar,
   customers: icons.paw,
+  requests: icons.bookings,
   registrations: icons.inbox,
   reports: icons.chart,
   settings: icons.settings,

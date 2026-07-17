@@ -27,9 +27,22 @@ export function renderDashboard(container) {
   const regBanner = el('div', { class: 'promo-banner hidden', style: 'margin-bottom:14px;cursor:pointer' });
   regBanner.onclick = () => window.__go && window.__go('registrations');
 
+  // แจ้งเตือนคำขอจองใหม่จากฟอร์มจองบนเว็บ
+  const reqBanner = el('div', { class: 'promo-banner hidden', style: 'margin-bottom:14px;cursor:pointer' });
+  reqBanner.onclick = () => window.__go && window.__go('requests');
+  _unsub.push(listen('bookingRequests', reqs => {
+    const n = reqs.filter(r => (r.status || 'new') === 'new').length;
+    reqBanner.innerHTML = '';
+    if (!n) { reqBanner.classList.add('hidden'); return; }
+    reqBanner.classList.remove('hidden');
+    reqBanner.appendChild(el('span', { class: 'promo-text', html:
+      `${icons.bookings} มีคำขอจองใหม่จากเว็บ <strong>${n} รายการ</strong> — รอตรวจและสร้างการจอง` }));
+    reqBanner.appendChild(el('span', { class: 'btn sm primary', text: 'เปิดดู' }));
+  }, { orderBy: null }));
+
   const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
   const body = el('div', {});
-  container.append(regBanner, statGrid, body);
+  container.append(regBanner, reqBanner, statGrid, body);
 
   _unsub.push(listen('checkinForms', forms => {
     const n = forms.filter(f => (f.status || 'new') === 'new').length;

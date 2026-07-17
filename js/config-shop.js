@@ -161,6 +161,37 @@ export const DEFAULT_DEPOSIT_PCT = 50;
 export const DEFAULT_CHECKIN_TIME = '09:00';
 export const DEFAULT_CHECKOUT_TIME = '14:00';
 
+// ═══ แมปคำขอจองจากเว็บ perfectbkk.com → ระบบภายใน ═══
+// ฟอร์มบนเว็บส่ง service เป็นข้อความ (จาก <option> จริงในหน้าเว็บ)
+// ต้องแมปเป็นประเภทเพื่อติดป้ายและตัดสินว่าเป็นการจองห้องพักไหม
+// ⚠️ ถ้าเว็บเพิ่ม/แก้ตัวเลือกบริการ ต้องอัปเดตที่นี่ด้วย
+export const REQUEST_TYPES = {
+  boarding: { label: 'ฝากเลี้ยง (ค้างคืน)', color: 'blue', isStay: true },
+  boardingGroom: { label: 'ฝากเลี้ยง + อาบน้ำตัดขน', color: 'blue', isStay: true },
+  daycare: { label: 'Day Care', color: 'orange', isStay: false },
+  grooming: { label: 'อาบน้ำตัดขน', color: 'purple', isStay: false },
+  bath: { label: 'อาบน้ำ', color: 'purple', isStay: false },
+  exercise: { label: 'โซนออกกำลังกาย', color: 'green', isStay: false },
+  other: { label: 'อื่นๆ', color: 'grey', isStay: false },
+};
+
+// จำแนกประเภทคำขอจากข้อความ service ที่เว็บส่งมา
+export function classifyRequest(service = '') {
+  const t = String(service);
+  if (/โซนออกกำลังกาย|Dog Park|Paw Splash/i.test(t)) return 'exercise';
+  if (/ฝากเลี้ยง/.test(t) && /ตัดขน|อาบน้ำ/.test(t)) return 'boardingGroom';
+  if (/ฝากเลี้ยง/.test(t)) return 'boarding';
+  if (/Day\s*Care/i.test(t)) return 'daycare';
+  if (/ตัดขน/.test(t)) return 'grooming';
+  if (/อาบน้ำ/.test(t)) return 'bath';
+  return 'other';
+}
+
+// เว็บส่งชนิดสัตว์เป็น "น้องหมา"/"น้องแมว"/"อื่นๆ" → แปลงเป็น id ในระบบ
+export function petIdFromWeb(pet = '') {
+  return /แมว|cat/i.test(String(pet)) ? 'cat' : 'dog';
+}
+
 // ช่องทางรับเงินของร้าน — ยืนยันกับเจ้าของร้าน 16 ก.ค. 2026
 export const PAYMENT_METHODS = ['โอนธนาคาร', 'เงินสด', 'QR/พร้อมเพย์', 'บัตรเครดิต/เดบิต'];
 export const DEFAULT_DEPOSIT_METHOD = 'โอนธนาคาร'; // มัดจำส่วนใหญ่โอนเข้าบัญชี
