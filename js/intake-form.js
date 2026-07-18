@@ -133,16 +133,20 @@ export function buildIntakeSheet(bookingRaw, customers = []) {
   return sheet;
 }
 
-// เปิดใบรับฝากในหน้าต่างพิมพ์ (ผู้ใช้กด "Save as PDF" หรือสั่งพิมพ์ได้)
-export function openIntakeForm(bookingRaw, customers = []) {
-  const sheet = buildIntakeSheet(bookingRaw, customers);
-  const host = el('div', { id: 'intake-host' }, [sheet]);
+// พิมพ์ "แผ่นเอกสาร" ใดๆ ที่ใช้คลาส .intake-sheet — ใช้ร่วมกับ @media print เดิม
+// (ใบรับฝากจาก booking และใบยืนยันจากใบลงทะเบียน ใช้กลไกเดียวกัน)
+// filename: ตั้งชื่อเอกสารชั่วคราว → เบราว์เซอร์ใช้เป็นชื่อไฟล์แนะนำตอน "บันทึกเป็น PDF"
+export function printSheet(sheetEl, { filename } = {}) {
+  const host = el('div', { id: 'intake-host' }, [sheetEl]);
   document.body.appendChild(host);
   document.body.classList.add('printing-intake');
+  const prevTitle = document.title;
+  if (filename) document.title = filename;
 
   const cleanup = () => {
     document.body.classList.remove('printing-intake');
     host.remove();
+    if (filename) document.title = prevTitle;
     window.removeEventListener('afterprint', cleanup);
   };
   window.addEventListener('afterprint', cleanup);
@@ -150,4 +154,9 @@ export function openIntakeForm(bookingRaw, customers = []) {
   setTimeout(() => window.print(), 100);
   // กันเหนียวถ้า afterprint ไม่ยิง (บางเบราว์เซอร์)
   setTimeout(cleanup, 60000);
+}
+
+// เปิดใบรับฝากในหน้าต่างพิมพ์ (ผู้ใช้กด "Save as PDF" หรือสั่งพิมพ์ได้)
+export function openIntakeForm(bookingRaw, customers = []) {
+  printSheet(buildIntakeSheet(bookingRaw, customers));
 }

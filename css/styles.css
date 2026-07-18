@@ -573,6 +573,8 @@ body.modal-open { overflow: hidden; }
   font-size: 13px; font-weight: 700; margin: 0 0 6px;
   border-bottom: 1px solid #ccc; padding-bottom: 4px;
 }
+/* ไอคอนสัตว์ในหัวข้อกล่อง (ใบยืนยัน) — จำกัดขนาด ไม่ให้ SVG ขยายเต็มกล่อง */
+.intake-box h3 svg { width: 16px; height: 16px; vertical-align: -3px; margin-right: 4px; }
 .intake-row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
 .intake-row .k { color: #555; flex-shrink: 0; }
 .intake-row .v { text-align: right; font-weight: 600; }
@@ -590,6 +592,56 @@ body.modal-open { overflow: hidden; }
 .sign-label { font-size: 12px; margin-top: 4px; }
 .sign-date { font-size: 11px; color: #555; margin-top: 6px; }
 .intake-foot { text-align: center; font-size: 11px; color: #555; margin-top: 18px; border-top: 1px solid #ccc; padding-top: 8px; }
+
+/* ── รหัสการจอง (ชิป) — บนการ์ดลิสต์ + หัวกระดาษใบยืนยัน ── */
+.reg-ref {
+  display: inline-block; font-weight: 700; font-size: 13px; letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  background: var(--fill); color: var(--ink, #111); border-radius: 6px; padding: 2px 8px;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.intake-meta .reg-ref { font-size: 14px; background: #eee; color: #111; }
+
+/* ── ใบยืนยัน: แถวข้อมูลที่ "สำคัญต่อการดูแล" เน้นสีแดง ── */
+.intake-row.crit .k { color: #B30000; font-weight: 700; }
+.intake-row.crit .v { color: #B30000; font-weight: 700; }
+
+/* ── ใบยืนยัน: บันทึกตอนรับเข้า (ช่องว่างให้พนักงานกรอก + เช็คลิสต์ของฝาก) ── */
+.intake-check-fill { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 10px; font-size: 12px; margin: 2px 0 8px; }
+.intake-check-fill .blank { border-bottom: 1px solid #999; min-width: 60px; align-self: flex-end; height: 14px; }
+.intake-check-fill .blank.grow { flex: 1 1 160px; }
+.intake-check-note { font-size: 12px; color: #555; margin-bottom: 4px; }
+.intake-check-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 16px; }
+.intake-check-line { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.intake-check-line .box { font-size: 15px; line-height: 1; }
+
+/* ── ใบยืนยัน: ข้อความยืนยันเหนือช่องเซ็น ── */
+.intake-confirm { font-size: 12px; font-weight: 600; margin: 14px 0 4px; break-inside: avoid; }
+
+/* ── ใบยืนยัน: QR รหัสจองบนหัวกระดาษ ── */
+.intake-meta-qr { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.reg-qr { width: 72px; height: 72px; flex-shrink: 0; }
+.reg-qr svg { width: 100%; height: 100%; display: block; }
+
+/* ── ใบยืนยัน: ช่องภาพถ่าย/ตำหนิ ── */
+.intake-photo img { max-width: 100%; max-height: 220px; border: 1px solid #999; border-radius: 4px; }
+.intake-photo-blank {
+  border: 1px dashed #999; border-radius: 4px; height: 150px;
+  display: grid; place-items: center; color: #999; font-size: 12px;
+}
+
+/* ── ใบยืนยัน: ลายเซ็นที่ฝังภาพ (เซ็นบนจอมาแล้ว) ── */
+.sign-line.has-img { border-bottom: 1px solid #000; height: 40px; display: flex; align-items: flex-end; justify-content: center; }
+.sign-img { max-height: 46px; max-width: 90%; }
+
+/* ── โมดัลเซ็นบนจอ (แท็บเล็ต) ── */
+.sign-pad-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.sign-pad-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.sign-pad-wrap { border: 1px solid var(--hairline, #ddd); border-radius: 10px; background: #fff; overflow: hidden; }
+.sign-pad { width: 100%; height: 150px; display: block; touch-action: none; cursor: crosshair; }
+.sign-photo-preview { margin-top: 10px; }
+.sign-photo-preview img { max-width: 100%; max-height: 200px; border-radius: 10px; border: 1px solid var(--hairline, #ddd); }
+@media (max-width: 760px) { .sign-pad-grid { grid-template-columns: 1fr; } }
 
 /* ── โหมดพิมพ์: เหลือเฉพาะใบรับฝาก · บีบให้พอดี 2 แผ่น A4 ── */
 @media print {
@@ -634,6 +686,15 @@ body.modal-open { overflow: hidden; }
     margin-top: 8px; padding-top: 5px; font-size: 9px;
     break-before: avoid; page-break-before: avoid;
   }
+  /* ใบยืนยัน: บีบส่วนบันทึกรับเข้า/ยืนยัน ให้กระชับเท่าส่วนอื่น */
+  .intake-row.crit .k, .intake-row.crit .v { color: #B30000; }
+  .intake-check-fill, .intake-check-note, .intake-check-line { font-size: 9.5px; }
+  .intake-check-grid { gap: 2px 12px; }
+  .intake-confirm { font-size: 9.5px; margin: 8px 0 3px; }
+  .reg-ref { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .reg-qr { width: 60px; height: 60px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .intake-photo img, .intake-photo-blank { max-height: 120px; }
+  .intake-photo img, .sign-img { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
 
 /* ── มือถือ ── */
