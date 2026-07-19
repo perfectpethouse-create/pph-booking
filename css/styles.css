@@ -565,6 +565,43 @@ body.modal-open { overflow: hidden; }
 .mini-stat .n { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .mini-stat .l { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
+/* ═══ กลุ่มโซนในหน้า "งานวันนี้" ═══
+   ครอบการ์ดย่อยไว้ในกรอบสีประจำโซน เพื่อไม่ให้งานโรงแรมกับงานอาบน้ำปนกัน */
+.zone-group { margin-bottom: 26px; }
+.zone-group:last-child { margin-bottom: 0; }
+.zone-head {
+  display: flex; align-items: center; gap: 11px;
+  padding: 12px 16px; border-radius: 14px 14px 4px 4px;
+  background: var(--cat); color: #fff;
+}
+.zone-ico {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.22); display: grid; place-items: center;
+}
+.zone-ico svg { width: 17px; height: 17px; }
+.zone-title { flex: 1; min-width: 0; font-weight: 700; font-size: 15.5px; letter-spacing: -0.02em; }
+.zone-count {
+  font-size: 12.5px; font-weight: 600; white-space: nowrap; flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.22); padding: 3px 11px; border-radius: 980px;
+}
+/* เส้นสีข้างซ้ายลากยาวตลอดโซน — บอกขอบเขตว่าการ์ดไหนอยู่โซนไหน */
+.zone-body {
+  border-left: 3px solid var(--cat);
+  border-radius: 0 0 0 14px;
+  padding-left: 10px; margin-top: 8px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.zone-body .section-card { margin: 0; }
+.sec-title { display: flex; align-items: center; gap: 9px; }
+.sec-ico { display: grid; place-items: center; color: var(--cat); flex-shrink: 0; }
+.sec-ico svg { width: 17px; height: 17px; }
+
+@media (max-width: 760px) {
+  .zone-body { padding-left: 7px; }
+  .zone-title { font-size: 14.5px; }
+  .zone-head { padding: 10px 13px; }
+}
+
 /* ═══ แผ่นเลื่อน "เพิ่มเติม" ของแถบเมนูล่าง (มือถือ) ═══ */
 .navmore { display: none; }
 .sheet-bg {
@@ -625,10 +662,16 @@ body.modal-open { overflow: hidden; }
    แต่ละโซนมีสีประจำตัว (--cat) เพื่อให้แยกออกทันทีว่ากำลังดูโซนไหน
    ⚠️ สีหมวด = สีของ "กรอบ/หัวข้อ" เท่านั้น · สีพื้นช่องสงวนไว้บอกสถานะเต็ม/ว่าง
    ถ้าเอาสีหมวดไปทาพื้นช่องด้วย จะแยกไม่ออกว่ารอบไหนเต็มแล้ว */
+/* ── สีประจำโซน (ใช้ร่วมกันทุกหน้า: งานวันนี้ · คิวบริการ · การ์ดลูกค้า) ──
+   พี่เลี้ยงจำสีได้ชุดเดียวแล้วใช้ได้ทั้งแอป */
+.zone--hotel    { --cat: #F4650F; --cat-tint: #FFF1E8; }   /* ส้ม — ห้องพัก/โรงแรม */
+.zone--grooming { --cat: #7A5AF8; --cat-tint: #F1EEFE; }   /* ม่วง — อาบน้ำ/ตัดขน */
+.zone--exercise { --cat: #0E9AA7; --cat-tint: #E6F6F8; }   /* เขียวน้ำทะเล — สนาม+สระ */
+
 .slot-board { margin-bottom: 22px; --cat: var(--accent); --cat-tint: var(--accent-tint); }
 .slot-board:last-child { margin-bottom: 0; }
-.slot-board--grooming { --cat: #7A5AF8; --cat-tint: #F1EEFE; }   /* ม่วง — งานอาบน้ำ/ตัดขน */
-.slot-board--exercise { --cat: #0E9AA7; --cat-tint: #E6F6F8; }   /* เขียวน้ำทะเล — สนาม+สระ */
+.slot-board--grooming { --cat: #7A5AF8; --cat-tint: #F1EEFE; }
+.slot-board--exercise { --cat: #0E9AA7; --cat-tint: #E6F6F8; }
 
 .sb-head {
   display: flex; align-items: center; gap: 11px;

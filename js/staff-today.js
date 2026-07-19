@@ -6,7 +6,6 @@ import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { matchCustomer } from './customers.js';
-import { APPOINTMENT_TYPES } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -56,31 +55,59 @@ export function renderStaffToday(container) {
       ])
     ));
 
+    // จัดเป็น 3 โซนตามงานจริงของร้าน — พี่เลี้ยงจะได้ไม่ต้องไล่อ่านทีละการ์ด
+    // ว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ สีประจำโซนตรงกับหน้า "คิวบริการ"
+    const hotelCount = checkinToday.length + checkoutToday.length + staying.length;
+    const groomList = apptsOfDay(today, 'grooming');
+    const exList = apptsOfDay(today, 'exercise');
+
     body.innerHTML = '';
     body.append(
-      section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', 'green'),
-      section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', 'orange'),
-      section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', 'blue'),
-      section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', 'purple'),
-      section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', 'grey'),
-      apptSection(today),
+      zone('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)', `${hotelCount} รายการ`, [
+        section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', icons.login),
+        section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', icons.logout),
+        section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', icons.home),
+        section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', icons.calendar),
+        section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar),
+      ]),
+      zone('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)', `${groomList.length} คิว`, [
+        apptSection(groomList, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน'),
+      ]),
+      zone('exercise', icons.paw, 'โซนออกกำลังกาย', `${exList.length} คิว`, [
+        apptSection(exList, 'วันนี้ยังไม่มีคิวออกกำลังกาย'),
+      ]),
     );
   };
 
-  // นัดหมาย Grooming / โซนออกกำลังกายของวันนี้ — เรียงตามรอบเวลาเพื่อใช้เป็นคิวงานจริง
-  function apptSection(today) {
-    const list = _appts
-      .filter(a => a.date === today && a.status !== 'ยกเลิก')
-      .sort((a, b) => String(a.time).localeCompare(String(b.time)));
-    const card = el('div', { class: 'card section-card section--purple' }, [
-      el('h2', { text: `คิว Grooming & ออกกำลังกายวันนี้ (${list.length})` }),
+  // กล่องครอบ 1 โซน — หัวแถบสี + ไอคอน + จำนวนงาน แล้วตามด้วยการ์ดย่อยข้างใน
+  function zone(id, ico, title, countText, children) {
+    return el('div', { class: `zone-group zone--${id}` }, [
+      el('div', { class: 'zone-head' }, [
+        el('span', { class: 'zone-ico', html: ico }),
+        el('div', { class: 'zone-title', text: title }),
+        el('span', { class: 'zone-count', text: countText }),
+      ]),
+      el('div', { class: 'zone-body' }, children),
     ]);
+  }
+
+  function apptsOfDay(today, type) {
+    return _appts
+      .filter(a => a.date === today && a.type === type && a.status !== 'ยกเลิก')
+      .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  }
+
+  // คิวของโซนหนึ่ง เรียงตามรอบเวลาเพื่อใช้เป็นลำดับงานจริง
+  function apptSection(list, emptyText) {
+    const card = el('div', { class: 'card section-card' });
     if (!list.length) {
-      card.appendChild(el('p', { class: 'muted', text: 'วันนี้ยังไม่มีคิว' }));
+      card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: emptyText }));
       return card;
     }
     list.forEach(a => {
-      const typeLabel = (APPOINTMENT_TYPES.find(t => t.id === a.type) || {}).label || a.type;
+      const detail = a.type === 'exercise'
+        ? `ระดับ ${a.level || '-'}`
+        : (a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ');
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [
@@ -90,7 +117,8 @@ export function renderStaffToday(container) {
           el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
         ]),
         el('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap;margin-top:4px' }, [
-          el('span', { class: 'pet-chip pet-' + (a.petType || 'dog'), html: `${PET_ICONS[a.petType] || icons.paw} ${escapeHtml(typeLabel)}` }),
+          el('span', { class: 'pet-chip pet-' + (a.petType || 'dog'), html: `${PET_ICONS[a.petType] || icons.paw} ${escapeHtml(detail)}` }),
+          el('span', { class: 'muted', style: 'font-size:12px', text: `ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.` }),
           a.notes ? el('span', { class: 'muted', style: 'font-size:12px', text: a.notes.split('\n')[0] }) : null,
         ].filter(Boolean)),
       ]));
@@ -104,9 +132,14 @@ export function renderStaffToday(container) {
     return _customers.find(c => matchCustomer(b, c))?.pets || [];
   }
 
-  function section(title, list, emptyText, color) {
-    const card = el('div', { class: `card section-card section--${color}` }, [
-      el('h2', { text: `${title} (${list.length})` }),
+  // สีของการ์ดมาจากโซนที่ครอบอยู่ ส่วนไอคอนบอกว่าเป็นงานประเภทไหน
+  // (เดิมใช้สีบอกประเภทงาน ทำให้สีชนกับสีโซนจนแยกไม่ออกว่าอันไหนโรงแรม อันไหนอาบน้ำ)
+  function section(title, list, emptyText, ico) {
+    const card = el('div', { class: 'card section-card' }, [
+      el('h2', { class: 'sec-title' }, [
+        el('span', { class: 'sec-ico', html: ico || '' }),
+        el('span', { text: `${title} (${list.length})` }),
+      ]),
     ]);
     if (!list.length) { card.appendChild(el('p', { class: 'muted', text: emptyText })); return card; }
     const s = getSettings();
