@@ -36,6 +36,7 @@ const LS = {
   customers: 'pph_customers',
   checkinForms: 'pph_checkin_forms', // ใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
   bookingRequests: 'pph_booking_requests', // คำขอจองจากฟอร์มจองบนเว็บ (index/app/exercise-zone)
+  appointments: 'pph_appointments', // นัดหมายรายรอบ: Grooming / โซนออกกำลังกาย
   settings: 'pph_settings',
   user: 'pph_mock_user',
 };
@@ -203,11 +204,28 @@ export function listenSettings(cb) {
 }
 
 // ─── สำรอง/นำเข้าข้อมูล ───
+// ─── ราคากลางสำหรับหน้าเว็บสาธารณะ ───
+// เว็บ perfectbkk.com/exercise-zone.html อ่านเอกสารนี้ตอนโหลด เพื่อให้ราคาบนเว็บ
+// ตรงกับที่เจ้าของร้านตั้งไว้ในแอปเสมอ (แก้ที่เดียว เปลี่ยนทั้งสองที่)
+// เก็บเป็นสตริง JSON ก้อนเดียวโดยตั้งใจ — ฝั่งเว็บอ่านผ่าน REST ซึ่งคืนค่าเป็น
+// รูปแบบ typed ของ Firestore ถ้าเก็บเป็น map ซ้อนกันจะต้องเขียนโค้ดแกะยาวมาก
+export async function savePublicPrices(settings) {
+  if (MODE !== 'firestore') return; // โหมดทดลองไม่มีที่ให้เว็บอ่าน
+  const { doc, setDoc } = fb.fsMod;
+  await setDoc(doc(fb.store, 'publicInfo', 'prices'), {
+    exerciseJson: JSON.stringify(settings?.exercisePrices || {}),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+}
+
+// ⚠️ เพิ่ม collection ใหม่ในระบบเมื่อไหร่ ต้องเพิ่มที่นี่ทั้ง exportAll และ importAll ด้วย
+//    ไม่งั้นเจ้าของร้านสำรองแล้วกู้คืน ข้อมูลชุดนั้นจะหายเงียบๆ โดยไม่มีคำเตือน
 export async function exportAll() {
-  const [bookings, customers, checkinForms, bookingRequests, settings] = await Promise.all([
-    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getAll('bookingRequests'), getSettings(),
+  const [bookings, customers, checkinForms, bookingRequests, appointments, settings] = await Promise.all([
+    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getAll('bookingRequests'),
+    getAll('appointments'), getSettings(),
   ]);
-  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, bookingRequests, settings };
+  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, bookingRequests, appointments, settings };
 }
 
 export async function importAll(data) {
@@ -216,5 +234,7 @@ export async function importAll(data) {
   for (const c of (data.customers || [])) await save('customers', c);
   for (const f of (data.checkinForms || [])) await save('checkinForms', f);
   for (const r of (data.bookingRequests || [])) await save('bookingRequests', r);
+  // ไฟล์สำรองเก่า (ก่อนมีระบบนัดหมาย) จะไม่มีคีย์นี้ — ข้ามไปเฉยๆ ไม่ใช่ error
+  for (const a of (data.appointments || [])) await save('appointments', a);
   if (data.settings) await saveSettings(data.settings);
 }

@@ -11,7 +11,12 @@ import { el, toast, openModal, confirmDialog, getSettings } from './ui.js';
 import { formatDateTH, todayISO, nightsBetween } from './calc.js';
 import { REQUEST_TYPES, classifyRequest, petIdFromWeb, DEFAULT_DEPOSIT_METHOD } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
+import { openAppointmentForm, slotsFor } from './appointments.js';
 import { icons } from './icons.js';
+
+// คำขอจากเว็บที่เป็น "งานรายรอบ" ไม่ใช่การพักค้างคืน → เปิดเป็นนัดหมายแทนใบจองห้อง
+// (อาบน้ำ/ตัดขน ใช้ฟอร์ม Grooming เหมือนกัน ต่างแค่ติ๊ก "ตัดขนด้วย" หรือไม่)
+const APPOINTMENT_FROM_REQUEST = { exercise: 'exercise', grooming: 'grooming', bath: 'grooming' };
 
 let _unsub = [];
 let _reqs = [];
@@ -112,17 +117,36 @@ function openRequestDetail(r) {
   add('ส่งเมื่อ', r.submittedAt ? new Date(r.submittedAt).toLocaleString('th-TH') : '');
   wrap.appendChild(box);
 
+  const apptType = APPOINTMENT_FROM_REQUEST[classifyRequest(r.service)] || null;
+
   if (!t.isStay) {
     wrap.appendChild(el('div', { class: 'promo-banner warn', style: 'margin:10px 0' }, [
-      el('span', { class: 'promo-text', html:
-        `${icons.alert} คำขอนี้เป็น <strong>${t.label}</strong> ไม่ใช่การพักค้างคืน — ถ้าสร้างการจองต้องเติมห้อง/ราคาเอง` }),
+      el('span', { class: 'promo-text', html: apptType
+        ? `${icons.alert} คำขอนี้เป็น <strong>${t.label}</strong> — ใช้ปุ่ม "สร้างนัดหมาย" เพื่อลงคิวรายรอบ`
+        : `${icons.alert} คำขอนี้เป็น <strong>${t.label}</strong> ไม่ใช่การพักค้างคืน — ถ้าสร้างการจองต้องเติมห้อง/ราคาเอง` }),
     ]));
   }
 
-  const makeBtn = el('button', { class: 'btn primary', html: icons.plus + ' สร้างการจอง' });
+  // คำขอ Grooming/ออกกำลังกาย → ปุ่มหลักคือ "สร้างนัดหมาย" ไม่ใช่ "สร้างการจอง"
+  const apptBtn = apptType ? el('button', { class: 'btn primary', html: icons.plus + ' สร้างนัดหมาย' }) : null;
+  const makeBtn = el('button', { class: apptType ? 'btn' : 'btn primary', html: icons.plus + ' สร้างการจอง' });
   const doneBtn = el('button', { class: 'btn', html: icons.check + ((r.status === 'done') ? ' กลับเป็นยังไม่จัดการ' : ' ทำเครื่องหมายว่าจัดการแล้ว') });
   const delBtn = el('button', { class: 'btn danger', html: icons.trash + ' ลบ' });
-  wrap.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:14px;gap:8px' }, [delBtn, doneBtn, makeBtn]));
+  wrap.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:14px;gap:8px' },
+    [delBtn, doneBtn, makeBtn, apptBtn].filter(Boolean)));
+
+  if (apptBtn) apptBtn.onclick = async () => {
+    try {
+      await save('bookingRequests', { ...r, status: 'done', handledAt: Date.now() });
+      await upsertPetFromRequest(r);
+      m.close();
+      openAppointmentForm(apptDraftFromRequest(r, apptType));
+      toast('เติมข้อมูลให้แล้ว — เลือกรอบเวลา/ขนาดน้อง แล้วกดบันทึก');
+    } catch (e) {
+      console.error(e);
+      toast('สร้างนัดหมายไม่สำเร็จ: ' + e.message);
+    }
+  };
 
   const m = openModal(wrap);
 
@@ -179,6 +203,33 @@ async function upsertPetFromRequest(r) {
 }
 
 // แปลงคำขอ → draft ของฟอร์มจอง (เติมเท่าที่รู้จริง ที่เหลือพนักงานกรอก)
+// แปลงคำขอจากเว็บเป็น "ร่างนัดหมาย" — เติมได้เท่าที่ฟอร์มเว็บมี
+// ขนาดน้อง/ระดับบริการ เว็บไม่ได้ถาม พนักงานต้องเลือกเองตอนเปิดฟอร์ม (ราคาจึงคำนวณตอนนั้น)
+export function apptDraftFromRequest(r, type) {
+  const notes = [
+    `[จากเว็บ] บริการที่ขอ: ${r.service || '-'}`,
+    r.breed && `สายพันธุ์/ขนาด: ${r.breed}`,
+    r.line && `LINE: ${r.line}`,
+    r.email && `อีเมล: ${r.email}`,
+    r.note && `หมายเหตุลูกค้า: ${r.note}`,
+  ].filter(Boolean).join('\n');
+
+  return {
+    type,
+    date: r.checkin || todayISO(),
+    // ใช้เวลาที่ลูกค้าขอมาได้ก็ต่อเมื่อตรงกับรอบจริงของโซนนั้น ไม่งั้นให้เลือกใหม่
+    time: slotsFor(type).includes(r.time) ? r.time : '',
+    customerName: r.owner || '',
+    phone: r.phone || '',
+    petName: r.petname || '',
+    petType: type === 'exercise' ? 'dog' : petIdFromWeb(r.pet),
+    size: '', coatType: 'short', includeCut: /ตัดขน/.test(String(r.service || '')),
+    exSize: 'S', level: '1',
+    price: 0, status: 'จองแล้ว', notes,
+    source: 'web',
+  };
+}
+
 export function draftFromRequest(r) {
   const s = getSettings();
   const pet = petIdFromWeb(r.pet);

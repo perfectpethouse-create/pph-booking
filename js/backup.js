@@ -57,7 +57,7 @@ export function renderBackup(container) {
 
   container.appendChild(el('div', { class: 'card' }, [
     el('h2', { text: 'จัดการไฟล์สำรอง' }),
-    el('p', { class: 'muted', text: 'สำรองข้อมูลการจอง ลูกค้า และการตั้งค่าทั้งหมดเป็นไฟล์เดียว เก็บไว้กู้คืนได้' }),
+    el('p', { class: 'muted', text: 'สำรองการจองห้องพัก · คิว Grooming และโซนออกกำลังกาย · ลูกค้า · ใบลงทะเบียน · คำขอจองจากเว็บ · การตั้งค่า เป็นไฟล์เดียว เก็บไว้กู้คืนได้' }),
     el('div', { class: 'row', style: 'gap:10px' }, [expBtn, impBtn, fileInp]),
   ]));
 

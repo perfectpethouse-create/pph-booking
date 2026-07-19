@@ -2,7 +2,7 @@
 // bookings.js — หน้ารายการจอง + ฟอร์มเพิ่ม/แก้ไข (หัวใจของระบบ)
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
-import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml } from './ui.js';
+import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff } from './ui.js';
 import { computeBooking, computeAddOn, freeBathRights, formatBaht, formatDateTH, nightsBetween, todayISO, addDaysISO } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE,
@@ -72,27 +72,34 @@ function buildTable(rows) {
   if (!rows.length) {
     return el('p', { class: 'muted', style: 'padding:20px;text-align:center', text: 'ยังไม่มีการจอง — กด "เพิ่มการจอง" เพื่อเริ่ม' });
   }
+  // พี่เลี้ยงไม่เห็นคอลัมน์เงิน และกดใบเดิมเพื่อแก้ไม่ได้ (สร้างใบใหม่ได้อย่างเดียว)
+  const staff = isStaff();
   // "วันที่โอน" อยู่ในกลุ่มการเงิน (ติดกับมัดจำ) ไม่วางชิดวันเข้าพัก/ออก — กันอ่านสลับกัน
-  const cols = ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'วันที่โอน', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
-  const numCols = [4, 6, 7];
+  const cols = staff
+    ? ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'สถานะ']
+    : ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'วันที่โอน', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
+  const numCols = staff ? [] : [4, 6, 7];
   const head = el('tr', {}, cols.map((h, i) => el('th', { class: numCols.includes(i) ? 'num' : '', text: h })));
   const body = rows.map(raw => {
     const b = computeBooking(raw);
     const s = getSettings();
     const roomsDesc = b.lineItems.map(li => `${li.rooms || 1}×${(s?.roomPrices?.[li.roomType]?.label || li.roomType)}`).join(', ');
-    const tr = el('tr', { style: 'cursor:pointer' }, [
-      el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
-      el('td', { text: formatDateTH(b.checkIn) }),
-      el('td', { text: formatDateTH(b.checkOut) }),
-      el('td', { style: 'max-width:180px;white-space:normal', text: roomsDesc }),
+    const moneyCells = staff ? [] : [
       el('td', { class: 'num', text: formatBaht(b.grandTotal) }),
       // ยังไม่โอน = ไม่มีวัน → ขีดจางๆ ไม่ใช่วันมั่ว
       el('td', { class: b.depositDate ? '' : 'muted', text: b.depositDate ? formatDateTH(b.depositDate) : '—' }),
       el('td', { class: 'num', text: formatBaht(b.depositAmount) }),
       el('td', { class: 'num', text: formatBaht(b.balanceDue) }),
+    ];
+    const tr = el('tr', { style: staff ? '' : 'cursor:pointer' }, [
+      el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
+      el('td', { text: formatDateTH(b.checkIn) }),
+      el('td', { text: formatDateTH(b.checkOut) }),
+      el('td', { style: 'max-width:180px;white-space:normal', text: roomsDesc }),
+      ...moneyCells,
       el('td', {}, [statusPill(b.depositStatus)]),
     ]);
-    tr.onclick = () => openBookingForm(raw);
+    if (!staff) tr.onclick = () => openBookingForm(raw);
     return tr;
   });
   return el('table', {}, [el('thead', {}, [head]), el('tbody', {}, body)]);
@@ -128,7 +135,9 @@ export function openBookingForm(existing) {
     depositStatus: 'มัดจำแล้ว', recordStatus: 'ยังไม่ลงระบบ', notes: '',
   };
 
-  const form = el('div', {});
+  // พี่เลี้ยงกรอกใบจองได้ แต่ไม่เห็นตัวเลขเงิน — CSS ซ่อนทุกอย่างที่ติดคลาส .owner-only
+  // (ตัวเลขยังคำนวณและบันทึกตามปกติ เจ้าของร้านเปิดใบเดิมมาดูยอดได้ครบ)
+  const form = el('div', { class: isStaff() ? 'staff-mode' : '' });
   const m = openModal(form);
   build();
 
@@ -136,9 +145,9 @@ export function openBookingForm(existing) {
 
   function build() {
     // กล่องสรุป (ประกาศก่อน เพื่อให้ handler ทุกตัวเรียก refreshSummary ได้)
-    const summaryBox = el('div', { class: 'summary-box' });
-    const stickyTotal = el('span', { class: 'ss-total' });   // แถบลอยล่าง: ยอดทั้งหมด
-    const stickyDeposit = el('span', { class: 'ss-deposit' }); // แถบลอยล่าง: มัดจำ
+    const summaryBox = el('div', { class: 'summary-box owner-only' });
+    const stickyTotal = el('span', { class: 'ss-total owner-only' });   // แถบลอยล่าง: ยอดทั้งหมด
+    const stickyDeposit = el('span', { class: 'ss-deposit owner-only' }); // แถบลอยล่าง: มัดจำ
     const refreshSummary = () => {
       const b = computeBooking(draft);
       const line = (k, v, cls = '') => el('div', { class: 'line ' + cls }, [el('span', { text: k }), el('span', { text: v })]);
@@ -249,8 +258,8 @@ export function openBookingForm(existing) {
 
       return el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [el('strong', { text: `รายการที่ ${idx + 1}` }), rmBtn]),
-        el('div', { class: 'row' }, [labeled('สัตว์', petSel), labeled('ประเภทห้อง', roomSel), labeled('ราคา/คืน', priceSel)]),
-        el('div', { class: 'row' }, [labeled('จำนวนห้อง', roomsInp), labeled('จำนวนคืน', nightsInp), labeled('ชนิดส่วนลด', discType), labeled('ส่วนลด', discVal)]),
+        el('div', { class: 'row' }, [labeled('สัตว์', petSel), labeled('ประเภทห้อง', roomSel), labeled('ราคา/คืน', priceSel, 'owner-only')]),
+        el('div', { class: 'row' }, [labeled('จำนวนห้อง', roomsInp), labeled('จำนวนคืน', nightsInp), labeled('ชนิดส่วนลด', discType, 'owner-only'), labeled('ส่วนลด', discVal, 'owner-only')]),
       ]);
     }
 
@@ -343,7 +352,7 @@ export function openBookingForm(existing) {
       const rm = el('button', { class: 'btn sm danger', html: icons.x, 'aria-label': 'ลบ' });
       rm.onclick = () => { draft.addOns.splice(idx, 1); rerender(); };
 
-      const totalSpan = el('span', { class: 'addon-total', text: formatBaht(computeAddOn(a).total) });
+      const totalSpan = el('span', { class: 'addon-total owner-only', text: formatBaht(computeAddOn(a).total) });
       const refreshRow = () => { totalSpan.textContent = formatBaht(computeAddOn(a).total); refreshSummary(); };
 
       const controls = [];
@@ -386,7 +395,7 @@ export function openBookingForm(existing) {
         }
         const priceInp = numInput(a.unitPrice, v => { a.unitPrice = v; refreshRow(); }, 'ราคา');
         const qtyInp = numInput(a.qty, v => { a.qty = v; refreshRow(); }, '', 1);
-        controls.push(labeled('ราคา/หน่วย', priceInp), labeled('จำนวน', qtyInp));
+        controls.push(labeled('ราคา/หน่วย', priceInp, 'owner-only'), labeled('จำนวน', qtyInp));
       }
 
       return el('div', { class: 'lineitem addon-item' }, [
@@ -427,7 +436,8 @@ export function openBookingForm(existing) {
       openBookingForm(clone);
       toast('ก็อปการจองแล้ว — กรอกวันเข้าพักใหม่');
     };
-    const delBtn = existing?.id ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
+    // ลบได้เฉพาะเจ้าของร้าน (firestore.rules บล็อกฝั่ง server อยู่แล้ว — ตรงนี้กันไม่ให้เห็นปุ่มที่กดแล้วพัง)
+    const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
     if (delBtn) delBtn.onclick = async () => {
       if (await confirmDialog('ลบการจองนี้?', { danger: true, okText: 'ลบ' })) { await remove('bookings', existing.id); m.close(); toast('ลบแล้ว'); }
     };
@@ -453,7 +463,7 @@ export function openBookingForm(existing) {
         itemsWrap, addItemBtn, promoBanner),
       formGroup(icons.star, 'บริการเสริม', 'purple',
         addonsWrap, addAddonBtn),
-      formGroup(icons.banknote, 'การชำระเงิน / มัดจำ', 'gold',
+      formGroup(icons.banknote, 'การชำระเงิน / มัดจำ', 'gold owner-only',
         el('div', { class: 'row' }, [depDateField, depPctField]),
         el('div', { class: 'row' }, [labeled('ช่องทางโอนมัดจำ', depMethodSel)]),
         el('div', { class: 'row' }, [
@@ -494,7 +504,8 @@ function numInput(value, onInput, placeholder = '', min = 0) {
   inp.oninput = () => onInput(Number(inp.value) || 0);
   return inp;
 }
-function labeled(label, node) { return el('div', { class: 'field', style: 'margin:0' }, [el('label', { text: label }), node]); }
+// cls: ใส่ 'owner-only' กับช่องที่เกี่ยวกับเงิน — พี่เลี้ยงจะไม่เห็น (ดู .staff-mode ใน styles.css)
+function labeled(label, node, cls = '') { return el('div', { class: 'field ' + cls, style: 'margin:0' }, [el('label', { text: label }), node]); }
 function selectEl(pairs, value, onChange) {
   const sel = el('select', {}, pairs.map(([v, t]) => el('option', { value: v, text: t })));
   sel.value = value;

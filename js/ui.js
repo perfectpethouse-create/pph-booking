@@ -109,5 +109,14 @@ export function isStaff() {
 }
 export function isOwner() { return !isStaff(); }
 
-// เมนูที่พี่เลี้ยงเข้าได้ (นอกเหนือจากนี้เป็นของเจ้าของร้าน)
+// เมนูที่พี่เลี้ยงเข้าได้เมื่อยังไม่เคยตั้งสวิตช์สิทธิ์ (พฤติกรรมเดิมก่อนมีฟีเจอร์นี้)
 export const STAFF_ROUTES = ['today', 'calendar', 'customers', 'registrations'];
+
+// พี่เลี้ยงเข้าเมนูนี้ได้ไหม — อ่านจากสวิตช์ที่เจ้าของร้านตั้งใน settings/app.staffPerms
+// ยังไม่เคยบันทึกสวิตช์ (ร้านที่อัปเดตแอปแต่ยังไม่เข้าหน้าตั้งค่า) → ใช้ STAFF_ROUTES เดิม
+// เพื่อไม่ให้พี่เลี้ยงถูกตัดสิทธิ์ทั้งหมดทันทีที่อัปเดตโค้ด
+export function staffCan(route) {
+  const perms = _settings?.staffPerms;
+  if (!perms || typeof perms !== 'object') return STAFF_ROUTES.includes(route);
+  return perms[route] === true;
+}

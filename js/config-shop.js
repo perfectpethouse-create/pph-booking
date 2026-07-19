@@ -287,6 +287,99 @@ export const SHOP_INFO = {
 };
 
 // รวมค่าตั้งต้นทั้งหมดเป็น settings หนึ่งก้อน (ใช้ตอนยังไม่มีใน DB)
+// ═══════════ โซนออกกำลังกาย (Dog Park + Paw Splash) ═══════════
+// ⚠️ ที่มาของราคา: public/exercise-zone.html บนเว็บจริง (ตาราง "ดูตารางราคาทั้งหมด")
+//    ตัวเลขที่นี่เป็นเพียง "ค่าเริ่มต้น" — เจ้าของร้านแก้ได้ในหน้าตั้งค่า (settings.exercisePrices)
+//    ถ้าแก้ราคาในแอป อย่าลืมแก้บนหน้าเว็บให้ตรงกันด้วย
+export const EXERCISE_SIZES = [
+  { id: 'S', label: 'S (0–10 กก.)' },
+  { id: 'M', label: 'M (10–20 กก.)' },
+  { id: 'L', label: 'L (20–30 กก.)' },
+  { id: 'XL', label: 'XL (30 กก. ขึ้นไป)' },
+];
+
+export const EXERCISE_LEVELS = [
+  { id: '1', label: 'ระดับ 1 — สนาม' },
+  { id: '2', label: 'ระดับ 2 — สระ + สนาม' },
+  { id: '3', label: 'ระดับ 3 — สระ + สนาม + อาบน้ำ' },
+];
+
+export const EXERCISE_PRICES = {
+  S: { 1: 690, 2: 890, 3: 990 },
+  M: { 1: 790, 2: 1090, 3: 1290 },
+  L: { 1: 890, 2: 1290, 3: 1490 },
+  XL: { 1: 990, 2: 1490, 3: 1790 },
+};
+
+// รอบเวลา 60 นาที — เว้น 12:00 (พักกลางวัน) ตรงกับตัวเลือกบนหน้าเว็บ
+export const EXERCISE_SLOTS = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00'];
+export const EXERCISE_DURATION_MIN = 60;
+// อัตราพี่เลี้ยง 1 : 3 ตัว — น้องตัวที่ 2 ของบ้านเดียวกันในรอบเดียวกันก็นับเป็นอีก 1 ที่
+export const EXERCISE_CAPACITY = 3;
+
+// เวลาที่ใช้จริงต่อตัว (ยืนยันกับเจ้าของร้าน 19 ก.ค. 2569):
+//   อาบน้ำอย่างเดียว 1–2 ชม. · อาบน้ำ+ตัดขน 2–3 ชม.
+// ระบบจองเวลาบล็อกตาม "ค่ามากสุด" เพื่อไม่ให้รับคิวถี่เกินจนงานล้น
+// ส่วนช่วงเวลาที่แสดงให้พนักงานใช้ค่าต่ำ–สูง ตามที่บอกลูกค้าจริง
+export const GROOMING_BATH_MIN = 60;
+export const GROOMING_BATH_MAX = 120;
+export const GROOMING_CUT_MIN = 120;
+export const GROOMING_CUT_MAX = 180;
+// ค่าเดิมที่โค้ดอื่นอาจอ้างถึง — เท่ากับกรณีอาบน้ำ+ตัดขนแบบเร็วสุด
+export const GROOMING_DURATION_MIN = GROOMING_CUT_MIN;
+
+// ข้อความช่วงเวลาที่ใช้บอกพนักงาน/ลูกค้า
+export function groomingDurationLabel(includeCut) {
+  return includeCut ? '2–3 ชั่วโมง' : '1–2 ชั่วโมง';
+}
+// รอบอาบน้ำ — รอบสุดท้าย 19:00 (ยืนยันกับเจ้าของร้าน 19 ก.ค. 2569)
+// เว้น 12:00 เป็นช่วงพักกลางวัน เหมือนโซนออกกำลังกาย
+export const GROOMING_SLOTS = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
+// งานตัดขนใช้เวลานานกว่า จึงต้องเริ่มไม่เกิน 18:00 — รอบ 19:00 รับเฉพาะอาบน้ำ
+export const GROOMING_CUT_LAST_SLOT = '18:00';
+// จำนวนคิว Grooming ที่รับพร้อมกันต่อรอบ = จำนวนช่าง — ตั้งได้ในหน้าตั้งค่า
+export const DEFAULT_GROOMING_CAPACITY = 1;
+
+export const APPOINTMENT_TYPES = [
+  { id: 'grooming', label: 'Grooming (อาบน้ำ-ตัดขน)' },
+  { id: 'exercise', label: 'โซนออกกำลังกาย' },
+];
+
+export const APPOINTMENT_STATUSES = ['จองแล้ว', 'มาแล้ว', 'เสร็จแล้ว', 'ยกเลิก'];
+
+// ราคา 1 รอบของโซนออกกำลังกาย — อ่านจากค่าที่เจ้าของร้านตั้งไว้ก่อน แล้วค่อย fallback
+export function exercisePrice(size, level, settings) {
+  const table = settings?.exercisePrices || EXERCISE_PRICES;
+  return table?.[size]?.[level] ?? EXERCISE_PRICES?.[size]?.[level] ?? 0;
+}
+
+// ── สิทธิ์พี่เลี้ยง: เมนูที่เจ้าของร้านเปิด-ปิดได้เอง ──
+// ⚠️ "ตั้งค่า" และ "สำรองข้อมูล" ไม่อยู่ในลิสต์นี้โดยตั้งใจ และห้ามเพิ่มเข้ามา:
+//    · เปิด "ตั้งค่า" = พี่เลี้ยงลบอีเมลตัวเองออกจาก staffEmails แล้วกลายเป็นเจ้าของร้านได้
+//    · เปิด "สำรองข้อมูล" = ดึงยอดเงินทั้งร้านออกไปได้
+export const STAFF_PERM_ITEMS = [
+  { route: 'today', label: 'งานวันนี้', hint: 'รายการรับ-ส่งของวันนี้' },
+  { route: 'calendar', label: 'ปฏิทินห้องว่าง', hint: 'ดูห้องว่างเพื่อรับจองหน้าร้าน' },
+  { route: 'customers', label: 'ลูกค้า & สัตว์เลี้ยง', hint: 'แก้โน้ตสุขภาพ/วัคซีนได้' },
+  { route: 'registrations', label: 'ลงทะเบียนเช็คอิน', hint: 'รับใบลงทะเบียน พิมพ์ใบยืนยัน' },
+  { route: 'bookings', label: 'การจองทั้งหมด', hint: 'สร้างการจองใหม่ได้ (ไม่เห็นยอดเงิน แก้/ลบใบเดิมไม่ได้)' },
+  { route: 'appointments', label: 'Grooming & โซนออกกำลังกาย', hint: 'จองคิวรายรอบหน้าเคาน์เตอร์' },
+  { route: 'requests', label: 'คำขอจองจากเว็บ', hint: 'รับคำขอที่ลูกค้าส่งมาจากหน้าเว็บ' },
+  { route: 'reports', label: 'รายงานรายเดือน', hint: '⚠️ เห็นรายได้ทั้งร้าน' },
+];
+
+// ค่าเริ่มต้น: เปิดเท่าที่จำเป็นต่องานหน้าเคาน์เตอร์ ส่วนที่เกี่ยวกับเงินปิดไว้ก่อน
+export const DEFAULT_STAFF_PERMS = {
+  today: true,
+  calendar: true,
+  customers: true,
+  registrations: true,
+  bookings: true,
+  appointments: true,
+  requests: false,
+  reports: false,
+};
+
 export function defaultSettings() {
   return {
     roomPrices: structuredClone(DEFAULT_ROOM_PRICES),
@@ -296,5 +389,8 @@ export function defaultSettings() {
     vipPromoPrice: VIP_PROMO_PRICE,
     shopInfo: structuredClone(SHOP_INFO),
     staffEmails: [], // อีเมลพนักงาน (พี่เลี้ยง) — เห็นเฉพาะเมนูที่ไม่เกี่ยวกับเงิน
+    staffPerms: structuredClone(DEFAULT_STAFF_PERMS),
+    exercisePrices: structuredClone(EXERCISE_PRICES),
+    groomingCapacity: DEFAULT_GROOMING_CAPACITY,
   };
 }

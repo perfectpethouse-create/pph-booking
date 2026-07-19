@@ -2,9 +2,12 @@
 // settings.js — ตั้งค่าราคาห้อง / จำนวนห้อง / บริการเสริม / มัดจำ% / ข้อมูลร้าน
 // เจ้าของร้านแก้ได้เองโดยไม่ต้องแตะโค้ด (เก็บลง DB)
 // ═══════════════════════════════════════════════════════════════
-import { getSettings, saveSettings } from './db.js';
+import { getSettings, saveSettings, savePublicPrices } from './db.js';
 import { el, toast, getSettings as cachedSettings } from './ui.js';
-import { PET_TYPES } from './config-shop.js';
+import {
+  PET_TYPES, STAFF_PERM_ITEMS, DEFAULT_STAFF_PERMS,
+  EXERCISE_PRICES, EXERCISE_SIZES, EXERCISE_LEVELS, DEFAULT_GROOMING_CAPACITY,
+} from './config-shop.js';
 import { icons } from './icons.js';
 
 export async function renderSettings(container) {
@@ -52,6 +55,40 @@ export async function renderSettings(container) {
   ]));
   container.appendChild(priceCard);
 
+  // ── ราคาโซนออกกำลังกาย + ความจุ Grooming ──
+  // ⚠️ ราคาเริ่มต้นคัดมาจากตารางบน public/exercise-zone.html — ถ้าแก้ที่นี่ อย่าลืมแก้บนเว็บให้ตรงกัน
+  s.exercisePrices = s.exercisePrices || structuredClone(EXERCISE_PRICES);
+  const exCard = el('div', { class: 'card' }, [
+    el('h2', { text: 'โซนออกกำลังกาย & Grooming' }),
+    el('p', { class: 'muted', style: 'font-size:13px;margin-top:-6px', text:
+      'ราคาต่อรอบของโซนออกกำลังกาย (60 นาที · พี่เลี้ยง 1 ต่อ 3 ตัว) — ตรงกับตารางราคาบนหน้าเว็บ ถ้าแก้ที่นี่อย่าลืมแก้บนเว็บด้วย' }),
+  ]);
+  const exHead = el('tr', {}, [
+    el('th', { text: 'ขนาดน้อง' }),
+    ...EXERCISE_LEVELS.map(l => el('th', { class: 'num', text: l.label })),
+  ]);
+  const exRows = EXERCISE_SIZES.map(sz => {
+    s.exercisePrices[sz.id] = s.exercisePrices[sz.id] || {};
+    const inputs = EXERCISE_LEVELS.map(l => {
+      const i = el('input', { type: 'number', min: 0, value: s.exercisePrices[sz.id][l.id] ?? 0, style: 'max-width:110px;text-align:right' });
+      i.oninput = () => { s.exercisePrices[sz.id][l.id] = Number(i.value) || 0; };
+      return el('td', { class: 'num' }, [i]);
+    });
+    return el('tr', {}, [el('td', {}, [el('strong', { text: sz.label })]), ...inputs]);
+  });
+  exCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('thead', {}, [exHead]), el('tbody', {}, exRows)])]));
+  // ความจุ Grooming = จำนวนช่างที่รับพร้อมกันได้ต่อรอบ (ใช้เป็นเกณฑ์เตือน ไม่บล็อกการจอง)
+  const groomCap = el('input', { type: 'number', min: 1, value: s.groomingCapacity ?? DEFAULT_GROOMING_CAPACITY, style: 'max-width:120px' });
+  groomCap.oninput = () => s.groomingCapacity = Number(groomCap.value) || 1;
+  exCard.appendChild(el('div', { class: 'row', style: 'margin-top:12px' }, [
+    el('div', { class: 'field' }, [
+      el('label', { text: 'จำนวนคิว Grooming ต่อรอบ (จำนวนช่าง)' }),
+      groomCap,
+      el('p', { class: 'muted', style: 'font-size:12px;margin:4px 0 0', text: 'ใช้เตือนเมื่อจองเกิน — ยังจองเพิ่มได้ถ้ายืนยัน' }),
+    ]),
+  ]));
+  container.appendChild(exCard);
+
   // ── บริการเสริม ──
   const svcCard = el('div', { class: 'card' }, [el('h2', { text: 'บริการเสริม' })]);
   const svcWrap = el('div', {});
@@ -82,7 +119,8 @@ export async function renderSettings(container) {
   const staffCard = el('div', { class: 'card' }, [
     el('h2', { text: 'สิทธิ์พนักงาน (พี่เลี้ยง)' }),
     el('p', { class: 'muted', style: 'font-size:13px;margin-top:-6px', text:
-      'อีเมลในลิสต์นี้จะเห็นแค่ งานวันนี้ · ปฏิทินห้องว่าง · ลูกค้า & สัตว์เลี้ยง · ลงทะเบียนเช็คอิน — ไม่เห็นราคา ยอดเงิน รายงาน และตั้งค่า (ต้องสร้างบัญชีให้เขาใน Firebase Console ก่อน)' }),
+      'อีเมลในลิสต์นี้ = พี่เลี้ยง จะเห็นเฉพาะเมนูที่ติ๊กเปิดไว้ข้างล่าง และไม่เห็นราคา/ยอดเงินในหน้าการจอง ' +
+      '(ต้องสร้างบัญชีให้เขาใน Firebase Console ก่อน) — ลิสต์ว่าง = ทุกคนเป็นเจ้าของร้าน' }),
   ]);
   const staffWrap = el('div', {});
   const drawStaff = () => {
@@ -104,6 +142,29 @@ export async function renderSettings(container) {
   const addStaff = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มอีเมลพนักงาน' });
   addStaff.onclick = () => { s.staffEmails.push(''); drawStaff(); };
   staffCard.append(staffWrap, addStaff);
+
+  // ── สวิตช์เปิด-ปิดเมนูของพี่เลี้ยง (มีผลกับพี่เลี้ยงทุกคนพร้อมกัน) ──
+  s.staffPerms = { ...DEFAULT_STAFF_PERMS, ...(s.staffPerms || {}) };
+  const permWrap = el('div', { class: 'perm-list' });
+  STAFF_PERM_ITEMS.forEach(item => {
+    const cb = el('input', { type: 'checkbox' });
+    cb.checked = s.staffPerms[item.route] === true;
+    cb.onchange = () => { s.staffPerms[item.route] = cb.checked; };
+    permWrap.appendChild(el('label', { class: 'perm-row' }, [
+      cb,
+      el('span', {}, [
+        el('span', { class: 'perm-name', text: item.label }),
+        el('span', { class: 'perm-hint', text: item.hint }),
+      ]),
+    ]));
+  });
+  staffCard.append(
+    el('h3', { style: 'margin:20px 0 2px;font-size:15px', text: 'เมนูที่พี่เลี้ยงใช้ได้' }),
+    el('p', { class: 'muted', style: 'font-size:13px;margin:0 0 10px', text:
+      'ติ๊กเพื่อเปิดสิทธิ์ — มีผลกับพี่เลี้ยงทุกคนพร้อมกัน และมีผลทันทีโดยไม่ต้องให้เขาล็อกอินใหม่ ' +
+      '(หน้า "ตั้งค่า" กับ "สำรองข้อมูล" เปิดให้ไม่ได้ เพราะพี่เลี้ยงจะแก้สิทธิ์ตัวเองหรือดึงข้อมูลเงินออกได้)' }),
+    permWrap,
+  );
   container.appendChild(staffCard);
 
   // ── ข้อมูลร้าน ──
@@ -128,7 +189,15 @@ export async function renderSettings(container) {
   saveBtn.onclick = async () => {
     s.staffEmails = (s.staffEmails || []).map(e => String(e).trim()).filter(Boolean);
     await saveSettings(s);
-    toast('บันทึกการตั้งค่าแล้ว');
+    // ดันราคาโซนออกกำลังกายไปให้หน้าเว็บสาธารณะด้วย — ถ้าล้มเหลวไม่ต้องล้มการบันทึกทั้งหมด
+    // (การตั้งค่าหลักบันทึกไปแล้ว แค่เว็บอาจยังแสดงราคาเดิมจนกว่าจะบันทึกสำเร็จรอบหน้า)
+    try {
+      await savePublicPrices(s);
+      toast('บันทึกการตั้งค่าแล้ว — ราคาบนหน้าเว็บอัปเดตตามแล้ว');
+    } catch (e) {
+      console.error(e);
+      toast('บันทึกการตั้งค่าแล้ว (แต่ยังส่งราคาไปหน้าเว็บไม่สำเร็จ)');
+    }
   };
   container.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end' }, [saveBtn]));
 }

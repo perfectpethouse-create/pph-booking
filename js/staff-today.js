@@ -6,10 +6,12 @@ import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { matchCustomer } from './customers.js';
+import { APPOINTMENT_TYPES } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
 let _customers = [];
+let _appts = [];
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
 
@@ -61,8 +63,40 @@ export function renderStaffToday(container) {
       section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', 'blue'),
       section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', 'purple'),
       section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', 'grey'),
+      apptSection(today),
     );
   };
+
+  // นัดหมาย Grooming / โซนออกกำลังกายของวันนี้ — เรียงตามรอบเวลาเพื่อใช้เป็นคิวงานจริง
+  function apptSection(today) {
+    const list = _appts
+      .filter(a => a.date === today && a.status !== 'ยกเลิก')
+      .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+    const card = el('div', { class: 'card section-card section--purple' }, [
+      el('h2', { text: `คิว Grooming & ออกกำลังกายวันนี้ (${list.length})` }),
+    ]);
+    if (!list.length) {
+      card.appendChild(el('p', { class: 'muted', text: 'วันนี้ยังไม่มีคิว' }));
+      return card;
+    }
+    list.forEach(a => {
+      const typeLabel = (APPOINTMENT_TYPES.find(t => t.id === a.type) || {}).label || a.type;
+      card.appendChild(el('div', { class: 'lineitem' }, [
+        el('div', { class: 'li-head' }, [
+          el('div', {}, [
+            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}` }),
+            el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: a.customerName || '' }),
+          ]),
+          el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
+        ]),
+        el('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap;margin-top:4px' }, [
+          el('span', { class: 'pet-chip pet-' + (a.petType || 'dog'), html: `${PET_ICONS[a.petType] || icons.paw} ${escapeHtml(typeLabel)}` }),
+          a.notes ? el('span', { class: 'muted', style: 'font-size:12px', text: a.notes.split('\n')[0] }) : null,
+        ].filter(Boolean)),
+      ]));
+    });
+    return card;
+  }
 
   // จับคู่ลูกค้าเพื่อดึงข้อมูลสัตว์ (ชื่อน้อง/โน้ตสุขภาพ) มาแสดงให้พี่เลี้ยง
   // ใช้ matchCustomer ตัวเดียวกับหน้าลูกค้า — กติกาจับคู่จะได้ไม่หลุดกัน
@@ -116,4 +150,5 @@ export function renderStaffToday(container) {
 
   _unsub.push(listen('customers', arr => { _customers = arr; draw(); }));
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(); }));
+  _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
 }
