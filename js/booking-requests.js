@@ -47,7 +47,10 @@ export function renderBookingRequests(container) {
     const f = filterSel.value;
     const rows = _reqs
       .filter(r => f === 'all' ? true : f === 'done' ? r.status === 'done' : (r.status || 'new') === 'new')
-      .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''));
+      // แปลงเป็นสตริงก่อนเสมอ — ฟอร์มบนเว็บส่ง submittedAt มาหลายรูปแบบ
+      // ถ้าเจอค่าที่ไม่ใช่สตริง (เช่น timestamp ตัวเลข) localeCompare จะโยน error
+      // แล้วหน้า "คำขอจอง" ล่มทั้งหน้า เพราะคำขอผิดรูปแบบแค่รายการเดียว
+      .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
 
     listWrap.innerHTML = '';
     if (!rows.length) {

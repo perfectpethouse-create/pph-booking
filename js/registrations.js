@@ -5,7 +5,7 @@
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, escapeHtml, getSettings } from './ui.js';
 import { formatDateTH } from './calc.js';
-import { icons } from './icons.js';
+import { icons, brandLogo } from './icons.js';
 import { printSheet } from './intake-form.js';
 import { INTAKE_TERMS, INTAKE_CONSENT } from './config-shop.js';
 import { qrSVG } from './qrcode.js';
@@ -248,7 +248,7 @@ function buildRegSheet(f, d, opts = {}) {
   try { qrHtml = qrSVG(ref, { size: 96, margin: 1 }); } catch (e) { qrHtml = ''; }
   sheet.appendChild(el('div', { class: 'intake-head' }, [
     el('div', { class: 'intake-brand' }, [
-      el('span', { class: 'intake-logo', html: icons.paw }),
+      el('span', { class: 'intake-logo', html: brandLogo }),
       el('div', {}, [
         el('div', { class: 'intake-shop', text: s?.shopInfo?.name || 'Perfect Pet House' }),
         el('div', { class: 'intake-sub', text: 'ใบยืนยันข้อมูลการเข้าพัก · Check-in Confirmation' }),

@@ -4,7 +4,7 @@
 import { el, toast, getSettings } from './ui.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import { PET_TYPES } from './config-shop.js';
-import { icons } from './icons.js';
+import { icons, brandLogo } from './icons.js';
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id; }
 function roomLabel(typeId) {
@@ -61,7 +61,7 @@ export function buildCustomerCard(bookingRaw) {
 
   const card = el('div', { class: 'cust-card', id: 'customer-card-capture' }, [
     el('div', { class: 'cc-head' }, [
-      el('div', { class: 'logo', html: icons.paw }),
+      el('div', { class: 'logo', html: brandLogo }),
       el('div', { class: 'cc-title', text: 'สรุปการเข้าพัก' }),
       el('div', { class: 'cc-sub', text: s?.shopInfo?.name || 'Perfect Pet House' }),
     ]),

@@ -199,13 +199,15 @@ textarea { resize: vertical; min-height: 64px; }
   display: flex; align-items: center; gap: 10px; padding: 4px 10px 20px;
   font-weight: 700; font-size: 16px; letter-spacing: -0.02em; color: var(--ink);
 }
+/* โลโก้ร้านมีสีในตัวอยู่แล้ว จึงไม่ใส่กรอบสีส้มทับเหมือนตอนที่ยังใช้ไอคอนอุ้งเท้าขาว */
 #sidebar .brand .logo,
 #login-screen .logo {
-  width: 36px; height: 36px; border-radius: 10px;
-  background: linear-gradient(135deg, #FF8A3D, var(--accent));
-  color: #fff; display: grid; place-items: center; flex-shrink: 0;
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: grid; place-items: center;
 }
-#sidebar .brand .logo svg, #login-screen .logo svg { width: 20px; height: 20px; }
+#login-screen .logo { width: 76px; height: 76px; margin: 0 auto 6px; }
+/* โลโก้ทุกที่ใช้คลาสเดียวกัน — ห้ามบิดสัดส่วน */
+.brand-img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .navlink {
   display: flex; align-items: center; gap: 11px; padding: 9px 12px;
   border-radius: 10px; cursor: pointer; color: var(--ink);
@@ -390,9 +392,8 @@ body.modal-open { overflow: hidden; }
 }
 .cust-card .cc-head { text-align: center; margin-bottom: 18px; }
 .cust-card .cc-head .logo {
-  width: 48px; height: 48px; border-radius: 13px;
-  background: linear-gradient(135deg, #FF8A3D, var(--accent));
-  color: #fff; display: inline-grid; place-items: center; margin-bottom: 8px;
+  width: 62px; height: 62px;
+  display: inline-grid; place-items: center; margin-bottom: 6px;
 }
 .cust-card .cc-head .logo svg { width: 26px; height: 26px; }
 .cust-card .cc-title { font-weight: 700; font-size: 18px; letter-spacing: -0.02em; }
@@ -580,9 +581,8 @@ body.modal-open { overflow: hidden; }
   border-bottom: 1px solid var(--hairline-soft);
 }
 .sheet-avatar {
-  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
-  background: linear-gradient(135deg, #FF8A3D, var(--accent));
-  color: #fff; display: grid; place-items: center;
+  width: 38px; height: 38px; flex-shrink: 0;
+  display: grid; place-items: center;
 }
 .sheet-avatar svg { width: 20px; height: 20px; }
 .sheet-email { font-size: 13.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
@@ -736,8 +736,8 @@ body.modal-open { overflow: hidden; }
 }
 .intake-brand { display: flex; gap: 10px; align-items: center; }
 .intake-logo {
-  width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
-  background: var(--accent); color: #fff; display: grid; place-items: center;
+  width: 46px; height: 46px; flex-shrink: 0;
+  display: grid; place-items: center;
 }
 .intake-logo svg { width: 22px; height: 22px; }
 .intake-shop { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; }

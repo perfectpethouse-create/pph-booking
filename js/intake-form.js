@@ -12,7 +12,7 @@ import { el, getSettings, isStaff } from './ui.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import { PET_TYPES, INTAKE_TERMS, INTAKE_CONSENT } from './config-shop.js';
 import { matchCustomer } from './customers.js';
-import { icons } from './icons.js';
+import { icons, brandLogo } from './icons.js';
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id || ''; }
 
@@ -36,7 +36,7 @@ export function buildIntakeSheet(bookingRaw, customers = []) {
   // ── หัวกระดาษ ──
   sheet.appendChild(el('div', { class: 'intake-head' }, [
     el('div', { class: 'intake-brand' }, [
-      el('span', { class: 'intake-logo', html: icons.paw }),
+      el('span', { class: 'intake-logo', html: brandLogo }),
       el('div', {}, [
         el('div', { class: 'intake-shop', text: s?.shopInfo?.name || 'Perfect Pet House' }),
         el('div', { class: 'intake-sub', text: 'ใบรับฝากสัตว์เลี้ยง · Pet Boarding Intake Form' }),

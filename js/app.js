@@ -4,7 +4,7 @@
 import { initDb, MODE, onAuthChanged, signIn, signOutUser, listenSettings } from './db.js';
 import { el, setSettingsCache, setUser, toast, escapeHtml, isStaff, staffCan, getSettings, currentUser, confirmDialog } from './ui.js';
 import { STAFF_PERM_ITEMS } from './config-shop.js';
-import { icons } from './icons.js';
+import { icons, brandLogo } from './icons.js';
 
 import { renderDashboard } from './dashboard.js';
 import { renderStaffToday } from './staff-today.js';
@@ -194,7 +194,7 @@ function openNavSheet() {
   const sheet = el('div', { class: 'nav-sheet' }, [
     el('div', { class: 'sheet-grab' }),
     el('div', { class: 'sheet-user' }, [
-      el('span', { class: 'sheet-avatar', html: icons.paw }),
+      el('span', { class: 'sheet-avatar', html: brandLogo }),
       el('span', { class: 'sheet-email', text: getSettings() ? (currentUser()?.email || '') : '' }),
     ]),
     ...rows,
