@@ -15,6 +15,7 @@ function methodSelect(value = PAYMENT_METHODS[0]) {
 }
 
 let _unsub = [];
+let _appts = [];
 
 export function renderDashboard(container) {
   _unsub.forEach(u => u()); _unsub = [];
@@ -54,7 +55,10 @@ export function renderDashboard(container) {
     regBanner.appendChild(el('span', { class: 'btn sm primary', text: 'เปิดดู' }));
   }, { orderBy: null }));
 
-  _unsub.push(listen('bookings', raw => draw(raw.map(computeBooking))));
+  // เก็บ bookings ล่าสุดไว้ เพื่อให้ listener ของ appointments วาดใหม่ได้โดยไม่ต้องรอ bookings มาอีกรอบ
+  let _bookings = [];
+  _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(_bookings); }));
+  _unsub.push(listen('appointments', arr => { _appts = arr; draw(_bookings); }));
 
   function draw(bookings) {
     const today = todayISO();
@@ -85,16 +89,77 @@ export function renderDashboard(container) {
       ])
     ));
 
+    // จัดเป็นโซนเหมือนหน้า "งานวันนี้" — สีเดียวกันทั้งแอป
+    // (เดิมการ์ดทุกใบหน้าตาเหมือนกัน แยกไม่ออกว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ)
+    const groomList = apptsOfDay(today, 'grooming');
+    const exList = apptsOfDay(today, 'exercise');
+
     body.innerHTML = '';
     body.append(
-      section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, 'green', 'checkin'),
-      section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, 'orange', 'checkout'),
-      section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, 'red', 'pay'),
-      // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
-      section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', true, 'blue'),
-      section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', true, 'purple'),
-      section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, 'grey'),
+      zoneGroup('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)',
+        `${checkinToday.length + checkoutToday.length + staying.length} รายการ`, [
+        section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, icons.login, 'checkin'),
+        section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, icons.logout, 'checkout'),
+        section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, icons.banknote, 'pay'),
+        // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
+        section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', true, icons.calendar),
+        section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', true, icons.calendar),
+        section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, icons.alert),
+      ]),
+      zoneGroup('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)', `${groomList.length} คิว`, [
+        apptCard(groomList, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน'),
+      ]),
+      zoneGroup('exercise', icons.paw, 'โซนออกกำลังกาย', `${exList.length} คิว`, [
+        apptCard(exList, 'วันนี้ยังไม่มีคิวออกกำลังกาย'),
+      ]),
     );
+  }
+
+  // กล่องครอบ 1 โซน — หัวแถบสี + ไอคอน + จำนวนงาน
+  function zoneGroup(id, ico, title, countText, children) {
+    return el('div', { class: `zone-group zone--${id}` }, [
+      el('div', { class: 'zone-head' }, [
+        el('span', { class: 'zone-ico', html: ico }),
+        el('div', { class: 'zone-title', text: title }),
+        el('span', { class: 'zone-count', text: countText }),
+      ]),
+      el('div', { class: 'zone-body' }, children),
+    ]);
+  }
+
+  function apptsOfDay(today, type) {
+    return _appts
+      .filter(a => a.date === today && a.type === type && a.status !== 'ยกเลิก')
+      .sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  }
+
+  // คิวของโซนหนึ่ง เรียงตามรอบเวลา — เจ้าของร้านเห็นยอดด้วย
+  function apptCard(list, emptyText) {
+    const card = el('div', { class: 'card section-card' });
+    if (!list.length) {
+      card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: emptyText }));
+      return card;
+    }
+    list.forEach(a => {
+      const detail = a.type === 'exercise'
+        ? `ระดับ ${a.level || '-'}`
+        : (a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ');
+      card.appendChild(el('div', { class: 'lineitem' }, [
+        el('div', { class: 'li-head' }, [
+          el('div', {}, [
+            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}` }),
+            el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: a.customerName || '' }),
+          ]),
+          el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
+        ]),
+        el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-top:4px;align-items:center' }, [
+          el('span', { class: 'pet-chip pet-' + (a.petType || 'dog'), text: detail }),
+          el('span', { class: 'muted', style: 'font-size:12px', text: `ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.` }),
+          el('strong', { style: 'margin-left:auto', text: formatBaht(a.price) }),
+        ]),
+      ]));
+    });
+    return card;
   }
 
   // ปุ่มลัดเปลี่ยนสถานะเข้าพักจริง — บันทึกเวลาไว้ด้วย (มุมมองแดชบอร์ดอัปเดตเอง)
@@ -214,8 +279,14 @@ export function renderDashboard(container) {
     return btn;
   }
 
-  function section(title, list, emptyText, showBalance, color = 'grey', mode = null) {
-    const card = el('div', { class: `card section-card section--${color}` }, [el('h2', { text: `${title} (${list.length})` })]);
+  // สีมาจากโซนที่ครอบอยู่ · ไอคอนบอกประเภทงาน (เดิมใช้สีบอกประเภท ทำให้ชนกับสีโซน)
+  function section(title, list, emptyText, showBalance, ico = null, mode = null) {
+    const card = el('div', { class: 'card section-card' }, [
+      el('h2', { class: 'sec-title' }, [
+        el('span', { class: 'sec-ico', html: ico || '' }),
+        el('span', { text: `${title} (${list.length})` }),
+      ]),
+    ]);
     if (!list.length) { card.appendChild(el('p', { class: 'muted', text: emptyText })); return card; }
     const rows = list.map(b => el('tr', {}, [
       el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
