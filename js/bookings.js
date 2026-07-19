@@ -72,26 +72,23 @@ function buildTable(rows) {
   if (!rows.length) {
     return el('p', { class: 'muted', style: 'padding:20px;text-align:center', text: 'ยังไม่มีการจอง — กด "เพิ่มการจอง" เพื่อเริ่ม' });
   }
-  // พี่เลี้ยงไม่เห็นคอลัมน์เงิน และกดใบเดิมเพื่อแก้ไม่ได้ (สร้างใบใหม่ได้อย่างเดียว)
-  const staff = isStaff();
+  // พนักงานเห็นยอดเงินได้ (ต้องแจ้งลูกค้า/เก็บยอดคงเหลือหน้าเคาน์เตอร์)
   // "วันที่โอน" อยู่ในกลุ่มการเงิน (ติดกับมัดจำ) ไม่วางชิดวันเข้าพัก/ออก — กันอ่านสลับกัน
-  const cols = staff
-    ? ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'สถานะ']
-    : ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'วันที่โอน', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
-  const numCols = staff ? [] : [4, 6, 7];
+  const cols = ['ลูกค้า', 'เข้าพัก', 'ออก', 'ห้อง', 'ยอดรวม', 'วันที่โอน', 'มัดจำ', 'คงเหลือ', 'สถานะ'];
+  const numCols = [4, 6, 7];
   const head = el('tr', {}, cols.map((h, i) => el('th', { class: numCols.includes(i) ? 'num' : '', text: h })));
   const body = rows.map(raw => {
     const b = computeBooking(raw);
     const s = getSettings();
     const roomsDesc = b.lineItems.map(li => `${li.rooms || 1}×${(s?.roomPrices?.[li.roomType]?.label || li.roomType)}`).join(', ');
-    const moneyCells = staff ? [] : [
+    const moneyCells = [
       el('td', { class: 'num', text: formatBaht(b.grandTotal) }),
       // ยังไม่โอน = ไม่มีวัน → ขีดจางๆ ไม่ใช่วันมั่ว
       el('td', { class: b.depositDate ? '' : 'muted', text: b.depositDate ? formatDateTH(b.depositDate) : '—' }),
       el('td', { class: 'num', text: formatBaht(b.depositAmount) }),
       el('td', { class: 'num', text: formatBaht(b.balanceDue) }),
     ];
-    const tr = el('tr', { style: staff ? '' : 'cursor:pointer' }, [
+    const tr = el('tr', { style: 'cursor:pointer' }, [
       el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
       el('td', { text: formatDateTH(b.checkIn) }),
       el('td', { text: formatDateTH(b.checkOut) }),
@@ -99,7 +96,7 @@ function buildTable(rows) {
       ...moneyCells,
       el('td', {}, [statusPill(b.depositStatus)]),
     ]);
-    if (!staff) tr.onclick = () => openBookingForm(raw);
+    tr.onclick = () => openBookingForm(raw);
     return tr;
   });
   return el('table', {}, [el('thead', {}, [head]), el('tbody', {}, body)]);
@@ -135,9 +132,9 @@ export function openBookingForm(existing) {
     depositStatus: 'มัดจำแล้ว', recordStatus: 'ยังไม่ลงระบบ', notes: '',
   };
 
-  // พี่เลี้ยงกรอกใบจองได้ แต่ไม่เห็นตัวเลขเงิน — CSS ซ่อนทุกอย่างที่ติดคลาส .owner-only
-  // (ตัวเลขยังคำนวณและบันทึกตามปกติ เจ้าของร้านเปิดใบเดิมมาดูยอดได้ครบ)
-  const form = el('div', { class: isStaff() ? 'staff-mode' : '' });
+  // พนักงานเห็นราคาได้ เพราะต้องแจ้งลูกค้าที่ยืนรออยู่หน้าเคาน์เตอร์
+  // (สิ่งที่ยังกันไว้คือ แก้/ลบใบเดิม และเมนูรายงานรายได้ ซึ่งคุมด้วย staffPerms)
+  const form = el('div', {});
   const m = openModal(form);
   build();
 
@@ -419,8 +416,16 @@ export function openBookingForm(existing) {
     notesInp.oninput = () => draft.notes = notesInp.value;
 
     // ── ปุ่ม ──
-    const saveBtn = el('button', { class: 'btn primary', html: icons.save + ' บันทึก' });
-    saveBtn.onclick = () => doSave(draft, isNew, m);
+    // พนักงานเปิดใบเดิมมาดูยอด/แจ้งลูกค้าได้ แต่แก้ไม่ได้ (firestore.rules บล็อก update อยู่)
+    // ต้องปิดปุ่มบันทึกไว้ ไม่งั้นกดแล้วเจอ error โดยไม่รู้สาเหตุ
+    const readOnly = !isNew && isStaff();
+    const saveBtn = el('button', {
+      class: 'btn primary' + (readOnly ? ' disabled' : ''),
+      html: icons.save + (readOnly ? ' แก้ไขได้เฉพาะเจ้าของร้าน' : ' บันทึก'),
+    });
+    saveBtn.onclick = () => readOnly
+      ? toast('ใบที่บันทึกแล้วแก้ได้เฉพาะเจ้าของร้าน — ถ้าต้องแก้ กรุณาแจ้งเจ้าของร้าน')
+      : doSave(draft, isNew, m);
     const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ด' });
     cardBtn.onclick = () => openCardPreview(draft);
     // ฟังก์ชัน C: จองซ้ำ — ก็อปการจองเดิม เปิดใบใหม่ให้แก้เฉพาะวัน

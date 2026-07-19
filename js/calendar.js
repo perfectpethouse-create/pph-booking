@@ -168,7 +168,7 @@ export function renderCalendar(container) {
           b.checkIn === iso ? el('span', { class: 'pill green', text: 'เช็คอินวันนี้' }) : null,
           b.checkOut === iso ? el('span', { class: 'pill yellow', text: 'เช็คเอาท์วันนี้' }) : null,
           // สถานะมัดจำ = ข้อมูลการเงิน → เจ้าของร้านเท่านั้น
-          isStaff() ? null : el('span', { class: 'pill ' + (statusMap[b.depositStatus] || 'grey'), text: b.depositStatus || '-' }),
+          el('span', { class: 'pill ' + (statusMap[b.depositStatus] || 'grey'), text: b.depositStatus || '-' }),
         ].filter(Boolean)),
       ]);
       // ห้องแต่ละรายการ — ชิปสี+ไอคอนตามชนิดสัตว์
@@ -179,7 +179,7 @@ export function renderCalendar(container) {
         })));
       const nights = nightsBetween(b.checkIn, b.checkOut);
       // พี่เลี้ยงไม่เห็นยอดเงิน
-      const money = isStaff() ? '' : ` · ยอด ${formatBaht(b.grandTotal)} · ค้างชำระ ${formatBaht(b.balanceDue)}`;
+      const money = ` · ยอด ${formatBaht(b.grandTotal)} · ค้างชำระ ${formatBaht(b.balanceDue)}`;
       const info = el('div', { class: 'muted', style: 'font-size:13px', text:
         `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)} · ${nights} คืน${money}` });
       const row = el('div', { class: 'lineitem day-guest' }, [

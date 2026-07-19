@@ -27,7 +27,7 @@ function row(k, v) {
 export function buildIntakeSheet(bookingRaw, customers = []) {
   const b = computeBooking(bookingRaw);
   const s = getSettings();
-  const staff = isStaff();
+  // ใบนี้ลูกค้าเซ็น จึงต้องมีค่าบริการเสมอ ไม่ขึ้นกับว่าใครกดพิมพ์
   const nights = nightsBetween(b.checkIn, b.checkOut) || (b.lineItems[0]?.nights ?? 0);
   const cust = customers.find(c => matchCustomer(b, c));
 
@@ -91,7 +91,7 @@ export function buildIntakeSheet(bookingRaw, customers = []) {
   }
 
   // ── ยอดเงิน (พี่เลี้ยงไม่เห็น) ──
-  if (!staff) {
+  {
     const payBox = el('div', { class: 'intake-box' }, [el('h3', { text: 'ค่าบริการ' })]);
     if (b.totalDiscount > 0) payBox.appendChild(row('ยอดเต็ม (ก่อนส่วนลด)', formatBaht(b.grossTotal)));
     if (b.totalDiscount > 0) payBox.appendChild(row('ส่วนลดรวม', `− ${formatBaht(b.totalDiscount)}`));

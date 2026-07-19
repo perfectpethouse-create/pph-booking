@@ -82,6 +82,9 @@ button { font-family: inherit; }
 .btn.sm { padding: 6px 13px; font-size: 13px; }
 .btn.block { width: 100%; }
 .btn:disabled { opacity: .4; cursor: not-allowed; }
+/* ปุ่มที่กดได้แต่ทำงานไม่ได้ (เช่น พนักงานเปิดใบเดิม) — กดแล้วเด้งข้อความอธิบายเหตุผล
+   จึงใช้คลาสแทน :disabled ที่จะกินคลิกไปเลยจนผู้ใช้ไม่รู้ว่าทำไมกดไม่ได้ */
+.btn.disabled { opacity: .55; font-weight: 500; }
 .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
 .btn.sm svg { width: 14px; height: 14px; }
 
@@ -404,6 +407,16 @@ body.modal-open { overflow: hidden; }
 }
 .cust-card .cc-row .k { color: var(--muted); }
 .cust-card .cc-row .v { font-weight: 600; text-align: right; letter-spacing: -0.01em; }
+/* การ์ดยืนยันคิว — ใช้สีประจำโซนเดียวกับตารางรอบเวลา ลูกค้าจะจำสีได้ตรงกัน */
+.cust-card--grooming { --cat: #7A5AF8; --cat-tint: #F1EEFE; }
+.cust-card--exercise { --cat: #0E9AA7; --cat-tint: #E6F6F8; }
+.cust-card--grooming .cc-total, .cust-card--exercise .cc-total {
+  background: var(--cat); color: #fff;
+}
+.cust-card .cc-note {
+  font-size: 11.5px; color: var(--muted); line-height: 1.45;
+  background: var(--bg); border-radius: 10px; padding: 9px 12px; margin-top: 8px;
+}
 .cust-card .cc-total {
   background: var(--bg); border-radius: 12px; padding: 11px 14px;
   margin-top: 14px; display: flex; justify-content: space-between;
@@ -608,10 +621,34 @@ body.modal-open { overflow: hidden; }
   .nav-sheet, .sheet-bg, .modal { animation: none !important; }
 }
 
-/* ═══ ตารางรอบเวลา Grooming / โซนออกกำลังกาย ═══ */
-.slot-board { margin-bottom: 22px; }
+/* ═══ ตารางรอบเวลา Grooming / โซนออกกำลังกาย ═══
+   แต่ละโซนมีสีประจำตัว (--cat) เพื่อให้แยกออกทันทีว่ากำลังดูโซนไหน
+   ⚠️ สีหมวด = สีของ "กรอบ/หัวข้อ" เท่านั้น · สีพื้นช่องสงวนไว้บอกสถานะเต็ม/ว่าง
+   ถ้าเอาสีหมวดไปทาพื้นช่องด้วย จะแยกไม่ออกว่ารอบไหนเต็มแล้ว */
+.slot-board { margin-bottom: 22px; --cat: var(--accent); --cat-tint: var(--accent-tint); }
 .slot-board:last-child { margin-bottom: 0; }
-.slot-board-title { font-size: 15px; margin: 0 0 10px; color: var(--ink); }
+.slot-board--grooming { --cat: #7A5AF8; --cat-tint: #F1EEFE; }   /* ม่วง — งานอาบน้ำ/ตัดขน */
+.slot-board--exercise { --cat: #0E9AA7; --cat-tint: #E6F6F8; }   /* เขียวน้ำทะเล — สนาม+สระ */
+
+.sb-head {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px 14px; margin-bottom: 12px;
+  background: var(--cat-tint); border-radius: 12px;
+  border-left: 4px solid var(--cat);
+}
+.sb-ico {
+  width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+  background: var(--cat); color: #fff; display: grid; place-items: center;
+}
+.sb-ico svg { width: 18px; height: 18px; }
+.sb-text { flex: 1; min-width: 0; }
+.sb-title { font-weight: 700; font-size: 15px; letter-spacing: -0.02em; color: var(--ink); }
+.sb-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.sb-count {
+  font-size: 12.5px; font-weight: 600; color: #fff; background: var(--cat);
+  padding: 3px 10px; border-radius: 980px; white-space: nowrap; flex-shrink: 0;
+}
+.sb-cap { font-size: 11.5px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
 .slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .slot {
   border: 1px solid var(--hairline-soft); border-radius: 12px;
@@ -621,7 +658,7 @@ body.modal-open { overflow: hidden; }
 /* สีบอกสถานะรอบแบบเห็นปราดเดียว: ว่าง / มีบ้าง / เต็ม */
 .slot--part { border-color: #F0C36D; background: #FFFBF2; }
 .slot--full { border-color: #E8A0A0; background: #FFF5F5; }
-.slot-time { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; font-size: 14px; }
+.slot-time { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; font-size: 14px; color: var(--cat); }
 .slot-count { font-size: 12px; font-weight: 500; color: var(--muted); }
 .slot--full .slot-count { color: #C0392B; }
 /* ── ปุ่มสลับมุมมอง รายวัน / 7 วัน ── */
@@ -641,8 +678,8 @@ body.modal-open { overflow: hidden; }
   padding: 9px 5px; display: flex; flex-direction: column; gap: 5px;
   align-items: center; text-align: center;
 }
-.week-day:hover { border-color: var(--accent); }
-.week-day.is-today { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.week-day:hover { border-color: var(--cat); }
+.week-day.is-today { border-color: var(--cat); box-shadow: 0 0 0 2px var(--cat-tint); }
 .week-day--part { background: #FFFBF2; }
 .week-day--full { background: #FFF5F5; border-color: #E8A0A0; }
 .wd-top { display: flex; flex-direction: column; gap: 1px; }
@@ -650,7 +687,7 @@ body.modal-open { overflow: hidden; }
 .wd-date { font-size: 13px; font-weight: 700; color: var(--ink); }
 /* แถบแสดงสัดส่วนที่ถูกจองไปแล้ว — อ่านความว่างของทั้งสัปดาห์ได้ในพริบตา */
 .wd-bar { width: 100%; height: 4px; border-radius: 2px; background: var(--fill); overflow: hidden; }
-.wd-bar span { display: block; height: 100%; background: var(--accent); border-radius: 2px; }
+.wd-bar span { display: block; height: 100%; background: var(--cat); border-radius: 2px; }
 .week-day--full .wd-bar span { background: #C0392B; }
 .wd-free { font-size: 10.5px; color: var(--muted); line-height: 1.2; }
 .week-day--full .wd-free { color: #C0392B; font-weight: 600; }
@@ -682,7 +719,7 @@ body.modal-open { overflow: hidden; }
   padding: 5px; cursor: pointer; color: var(--muted);
   display: grid; place-items: center;
 }
-.slot-add:hover { border-color: var(--accent); color: var(--accent); }
+.slot-add:hover { border-color: var(--cat); color: var(--cat); background: var(--cat-tint); }
 .slot-add svg { width: 16px; height: 16px; }
 .capacity-note { margin-top: 8px; }
 .capacity-note .pill { display: inline-block; }
@@ -930,8 +967,10 @@ body.modal-open { overflow: hidden; }
   #main { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
   /* ป้ายโหมดทดลองต้องลอยเหนือแถบเมนู ไม่ใช่ทับปุ่ม */
   .mode-badge { bottom: calc(70px + env(safe-area-inset-bottom)); }
-  /* ปุ่มลอย/แถบสรุปยอดในฟอร์มก็ต้องหลบแถบล่างเช่นกัน */
-  .sticky-summary { bottom: calc(62px + env(safe-area-inset-bottom)); }
+  /* ⚠️ ห้ามดัน .sticky-summary ขึ้นมาหลบแถบเมนูล่าง —
+     modal (z-index 50) ทับแถบเมนู (z-index 40) อยู่แล้วตอนเปิดฟอร์ม
+     ถ้าใส่ bottom offset จะทำให้แถบสรุปลอยค้างกลางฟอร์มแล้วบังเนื้อหา
+     ตอนเลื่อนดู (เคยเป็นบั๊กมาแล้ว) ปล่อยให้ใช้ค่าเดิมที่ติดขอบล่าง modal */
   #content { padding: 16px 14px; }
   .page-title h1 { font-size: 21px; }
   .card { padding: 16px; }

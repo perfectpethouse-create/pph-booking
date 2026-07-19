@@ -17,6 +17,9 @@ import {
   DEFAULT_GROOMING_CAPACITY, groomingPrice,
   PET_TYPES,
 } from './config-shop.js';
+import {
+  buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
+} from './summary-card.js';
 import { icons } from './icons.js';
 
 let _appts = [];
@@ -123,8 +126,11 @@ function buildWeekBoard(type, startDate, onPickDay) {
   const slots = slotsFor(type.id);
   const today = todayISO();
 
-  const wrap = el('div', { class: 'slot-board' }, [
-    el('h3', { class: 'slot-board-title', text: `${type.label} · ${formatDateTH(startDate)} – ${formatDateTH(addDaysISO(startDate, 6))}` }),
+  const weekCount = _appts.filter(a => a.type === type.id && a.status !== 'ยกเลิก'
+    && a.date >= startDate && a.date <= addDaysISO(startDate, 6)).length;
+  const wrap = el('div', { class: `slot-board slot-board--${type.id}` }, [
+    boardHeader(type, `${formatDateTH(startDate)} – ${formatDateTH(addDaysISO(startDate, 6))}`,
+      weekCount ? `${weekCount} คิว` : 'ยังว่าง', `รับได้รอบละ ${cap}`),
   ]);
   const grid = el('div', { class: 'week-grid' });
 
@@ -157,11 +163,26 @@ function buildWeekBoard(type, startDate, onPickDay) {
 }
 
 // ตารางรอบเวลาของวันที่เลือก — เห็นทันทีว่ารอบไหนเต็ม รอบไหนยังว่าง
+// หัวข้อของแต่ละโซน — ไอคอน+สีประจำหมวด ทำให้แยกออกทันทีว่ากำลังดูโซนไหน
+// (เดิมสองโซนหน้าตาเหมือนกันหมด ต้องอ่านตัวหนังสือถึงจะรู้)
+function boardHeader(type, subtitle, booked, capText) {
+  return el('div', { class: 'sb-head' }, [
+    el('span', { class: 'sb-ico', html: type.id === 'exercise' ? icons.paw : icons.star }),
+    el('div', { class: 'sb-text' }, [
+      el('div', { class: 'sb-title', text: type.label }),
+      el('div', { class: 'sb-sub', text: subtitle }),
+    ]),
+    el('span', { class: 'sb-count', text: booked }),
+    capText ? el('span', { class: 'sb-cap', text: capText }) : null,
+  ]);
+}
+
 function buildSlotBoard(type, date) {
   const s = getSettings();
   const cap = capacityFor(type.id, s);
-  const wrap = el('div', { class: 'slot-board' }, [
-    el('h3', { class: 'slot-board-title', text: `${type.label} · ${formatDateTH(date)} · รับได้รอบละ ${cap}` }),
+  const dayCount = _appts.filter(a => a.type === type.id && a.date === date && a.status !== 'ยกเลิก').length;
+  const wrap = el('div', { class: `slot-board slot-board--${type.id}` }, [
+    boardHeader(type, formatDateTH(date), dayCount ? `${dayCount} คิว` : 'ยังว่าง', `รับได้รอบละ ${cap}`),
   ]);
 
   const grid = el('div', { class: 'slot-grid' });
@@ -184,7 +205,7 @@ function buildSlotBoard(type, date) {
           title: `${a.type === 'grooming' ? (a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ') : 'ออกกำลังกาย'} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
         }, [
           el('span', { class: 'slot-pet', text: a.petName || a.customerName || '-' }),
-          isStaff() ? null : el('span', { class: 'slot-price', text: formatBaht(a.price) }),
+          el('span', { class: 'slot-price', text: formatBaht(a.price) }),
           // ป้ายอยู่ท้ายสุดใน DOM เพื่อให้ตกลงบรรทัดใหม่ ไม่ไปบีบชื่อน้องจนอ่านไม่ออก
           a.type === 'grooming' && a.includeCut ? el('span', { class: 'slot-tag slot-tag--inline', text: 'ตัดขน' }) : null,
         ].filter(Boolean));
@@ -221,7 +242,8 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     source: 'counter',
   };
 
-  const form = el('div', { class: isStaff() ? 'staff-mode' : '' });
+  // พนักงานเห็นราคาได้ — ต้องแจ้งลูกค้าหน้าเคาน์เตอร์
+  const form = el('div', {});
 
   // ฟังรายการนัดหมายตลอดเวลาที่ฟอร์มเปิดอยู่ — ต้องทำแม้เปิดฟอร์มจากหน้าอื่น
   // (เช่น "คำขอจองจากเว็บ → สร้างนัดหมาย") ไม่งั้น _appts ว่าง แล้วนับคิวได้ 0
@@ -337,8 +359,18 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     notesInp.value = draft.notes || '';
     notesInp.oninput = () => draft.notes = notesInp.value;
 
-    const saveBtn = el('button', { class: 'btn primary', html: icons.save + ' บันทึก' });
-    saveBtn.onclick = () => doSave(draft, isNew, m, existing?.id, s);
+    // พนักงานเปิดคิวเดิมมาดูได้ แต่แก้ไม่ได้ (firestore.rules บล็อก update)
+    const readOnly = !isNew && isStaff();
+    const saveBtn = el('button', {
+      class: 'btn primary' + (readOnly ? ' disabled' : ''),
+      html: icons.save + (readOnly ? ' แก้ไขได้เฉพาะเจ้าของร้าน' : ' บันทึก'),
+    });
+    saveBtn.onclick = () => readOnly
+      ? toast('คิวที่บันทึกแล้วแก้ได้เฉพาะเจ้าของร้าน — ถ้าต้องแก้ กรุณาแจ้งเจ้าของร้าน')
+      : doSave(draft, isNew, m, existing?.id, s);
+    // ดูการ์ดก่อนบันทึกได้ เผื่อลูกค้ายืนรออยู่แล้วอยากเห็นก่อนตกลง
+    const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ด' });
+    cardBtn.onclick = () => openApptCard({ ...draft, price: computePrice(draft, s), durationMin: durationFor(draft.type, draft.includeCut) });
     // ลบได้เฉพาะเจ้าของร้าน (firestore.rules บล็อกฝั่ง server ด้วย)
     const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
     if (delBtn) delBtn.onclick = async () => {
@@ -362,7 +394,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         el('div', { class: 'field' }, [el('label', { text: 'หมายเหตุ' }), notesInp]),
         priceBox),
       el('div', { class: 'row', style: 'justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:12px' },
-        [delBtn, saveBtn].filter(Boolean)),
+        [delBtn, cardBtn, saveBtn].filter(Boolean)),
     );
     recalc();
   }
@@ -407,6 +439,36 @@ async function doSave(draft, isNew, modal, existingId, settings) {
   await save('appointments', rec);
   modal.close();
   toast(isNew ? 'จองคิวแล้ว' : 'อัปเดตแล้ว');
+  // เปิดการ์ดให้เลย — ลูกค้ายืนรออยู่หน้าเคาน์เตอร์ ส่งเข้า Line ต่อได้ทันที
+  openApptCard(rec, true);
+}
+
+// การ์ดยืนยันคิวสำหรับส่งลูกค้า (แคปหน้าจอ / แชร์เข้า Line / ดาวน์โหลด PNG)
+// savedMode = เปิดหลังบันทึกเสร็จ → มีปุ่ม "เสร็จแล้ว" ให้รู้ว่าจบงาน
+export function openApptCard(appt, savedMode = false) {
+  if (!appt.date || !appt.time) return toast('เลือกวันที่และรอบเวลาก่อนสร้างการ์ด');
+  const card = buildAppointmentCard(appt);
+  const text = buildAppointmentText(appt);
+  const fileBase = `คิว-${appt.petName || appt.customerName || 'ลูกค้า'}`;
+
+  const shareBtn = el('button', { class: 'btn primary', html: icons.share + ' แชร์เข้า Line' });
+  const dlBtn = el('button', { class: 'btn', html: icons.download + ' ดาวน์โหลด PNG' });
+  const copyBtn = el('button', { class: 'btn', html: icons.copy + ' คัดลอกข้อความ' });
+  const doneBtn = el('button', { class: 'btn primary block', html: icons.check + ' เสร็จแล้ว' });
+
+  const m = openModal(el('div', {}, [
+    el('h2', { text: savedMode ? 'จองคิวแล้ว ✓' : 'การ์ดยืนยันคิว' }),
+    el('p', { class: 'muted', style: 'margin-top:-6px', text:
+      'แคปหน้าจอส่งให้ลูกค้าได้เลย หรือกดแชร์/ดาวน์โหลด/คัดลอกข้อความ' }),
+    el('div', { style: 'display:flex;justify-content:center;margin:10px 0' }, [card]),
+    el('div', { class: 'row', style: 'justify-content:center;gap:8px;flex-wrap:wrap' }, [copyBtn, dlBtn, shareBtn]),
+    ...(savedMode ? [el('div', { style: 'margin-top:14px' }, [doneBtn])] : []),
+  ]));
+
+  shareBtn.onclick = () => shareCard(card, appt, { text, filename: fileBase + '.png' });
+  dlBtn.onclick = () => downloadCardPNG(card, fileBase + '.png');
+  copyBtn.onclick = () => copyText(text);
+  doneBtn.onclick = () => m.close();
 }
 
 // ────────── helpers (รูปแบบเดียวกับ bookings.js) ──────────
