@@ -407,12 +407,8 @@ body.modal-open { overflow: hidden; }
 }
 .cust-card .cc-row .k { color: var(--muted); }
 .cust-card .cc-row .v { font-weight: 600; text-align: right; letter-spacing: -0.01em; }
-/* การ์ดยืนยันคิว — ใช้สีประจำโซนเดียวกับตารางรอบเวลา ลูกค้าจะจำสีได้ตรงกัน */
 .cust-card--grooming { --cat: #7A5AF8; --cat-tint: #F1EEFE; }
 .cust-card--exercise { --cat: #0E9AA7; --cat-tint: #E6F6F8; }
-.cust-card--grooming .cc-total, .cust-card--exercise .cc-total {
-  background: var(--cat); color: #fff;
-}
 .cust-card .cc-note {
   font-size: 11.5px; color: var(--muted); line-height: 1.45;
   background: var(--bg); border-radius: 10px; padding: 9px 12px; margin-top: 8px;
@@ -421,6 +417,14 @@ body.modal-open { overflow: hidden; }
   background: var(--bg); border-radius: 12px; padding: 11px 14px;
   margin-top: 14px; display: flex; justify-content: space-between;
   font-weight: 700; font-size: 15px;
+}
+/* กล่องค่าบริการบนการ์ดยืนยันคิว — สีส้มแบรนด์ ตัวอักษรขาว
+   ⚠️ ต้องอยู่ "หลัง" .cust-card .cc-total เพราะความจำเพาะเท่ากัน (0,2,0)
+   ถ้าวางไว้ก่อน กฎด้านล่างจะทับพื้นเป็นสีเทา เหลือแต่ตัวอักษรขาว = มองไม่เห็น
+   (เคยเป็นบั๊กมาแล้ว) */
+.cust-card--grooming .cc-total,
+.cust-card--exercise .cc-total {
+  background: var(--accent); color: #fff;
 }
 .cust-card .cc-deposit {
   background: var(--accent); color: #fff; border-radius: 12px;

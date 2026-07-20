@@ -5,6 +5,7 @@ import { el, toast, getSettings } from './ui.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import {
   PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, GROOMING_SIZES, COAT_TYPES,
+  groomServiceOf, groomServiceLabel,
 } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 
@@ -202,12 +203,14 @@ export function describeAppointment(a) {
     const lvl = (EXERCISE_LEVELS.find(x => x.id === String(a.level)) || {}).label || `ระดับ ${a.level}`;
     return { title: 'โซนออกกำลังกาย', detail: `${size} · ${lvl}` };
   }
+  const service = groomServiceOf(a);
   const sizes = GROOMING_SIZES[a.petType] || [];
   const size = (sizes.find(x => x.id === a.size) || {}).label || a.size || '-';
+  // ตัดขนอย่างเดียวคิดราคาจากไซส์อย่างเดียว ไม่เกี่ยวกับชนิดขน — ไม่ต้องโชว์ให้ลูกค้าสับสน
   const coats = COAT_TYPES[a.petType] || [];
-  const coat = (coats.find(x => x.id === a.coatType) || {}).label || '';
+  const coat = service === 'cut' ? '' : ((coats.find(x => x.id === a.coatType) || {}).label || '');
   return {
-    title: a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ',
+    title: groomServiceLabel(service),
     detail: [petLabel(a.petType), size, coat].filter(Boolean).join(' · '),
   };
 }

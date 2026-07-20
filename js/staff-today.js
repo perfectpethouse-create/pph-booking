@@ -6,6 +6,7 @@ import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { matchCustomer } from './customers.js';
+import { groomServiceOf, groomServiceLabel } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -107,7 +108,7 @@ export function renderStaffToday(container) {
     list.forEach(a => {
       const detail = a.type === 'exercise'
         ? `ระดับ ${a.level || '-'}`
-        : (a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ');
+        : groomServiceLabel(groomServiceOf(a));
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [

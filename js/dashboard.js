@@ -4,7 +4,9 @@
 import { listen, save } from './db.js';
 import { el, getSettings, toast, confirmDialog, openModal } from './ui.js';
 import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO } from './calc.js';
-import { PAYMENT_METHODS } from './config-shop.js';
+import { PAYMENT_METHODS,
+  groomServiceOf, groomServiceLabel,
+} from './config-shop.js';
 import { icons } from './icons.js';
 
 // เลือกช่องทางรับเงิน — ใช้ร่วมกันทุกจุดที่ปิดยอด (เช็คอิน/เช็คเอาท์/รับเงินตามหลัง)
@@ -143,7 +145,7 @@ export function renderDashboard(container) {
     list.forEach(a => {
       const detail = a.type === 'exercise'
         ? `ระดับ ${a.level || '-'}`
-        : (a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ');
+        : groomServiceLabel(groomServiceOf(a));
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [

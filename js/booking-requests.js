@@ -226,7 +226,10 @@ export function apptDraftFromRequest(r, type) {
     phone: r.phone || '',
     petName: r.petname || '',
     petType: type === 'exercise' ? 'dog' : petIdFromWeb(r.pet),
-    size: '', coatType: 'short', includeCut: /ตัดขน/.test(String(r.service || '')),
+    size: '', coatType: 'short',
+    // เว็บส่งมาแค่ข้อความ แยกไม่ออกว่าตัดขนอย่างเดียวหรืออาบน้ำด้วย → ตั้งเป็นอาบน้ำ+ตัดขน
+    // ให้พนักงานเปลี่ยนเป็น "ตัดขนอย่างเดียว" ตอนคุยกับลูกค้าถ้าจำเป็น
+    groomService: /ตัดขน/.test(String(r.service || '')) ? 'bathCut' : 'bath',
     exSize: 'S', level: '1',
     price: 0, status: 'จองแล้ว', notes,
     source: 'web',

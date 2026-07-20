@@ -16,6 +16,7 @@ import {
   GROOMING_BATH_MAX, GROOMING_CUT_MAX, groomingDurationLabel,
   DEFAULT_GROOMING_CAPACITY, groomingPrice,
   PET_TYPES,
+  GROOMING_SERVICES, groomServiceOf, groomServiceLabel, groomingDuration,
 } from './config-shop.js';
 import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
@@ -26,18 +27,19 @@ let _appts = [];
 let _unsub = [];
 
 // ── ตัวช่วยเฉพาะประเภท — รวมความต่างของสองโซนไว้ที่เดียว ──
-// includeCut: งานตัดขนใช้เวลานานกว่า จึงเริ่มได้ไม่เกิน GROOMING_CUT_LAST_SLOT (18:00)
+// งานที่มีตัดขนใช้เวลานานกว่า จึงเริ่มได้ไม่เกิน GROOMING_CUT_LAST_SLOT (18:00)
 // ส่วนอาบน้ำอย่างเดียวรับได้ถึงรอบสุดท้าย 19:00
 // (เทียบสตริง 'HH:MM' ตรงๆ ได้ เพราะเป็นเลขสองหลักเรียงตามเวลาอยู่แล้ว)
-export function slotsFor(type, includeCut = false) {
+export function slotsFor(type, service = 'bath') {
   if (type === 'exercise') return EXERCISE_SLOTS;
-  return includeCut ? GROOMING_SLOTS.filter(t => t <= GROOMING_CUT_LAST_SLOT) : GROOMING_SLOTS;
+  const hasCut = service === 'cut' || service === 'bathCut' || service === true;
+  return hasCut ? GROOMING_SLOTS.filter(t => t <= GROOMING_CUT_LAST_SLOT) : GROOMING_SLOTS;
 }
 // คืน "เวลาที่ต้องกันไว้" = ค่ามากสุดของงานนั้น เพื่อไม่ให้รับคิวถี่เกินจริง
 // (อาบน้ำ 2 ชม. · อาบน้ำ+ตัดขน 3 ชม. · โซนออกกำลังกาย 1 ชม.)
-export function durationFor(type, includeCut = false) {
+export function durationFor(type, service = 'bath') {
   if (type === 'exercise') return EXERCISE_DURATION_MIN;
-  return includeCut ? GROOMING_CUT_MAX : GROOMING_BATH_MAX;
+  return groomingDuration(service);
 }
 export function capacityFor(type, settings) {
   if (type === 'exercise') return EXERCISE_CAPACITY;
@@ -202,12 +204,13 @@ function buildSlotBoard(type, date) {
         // งานตัดขนกินเวลานานกว่าเท่าตัว — ติดป้ายไว้ให้เห็นตอนวางแผนคิวทั้งวัน
         const chip = el('button', {
           class: 'slot-chip',
-          title: `${a.type === 'grooming' ? (a.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ') : 'ออกกำลังกาย'} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
+          title: `${a.type === 'grooming' ? groomServiceLabel(groomServiceOf(a)) : 'ออกกำลังกาย'} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
         }, [
           el('span', { class: 'slot-pet', text: a.petName || a.customerName || '-' }),
           el('span', { class: 'slot-price', text: formatBaht(a.price) }),
           // ป้ายอยู่ท้ายสุดใน DOM เพื่อให้ตกลงบรรทัดใหม่ ไม่ไปบีบชื่อน้องจนอ่านไม่ออก
-          a.type === 'grooming' && a.includeCut ? el('span', { class: 'slot-tag slot-tag--inline', text: 'ตัดขน' }) : null,
+          a.type === 'grooming' && groomServiceOf(a) !== 'bath'
+            ? el('span', { class: 'slot-tag slot-tag--inline', text: groomServiceOf(a) === 'cut' ? 'ตัดขน' : 'อาบน้ำ+ตัดขน' }) : null,
         ].filter(Boolean));
         chip.onclick = () => openAppointmentForm(a);
         return chip;
@@ -235,7 +238,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     time: prefill.time || '',
     customerName: '', phone: '', petName: '', petType: 'dog',
     // grooming
-    size: '', coatType: 'short', includeCut: false,
+    size: '', coatType: 'short', groomService: 'bath',
     // exercise
     exSize: 'S', level: '1',
     price: 0, status: 'จองแล้ว', notes: '',
@@ -293,13 +296,13 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     const typeSel = selectEl(APPOINTMENT_TYPES.map(t => [t.id, t.label]), draft.type, v => {
       draft.type = v;
       // รอบเวลาของสองโซนไม่เหมือนกัน — ถ้าเวลาเดิมไม่มีในโซนใหม่ต้องล้างทิ้ง
-      if (!slotsFor(v, draft.includeCut).includes(draft.time)) draft.time = '';
+      if (!slotsFor(v, draft.groomService).includes(draft.time)) draft.time = '';
       rerender();
     });
     const dateInp = el('input', { type: 'date', value: draft.date || '' });
     dateInp.oninput = () => { draft.date = dateInp.value; recalc(); };
     const timeSel = selectEl(
-      [['', '— เลือกรอบ —'], ...slotsFor(draft.type, draft.includeCut).map(t => [t, t])],
+      [['', '— เลือกรอบ —'], ...slotsFor(draft.type, draft.groomService).map(t => [t, t])],
       draft.time || '', v => { draft.time = v; recalc(); });
 
     const nameInp = el('input', { value: draft.customerName || '', placeholder: 'ชื่อลูกค้า' });
@@ -331,26 +334,29 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       const sizeSel = selectEl([['', '— เลือกขนาด —'], ...sizes.map(x => [x.id, x.label])], draft.size || '', v => { draft.size = v; recalc(); });
       const coats = COAT_TYPES[draft.petType] || [];
       const coatSel = selectEl(coats.map(x => [x.id, x.label]), draft.coatType, v => { draft.coatType = v; recalc(); });
-      const cutChk = el('input', { type: 'checkbox' });
-      cutChk.checked = !!draft.includeCut;
-      cutChk.onchange = () => {
-        draft.includeCut = cutChk.checked;
-        // ติ๊กตัดขนทั้งที่เลือกรอบดึกไว้แล้ว → รอบนั้นใช้ไม่ได้ ต้องล้างและบอกเหตุผล
+      // รูปแบบบริการ 3 แบบ — อาบน้ำอย่างเดียว / ตัดขนอย่างเดียว / อาบน้ำ+ตัดขน
+      const svcSel = selectEl(GROOMING_SERVICES.map(x => [x.id, x.label]), draft.groomService || 'bath', v => {
+        draft.groomService = v;
+        // เลือกงานที่มีตัดขนทั้งที่จองรอบดึกไว้แล้ว → รอบนั้นใช้ไม่ได้ ต้องล้างและบอกเหตุผล
         // (ถ้าปล่อยไว้ ผู้ใช้จะเห็นเวลาค้างอยู่แต่ระบบบันทึกรอบที่ไม่มีอยู่จริง)
-        if (draft.includeCut && draft.time && !slotsFor('grooming', true).includes(draft.time)) {
+        if (draft.time && !slotsFor('grooming', v).includes(draft.time)) {
           toast(`รอบ ${draft.time} รับเฉพาะอาบน้ำ — งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT} กรุณาเลือกรอบใหม่`);
           draft.time = '';
         }
         rerender();
-      };
+      });
+      // ตัดขนอย่างเดียวไม่ต้องเลือกลักษณะขน เพราะราคาคิดจากไซส์อย่างเดียว
+      const cutOnly = draft.groomService === 'cut';
       typeFields = el('div', {}, [
         el('p', { class: 'muted', style: 'margin:0 0 10px;font-size:13px', text:
-          `${draft.includeCut ? 'อาบน้ำ + ตัดขน' : 'อาบน้ำ'} ใช้เวลาประมาณ ${groomingDurationLabel(draft.includeCut)}`
-          + ` · อาบน้ำรับถึงรอบ ${GROOMING_SLOTS[GROOMING_SLOTS.length - 1]} · ตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT}` }),
-        el('div', { class: 'row' }, [labeled('ชนิดสัตว์', petSel), labeled('ขนาด', sizeSel), labeled('ลักษณะขน', coatSel)]),
-        el('label', { class: 'perm-row', style: 'margin-top:4px' }, [
-          cutChk, el('span', {}, [el('span', { class: 'perm-name', text: 'ตัดขนด้วย' })]),
-        ]),
+          `${groomServiceLabel(draft.groomService || 'bath')} ใช้เวลาประมาณ ${groomingDurationLabel(draft.groomService)}`
+          + ` · อาบน้ำรับถึงรอบ ${GROOMING_SLOTS[GROOMING_SLOTS.length - 1]} · งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT}` }),
+        el('div', { class: 'row' }, [labeled('รูปแบบบริการ', svcSel)]),
+        el('div', { class: 'row' }, [
+          labeled('ชนิดสัตว์', petSel),
+          labeled('ขนาด', sizeSel),
+          cutOnly ? null : labeled('ลักษณะขน', coatSel),
+        ].filter(Boolean)),
       ]);
     }
 
@@ -370,7 +376,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       : doSave(draft, isNew, m, existing?.id, s);
     // ดูการ์ดก่อนบันทึกได้ เผื่อลูกค้ายืนรออยู่แล้วอยากเห็นก่อนตกลง
     const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ด' });
-    cardBtn.onclick = () => openApptCard({ ...draft, price: computePrice(draft, s), durationMin: durationFor(draft.type, draft.includeCut) });
+    cardBtn.onclick = () => openApptCard({ ...draft, price: computePrice(draft, s), durationMin: durationFor(draft.type, draft.groomService) });
     // ลบได้เฉพาะเจ้าของร้าน (firestore.rules บล็อกฝั่ง server ด้วย)
     const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
     if (delBtn) delBtn.onclick = async () => {
@@ -404,7 +410,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
 export function computePrice(d, settings) {
   if (d.type === 'exercise') return exercisePrice(d.exSize, d.level, settings);
   if (!d.size) return 0;
-  return groomingPrice(d.petType, d.size, d.coatType, d.includeCut);
+  return groomingPrice(d.petType, d.size, d.coatType, groomServiceOf(d));
 }
 
 async function doSave(draft, isNew, modal, existingId, settings) {
@@ -414,8 +420,8 @@ async function doSave(draft, isNew, modal, existingId, settings) {
   if (draft.type === 'grooming' && !draft.size) return toast('กรุณาเลือกขนาดน้อง');
   // ด่านสุดท้าย — กันข้อมูลที่เป็นไปไม่ได้หลุดลงฐานข้อมูล เผื่อร่างมาจากหน้าอื่น
   // (เช่นแปลงจากคำขอเว็บ) ซึ่งไม่ได้ผ่านการล้างค่าในฟอร์ม
-  if (!slotsFor(draft.type, draft.includeCut).includes(draft.time)) {
-    return toast(draft.includeCut
+  if (!slotsFor(draft.type, draft.groomService).includes(draft.time)) {
+    return toast(draft.groomService !== 'bath'
       ? `งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT} — กรุณาเลือกรอบใหม่`
       : `รอบ ${draft.time} ไม่มีในโซนนี้ — กรุณาเลือกรอบใหม่`);
   }
@@ -433,7 +439,7 @@ async function doSave(draft, isNew, modal, existingId, settings) {
   const rec = {
     ...draft,
     price: computePrice(draft, settings),
-    durationMin: durationFor(draft.type, draft.includeCut),
+    durationMin: durationFor(draft.type, draft.groomService),
     createdBy: draft.createdBy || currentUser()?.email || '',
   };
   await save('appointments', rec);

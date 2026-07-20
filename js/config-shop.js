@@ -142,12 +142,39 @@ export const GROOMING_PRICES = {
   },
 };
 
-// ราคาอาบน้ำ (บาท/ตัว) ตามสัตว์+ไซส์+ขน · includeCut = อาบน้ำตัดขน
-export function groomingPrice(pet, size, coat, includeCut = false) {
+// รูปแบบบริการ Grooming ที่ร้านรับ
+// (ยืนยันกับเจ้าของร้าน 19 ก.ค. 2569: ตัดขนอย่างเดียวคิดเท่าค่าตัดขนในตาราง)
+export const GROOMING_SERVICES = [
+  { id: 'bath', label: 'อาบน้ำอย่างเดียว' },
+  { id: 'cut', label: 'ตัดขนอย่างเดียว' },
+  { id: 'bathCut', label: 'อาบน้ำ + ตัดขน' },
+];
+
+// อ่านรูปแบบบริการจากนัดหมาย — รองรับข้อมูลเก่าที่เก็บเป็น includeCut (true/false)
+// ก่อนจะมีตัวเลือก "ตัดขนอย่างเดียว" จึงต้องแปลงให้ใบเก่ายังแสดงถูก
+export function groomServiceOf(a) {
+  if (a?.groomService) return a.groomService;
+  return a?.includeCut ? 'bathCut' : 'bath';
+}
+
+export function groomServiceLabel(service) {
+  return (GROOMING_SERVICES.find(s => s.id === service) || {}).label || 'อาบน้ำอย่างเดียว';
+}
+
+// ราคา Grooming (บาท/ตัว) ตามสัตว์ + ไซส์ + ขน + รูปแบบบริการ
+//   bath    = ราคาอาบน้ำตามชนิดขน
+//   cut     = ค่าตัดขนในตาราง (ใช้เป็นราคาตัดขนอย่างเดียวด้วย)
+//   bathCut = อาบน้ำ + ค่าตัดขน
+export function groomingPrice(pet, size, coat, service = 'bath') {
   const row = GROOMING_PRICES[pet]?.[size];
   if (!row) return 0;
   const bath = row[coat] ?? row.short ?? 0;
-  return bath + (includeCut ? (row.cut || 0) : 0);
+  const cut = row.cut || 0;
+  // รองรับโค้ดเดิมที่ส่ง boolean มา (true = อาบน้ำ+ตัดขน)
+  if (service === true) return bath + cut;
+  if (service === 'cut') return cut;
+  if (service === 'bathCut') return bath + cut;
+  return bath;
 }
 
 // โปรของแถม: พักครบ N คืนขึ้นไป ได้อาบน้ำฟรี 1 สิทธิ์/ห้อง
@@ -328,13 +355,29 @@ export const GROOMING_CUT_MAX = 180;
 // ค่าเดิมที่โค้ดอื่นอาจอ้างถึง — เท่ากับกรณีอาบน้ำ+ตัดขนแบบเร็วสุด
 export const GROOMING_DURATION_MIN = GROOMING_CUT_MIN;
 
-// ข้อความช่วงเวลาที่ใช้บอกพนักงาน/ลูกค้า
-export function groomingDurationLabel(includeCut) {
-  return includeCut ? '2–3 ชั่วโมง' : '1–2 ชั่วโมง';
+// เวลาที่ต้องกันไว้ต่อรูปแบบบริการ (ค่ามากสุด เพื่อไม่ให้รับคิวถี่เกินจริง)
+export function groomingDuration(service) {
+  return (service === 'cut' || service === 'bathCut' || service === true)
+    ? GROOMING_CUT_MAX : GROOMING_BATH_MAX;
 }
-// รอบอาบน้ำ — รอบสุดท้าย 19:00 (ยืนยันกับเจ้าของร้าน 19 ก.ค. 2569)
-// เว้น 12:00 เป็นช่วงพักกลางวัน เหมือนโซนออกกำลังกาย
-export const GROOMING_SLOTS = ['09:00', '10:00', '11:00', '13:00', '14:00', '15:00', '16:00', '17:00', '18:00', '19:00'];
+
+// ข้อความช่วงเวลาที่ใช้บอกพนักงาน/ลูกค้า
+export function groomingDurationLabel(service) {
+  return (service === 'cut' || service === 'bathCut' || service === true)
+    ? '2–3 ชั่วโมง' : '1–2 ชั่วโมง';
+}
+// รอบ Grooming ทุกครึ่งชั่วโมง — รอบสุดท้าย 19:00 (ยืนยันกับเจ้าของร้าน 19 ก.ค. 2569)
+// เว้นช่วง 12:00–12:30 เป็นเวลาพักกลางวัน
+// (โซนออกกำลังกายยังเป็นรอบเต็มชั่วโมงตามที่ประกาศบนหน้าเว็บ — อย่าเปลี่ยนโดยไม่แก้เว็บด้วย)
+export const GROOMING_SLOTS = (() => {
+  const out = [];
+  for (let m = 9 * 60; m <= 19 * 60; m += 30) {
+    const h = Math.floor(m / 60);
+    if (h === 12) continue; // พักกลางวัน
+    out.push(`${String(h).padStart(2, '0')}:${m % 60 === 0 ? '00' : '30'}`);
+  }
+  return out;
+})();
 // งานตัดขนใช้เวลานานกว่า จึงต้องเริ่มไม่เกิน 18:00 — รอบ 19:00 รับเฉพาะอาบน้ำ
 export const GROOMING_CUT_LAST_SLOT = '18:00';
 // จำนวนคิว Grooming ที่รับพร้อมกันต่อรอบ = จำนวนช่าง — ตั้งได้ในหน้าตั้งค่า
