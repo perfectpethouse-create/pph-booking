@@ -93,8 +93,11 @@ export function renderDashboard(container) {
 
     // จัดเป็นโซนเหมือนหน้า "งานวันนี้" — สีเดียวกันทั้งแอป
     // (เดิมการ์ดทุกใบหน้าตาเหมือนกัน แยกไม่ออกว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ)
-    const groomList = apptsOfDay(today, 'grooming');
-    const exList = apptsOfDay(today, 'exercise');
+    // แสดงคิวพรุ่งนี้ด้วย เพื่อให้เตรียมของ/จัดคนล่วงหน้าได้ (โซนโรงแรมมีส่วนพรุ่งนี้อยู่แล้ว)
+    const groomToday = apptsOfDay(today, 'grooming');
+    const groomTomorrow = apptsOfDay(tomorrow, 'grooming');
+    const exToday = apptsOfDay(today, 'exercise');
+    const exTomorrow = apptsOfDay(tomorrow, 'exercise');
 
     body.innerHTML = '';
     body.append(
@@ -108,11 +111,15 @@ export function renderDashboard(container) {
         section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', true, icons.calendar),
         section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, icons.alert),
       ]),
-      zoneGroup('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)', `${groomList.length} คิว`, [
-        apptCard(groomList, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน'),
+      zoneGroup('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)',
+        `วันนี้ ${groomToday.length} · พรุ่งนี้ ${groomTomorrow.length}`, [
+        apptCard('คิววันนี้', groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
+        apptCard(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, groomTomorrow, 'พรุ่งนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.calendar),
       ]),
-      zoneGroup('exercise', icons.paw, 'โซนออกกำลังกาย', `${exList.length} คิว`, [
-        apptCard(exList, 'วันนี้ยังไม่มีคิวออกกำลังกาย'),
+      zoneGroup('exercise', icons.paw, 'โซนออกกำลังกาย',
+        `วันนี้ ${exToday.length} · พรุ่งนี้ ${exTomorrow.length}`, [
+        apptCard('คิววันนี้', exToday, 'วันนี้ยังไม่มีคิวออกกำลังกาย', icons.paw),
+        apptCard(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, exTomorrow, 'พรุ่งนี้ยังไม่มีคิวออกกำลังกาย', icons.calendar),
       ]),
     );
   }
@@ -136,8 +143,13 @@ export function renderDashboard(container) {
   }
 
   // คิวของโซนหนึ่ง เรียงตามรอบเวลา — เจ้าของร้านเห็นยอดด้วย
-  function apptCard(list, emptyText) {
-    const card = el('div', { class: 'card section-card' });
+  function apptCard(title, list, emptyText, ico) {
+    const card = el('div', { class: 'card section-card' }, [
+      el('h2', { class: 'sec-title' }, [
+        el('span', { class: 'sec-ico', html: ico || '' }),
+        el('span', { text: `${title} (${list.length})` }),
+      ]),
+    ]);
     if (!list.length) {
       card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: emptyText }));
       return card;

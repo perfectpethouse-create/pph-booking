@@ -59,8 +59,11 @@ export function renderStaffToday(container) {
     // จัดเป็น 3 โซนตามงานจริงของร้าน — พี่เลี้ยงจะได้ไม่ต้องไล่อ่านทีละการ์ด
     // ว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ สีประจำโซนตรงกับหน้า "คิวบริการ"
     const hotelCount = checkinToday.length + checkoutToday.length + staying.length;
-    const groomList = apptsOfDay(today, 'grooming');
-    const exList = apptsOfDay(today, 'exercise');
+    // แสดงคิวพรุ่งนี้ด้วย เพื่อให้เตรียมของ/จัดคนล่วงหน้าได้ (โซนโรงแรมมีส่วนพรุ่งนี้อยู่แล้ว)
+    const groomToday = apptsOfDay(today, 'grooming');
+    const groomTomorrow = apptsOfDay(tomorrow, 'grooming');
+    const exToday = apptsOfDay(today, 'exercise');
+    const exTomorrow = apptsOfDay(tomorrow, 'exercise');
 
     body.innerHTML = '';
     body.append(
@@ -71,11 +74,15 @@ export function renderStaffToday(container) {
         section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', icons.calendar),
         section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar),
       ]),
-      zone('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)', `${groomList.length} คิว`, [
-        apptSection(groomList, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน'),
+      zone('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)',
+        `วันนี้ ${groomToday.length} · พรุ่งนี้ ${groomTomorrow.length}`, [
+        apptSection('คิววันนี้', groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
+        apptSection(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, groomTomorrow, 'พรุ่งนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.calendar),
       ]),
-      zone('exercise', icons.paw, 'โซนออกกำลังกาย', `${exList.length} คิว`, [
-        apptSection(exList, 'วันนี้ยังไม่มีคิวออกกำลังกาย'),
+      zone('exercise', icons.paw, 'โซนออกกำลังกาย',
+        `วันนี้ ${exToday.length} · พรุ่งนี้ ${exTomorrow.length}`, [
+        apptSection('คิววันนี้', exToday, 'วันนี้ยังไม่มีคิวออกกำลังกาย', icons.paw),
+        apptSection(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, exTomorrow, 'พรุ่งนี้ยังไม่มีคิวออกกำลังกาย', icons.calendar),
       ]),
     );
   };
@@ -99,8 +106,13 @@ export function renderStaffToday(container) {
   }
 
   // คิวของโซนหนึ่ง เรียงตามรอบเวลาเพื่อใช้เป็นลำดับงานจริง
-  function apptSection(list, emptyText) {
-    const card = el('div', { class: 'card section-card' });
+  function apptSection(title, list, emptyText, ico) {
+    const card = el('div', { class: 'card section-card' }, [
+      el('h2', { class: 'sec-title' }, [
+        el('span', { class: 'sec-ico', html: ico || '' }),
+        el('span', { text: `${title} (${list.length})` }),
+      ]),
+    ]);
     if (!list.length) {
       card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: emptyText }));
       return card;
