@@ -78,7 +78,8 @@ export function openBookingCockpit(booking) {
     const b = cur;
     const c = customers.find(x => matchCustomer(b, x)) || null;
     body.innerHTML = '';
-    body.append(
+    // กรอง null ก่อน (addonBlock คืน null เมื่อไม่มีบริการเสริม) — native append(null) จะพิมพ์คำว่า "null"
+    [
       header(b, c),
       moneyBlock(b),
       stayBlock(b),
@@ -86,7 +87,7 @@ export function openBookingCockpit(booking) {
       addonBlock(b),
       linksRow(b, c),
       footer(b),
-    );
+    ].filter(Boolean).forEach(n => body.appendChild(n));
   }
 
   // ── หัวการ์ด: ชื่อ + ป้ายลูกค้าประจำ + เบอร์กดโทร + สถานะ ──
@@ -193,13 +194,22 @@ export function openBookingCockpit(booking) {
         impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(form, d, customers); };
         children.push(impBtn);
       } else {
-        // 3) ไม่มีทั้งโปรไฟล์และใบเช็คอิน → โชว์ชนิดสัตว์จากใบจอง + ปุ่มสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
+        // ชนิดสัตว์จากใบจอง (เห็นเสมอ ไม่ว่าจะมีโปรไฟล์หรือไม่)
         const species = [...new Set((b.lineItems || []).map(li => petLabel(li.petType)).filter(Boolean))].join(', ');
         children.push(el('div', { class: 'muted', text: species ? `ชนิดสัตว์ (จากใบจอง): ${species}` : 'ยังไม่มีข้อมูลสัตว์ในใบจอง' }));
-        children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
-        const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
-        addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
-        children.push(addBtn);
+        if (c) {
+          // 3) มีโปรไฟล์แล้ว แต่ยังไม่มีข้อมูลน้อง (มักเป็นลูกค้าที่จองหน้าเคาน์เตอร์ ไม่มีใบเช็คอินเว็บ)
+          children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'มีโปรไฟล์ลูกค้าแล้ว แต่ยังไม่มีข้อมูลน้อง — กดเพิ่มได้เลย' }));
+          const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เพิ่มข้อมูลน้องในโปรไฟล์' });
+          editBtn.onclick = () => openCustomerForm(c);
+          children.push(editBtn);
+        } else {
+          // 4) ไม่มีทั้งโปรไฟล์และใบเช็คอิน → ปุ่มสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
+          children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
+          const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
+          addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
+          children.push(addBtn);
+        }
       }
     }
     // โน้ตอิสระจากใบจอง (พันธุ์/สุขภาพ/เงื่อนไขพิเศษ) — สำคัญตอนรับน้อง
