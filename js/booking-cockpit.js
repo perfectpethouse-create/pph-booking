@@ -163,11 +163,23 @@ export function openBookingCockpit(booking) {
     ].filter(Boolean));
   }
 
-  // ใบเช็คอินจากเว็บของลูกค้ารายนี้ที่ "ยังไม่นำเข้า" (จับด้วยเบอร์)
-  function unimportedFormFor(b) {
+  // หาใบเช็คอินจากเว็บของลูกค้ารายนี้ที่ "มีข้อมูลน้อง" — จับด้วยเบอร์ (digits) หรือชื่อ
+  // ใช้เบอร์/ชื่อจาก raw.owner เป็นหลัก เพราะฟิลด์ระดับบนสุด (f.phone) บางใบไม่มี/ไม่ตรง
+  function formPetsFor(b) {
     const bp = norm(b.phone);
-    if (!bp) return null;
-    return checkinForms.find(f => (f.status || 'new') !== 'imported' && norm(f.phone) === bp) || null;
+    const bn = String(b.customerName || '').trim();
+    for (const f of checkinForms) {
+      const d = parseRaw(f);
+      const owner = d.owner || {};
+      const fp = norm(owner.phone || f.phone);
+      const fn = String(owner.fullname || f.name || '').trim();
+      const hit = (bp && fp && bp === fp)
+        || (bn && fn && (fn === bn || fn.includes(bn) || bn.includes(fn)));
+      if (!hit) continue;
+      const pets = mapFormToPets(d);
+      if (pets.length) return { form: f, d, pets, imported: f.status === 'imported' };
+    }
+    return null;
   }
 
   // ── บล็อกน้อง: โปรไฟล์ลูกค้า → ใบเช็คอินที่ยังไม่นำเข้า → ข้อมูลจากใบจอง ──
@@ -177,21 +189,21 @@ export function openBookingCockpit(booking) {
       // 1) มีโปรไฟล์ลูกค้าพร้อมข้อมูลน้อง → ใช้เลย (แม่นสุด)
       c.pets.forEach(p => children.push(petRow(p)));
     } else {
-      const form = unimportedFormFor(b);
-      if (form) {
-        // 2) ยังไม่มีโปรไฟล์ แต่ลูกค้ากรอกใบเช็คอินบนเว็บไว้ (ยังไม่นำเข้า) → โชว์จากใบ + ปุ่มนำเข้า
-        const d = parseRaw(form);
-        children.push(el('div', {
+      const fm = formPetsFor(b);
+      if (fm) {
+        // 2) ลูกค้ากรอกใบเช็คอินบนเว็บไว้ → โชว์ข้อมูลน้องจากใบ + ปุ่มนำเข้าเข้าโปรไฟล์ถาวร
+        //    (โชว์แม้ใบจะ imported ไปแล้วแต่โปรไฟล์ยังไม่มีน้อง — กดนำเข้าอีกครั้งเพื่อซ่อมได้)
+        if (!fm.imported) children.push(el('div', {
           class: 'pill yellow', style: 'align-self:flex-start;margin-bottom:2px',
           text: 'จากใบเช็คอิน — ยังไม่นำเข้าเป็นโปรไฟล์',
         }));
-        mapFormToPets(d).forEach(p => children.push(petRow(p)));
+        fm.pets.forEach(p => children.push(petRow(p)));
         const impBtn = el('button', {
           class: 'btn sm primary', style: 'margin-top:6px',
-          html: icons.download + ' นำเข้าเป็นโปรไฟล์ลูกค้า',
+          html: icons.download + ' นำเข้าประวัติเข้าโปรไฟล์',
         });
         // นำเข้าแล้ว listener customers/checkinForms จะรีเฟรชการ์ดเป็นข้อมูลจากโปรไฟล์เอง
-        impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(form, d, customers); };
+        impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(fm.form, fm.d, customers); };
         children.push(impBtn);
       } else {
         // ชนิดสัตว์จากใบจอง (เห็นเสมอ ไม่ว่าจะมีโปรไฟล์หรือไม่)
