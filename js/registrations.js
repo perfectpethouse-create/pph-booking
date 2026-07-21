@@ -47,8 +47,33 @@ const OWNER_LABELS = {
 
 function isCat(species) { return /แมว|cat/i.test(species || ''); }
 function fmtVal(v) { return Array.isArray(v) ? v.join(', ') : String(v ?? ''); }
-function parseRaw(f) {
+export function parseRaw(f) {
   try { return JSON.parse(f.raw || '{}'); } catch { return {}; }
+}
+
+// แปลงสัตว์เลี้ยงในใบเช็คอิน → รูปแบบ pets ของโปรไฟล์ลูกค้า (healthNotes/vaccineNotes อ่านง่าย)
+// แยกออกมาเพื่อให้การ์ดรับลูกค้า (booking-cockpit) เอาไปโชว์ข้อมูลน้องจากใบที่ "ยังไม่นำเข้า" ได้
+// โดยไม่ต้องเขียนตรรกะประกอบโน้ตซ้ำ
+export function mapFormToPets(d) {
+  const pets = (d && d.pets) || [];
+  return pets.map(p => ({
+    name: p.name || '',
+    species: isCat(p.species) ? 'cat' : 'dog',
+    breed: p.breed || '',
+    weight: p.weight || '',
+    healthNotes: [
+      p.health, p.disease && `โรค: ${p.disease}`, p.medication && `ยา: ${p.medication}`,
+      p.allergyList && `แพ้: ${fmtVal(p.allergyList)}`,
+      fmtVal(p.temperament) && `นิสัย: ${fmtVal(p.temperament)}`,
+      fmtVal(p.behaviors) && `พฤติกรรม: ${fmtVal(p.behaviors)}`,
+      p.stressTriggers && `เครียด: ${p.stressTriggers}`,
+      p.feedTime && `อาหาร ${p.meals || ''} มื้อ เวลา ${p.feedTime}`,
+      p.behaviorNote,
+    ].filter(Boolean).join(' · '),
+    vaccineNotes: [p.vaccine, p.vaccineDate && `ฉีดล่าสุด ${formatDateTH(p.vaccineDate)}`]
+      .filter(Boolean).join(' · '),
+    vaccineExpiry: '', // ให้พนักงานตรวจสมุดวัคซีนแล้วกรอกเอง
+  }));
 }
 
 // รหัสการจองสำหรับค้นหา/พิมพ์บนหัวกระดาษ
@@ -470,35 +495,19 @@ function openSignPad(f, d) {
 }
 
 // ── นำเข้าเป็นลูกค้า + สัตว์เลี้ยง (จับคู่ด้วยเบอร์โทรก่อน) ──
-async function importToCustomer(f, d) {
+// customersList: ส่งลิสต์ลูกค้าปัจจุบันเข้ามาได้ (เช่นจากการ์ด cockpit ที่ไม่ได้เปิดหน้านี้)
+// เพื่อหา "ลูกค้าเดิม" ให้เจอ ไม่งั้นอาจสร้างโปรไฟล์ซ้ำ · ค่าเริ่มต้นใช้ _customers ของหน้านี้
+export async function importToCustomer(f, d, customersList = _customers) {
   const owner = d.owner || {};
-  const pets = d.pets || [];
   const norm = (t) => (t || '').replace(/\D/g, '');
 
-  const existing = _customers.find(c =>
+  const existing = customersList.find(c =>
     (owner.phone && c.phone && norm(c.phone) === norm(owner.phone)) ||
     (c.name && c.name === owner.fullname));
 
   // รวมข้อมูลสุขภาพเป็นโน้ตอ่านง่าย — วันหมดอายุวัคซีนให้พนักงานกรอกเอง
   // (ฟอร์มเก็บ "วันที่ฉีดล่าสุด" ระยะคุ้มกันแต่ละเข็มไม่เท่ากัน เดาไม่ได้)
-  const mappedPets = pets.map(p => ({
-    name: p.name || '',
-    species: isCat(p.species) ? 'cat' : 'dog',
-    breed: p.breed || '',
-    weight: p.weight || '',
-    healthNotes: [
-      p.health, p.disease && `โรค: ${p.disease}`, p.medication && `ยา: ${p.medication}`,
-      p.allergyList && `แพ้: ${fmtVal(p.allergyList)}`,
-      fmtVal(p.temperament) && `นิสัย: ${fmtVal(p.temperament)}`,
-      fmtVal(p.behaviors) && `พฤติกรรม: ${fmtVal(p.behaviors)}`,
-      p.stressTriggers && `เครียด: ${p.stressTriggers}`,
-      p.feedTime && `อาหาร ${p.meals || ''} มื้อ เวลา ${p.feedTime}`,
-      p.behaviorNote,
-    ].filter(Boolean).join(' · '),
-    vaccineNotes: [p.vaccine, p.vaccineDate && `ฉีดล่าสุด ${formatDateTH(p.vaccineDate)}`]
-      .filter(Boolean).join(' · '),
-    vaccineExpiry: '', // ให้พนักงานตรวจสมุดวัคซีนแล้วกรอกเอง
-  }));
+  const mappedPets = mapFormToPets(d);
 
   const rec = {
     ...(existing || {}),

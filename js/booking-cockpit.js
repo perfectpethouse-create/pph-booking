@@ -14,7 +14,10 @@ import { matchCustomer, vaccineStatus, isLoyal, openCustomerForm } from './custo
 import { openBookingForm } from './bookings.js';
 import { buildCustomerCard, shareCard } from './summary-card.js';
 import { runCheckin, runCollectBalance, runCheckout } from './booking-actions.js';
+import { parseRaw, mapFormToPets, importToCustomer } from './registrations.js';
 import { icons } from './icons.js';
+
+const norm = (t) => String(t ?? '').replace(/\D/g, '');
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id || ''; }
 function fmtTime(ts) {
@@ -53,6 +56,7 @@ export function openBookingCockpit(booking) {
   let cur = computeBooking(booking);   // ใบจองล่าสุด (คำนวณยอดแล้ว)
   let customers = [];                  // เพื่อจับคู่ข้อมูลน้อง
   let allBookings = [];                // เพื่อดูว่าเป็นลูกค้าประจำไหม
+  let checkinForms = [];               // ใบเช็คอินจากเว็บ (เผื่อยังไม่นำเข้าเป็นโปรไฟล์)
 
   const unsubs = [
     // ฟังใบจอง เพื่อให้การ์ดอัปเดตสดหลังกดเช็คอิน/รับเงินจากในการ์ดเอง
@@ -64,6 +68,8 @@ export function openBookingCockpit(booking) {
     }),
     // ฟังลูกค้า เพื่อให้ข้อมูลน้องอัปเดตสดหลังกดสร้าง/แก้โปรไฟล์
     listen('customers', arr => { customers = arr; render(); }),
+    // ฟังใบเช็คอิน เพื่อดึงข้อมูลน้องจากใบที่ "ยังไม่นำเข้า" มาโชว์ + ปุ่มนำเข้า
+    listen('checkinForms', arr => { checkinForms = arr; render(); }, { orderBy: null }),
   ];
 
   const m = openModal(body, { onClose: () => unsubs.forEach(u => u()) });
@@ -137,35 +143,64 @@ export function openBookingCockpit(booking) {
     ]);
   }
 
-  // ── บล็อกน้อง: ดึงจากโปรไฟล์ลูกค้า · ถ้าไม่เจอ → ข้อมูลจากใบจอง + ปุ่มสร้างโปรไฟล์ ──
+  // แถวข้อมูลน้อง 1 ตัว — ใช้ทั้งจากโปรไฟล์ลูกค้าและจากใบเช็คอิน (รูปแบบ pets เดียวกัน)
+  function petRow(p) {
+    const vs = vaccineStatus(p);
+    const head = el('div', { class: 'li-head' }, [
+      el('strong', { text: `${petLabel(p.species)} ${p.name || ''}`.trim() }),
+      vs === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
+        : vs === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' })
+          : (p.vaccineExpiry ? el('span', { class: 'pill green', text: 'วัคซีนปกติ' }) : null),
+    ]);
+    const detail = [p.breed, p.weight ? `${p.weight} กก.` : ''].filter(Boolean).join(' · ');
+    return el('div', { class: 'lineitem' }, [
+      head,
+      detail ? el('div', { class: 'muted', style: 'font-size:13px', text: detail }) : null,
+      p.healthNotes ? kv('สุขภาพ', p.healthNotes) : null,
+      p.vaccineNotes ? kv('วัคซีน', p.vaccineNotes) : null,
+      p.vaccineExpiry ? kv('วัคซีนหมดอายุ', formatDateTH(p.vaccineExpiry)) : null,
+    ].filter(Boolean));
+  }
+
+  // ใบเช็คอินจากเว็บของลูกค้ารายนี้ที่ "ยังไม่นำเข้า" (จับด้วยเบอร์)
+  function unimportedFormFor(b) {
+    const bp = norm(b.phone);
+    if (!bp) return null;
+    return checkinForms.find(f => (f.status || 'new') !== 'imported' && norm(f.phone) === bp) || null;
+  }
+
+  // ── บล็อกน้อง: โปรไฟล์ลูกค้า → ใบเช็คอินที่ยังไม่นำเข้า → ข้อมูลจากใบจอง ──
   function petBlock(b, c) {
     const children = [];
     if (c && (c.pets || []).length) {
-      c.pets.forEach(p => {
-        const vs = vaccineStatus(p);
-        const head = el('div', { class: 'li-head' }, [
-          el('strong', { text: `${petLabel(p.species)} ${p.name || ''}`.trim() }),
-          vs === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
-            : vs === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' })
-              : (p.vaccineExpiry ? el('span', { class: 'pill green', text: 'วัคซีนปกติ' }) : null),
-        ]);
-        const detail = [p.breed, p.weight ? `${p.weight} กก.` : ''].filter(Boolean).join(' · ');
-        children.push(el('div', { class: 'lineitem' }, [
-          head,
-          detail ? el('div', { class: 'muted', style: 'font-size:13px', text: detail }) : null,
-          p.healthNotes ? kv('สุขภาพ', p.healthNotes) : null,
-          p.vaccineNotes ? kv('วัคซีน', p.vaccineNotes) : null,
-          p.vaccineExpiry ? kv('วัคซีนหมดอายุ', formatDateTH(p.vaccineExpiry)) : null,
-        ].filter(Boolean)));
-      });
+      // 1) มีโปรไฟล์ลูกค้าพร้อมข้อมูลน้อง → ใช้เลย (แม่นสุด)
+      c.pets.forEach(p => children.push(petRow(p)));
     } else {
-      // ไม่เจอโปรไฟล์ → โชว์ชนิดสัตว์จากใบจอง แล้วชวนสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
-      const species = [...new Set((b.lineItems || []).map(li => petLabel(li.petType)).filter(Boolean))].join(', ');
-      children.push(el('div', { class: 'muted', text: species ? `ชนิดสัตว์ (จากใบจอง): ${species}` : 'ยังไม่มีข้อมูลสัตว์ในใบจอง' }));
-      children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
-      const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
-      addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
-      children.push(addBtn);
+      const form = unimportedFormFor(b);
+      if (form) {
+        // 2) ยังไม่มีโปรไฟล์ แต่ลูกค้ากรอกใบเช็คอินบนเว็บไว้ (ยังไม่นำเข้า) → โชว์จากใบ + ปุ่มนำเข้า
+        const d = parseRaw(form);
+        children.push(el('div', {
+          class: 'pill yellow', style: 'align-self:flex-start;margin-bottom:2px',
+          text: 'จากใบเช็คอิน — ยังไม่นำเข้าเป็นโปรไฟล์',
+        }));
+        mapFormToPets(d).forEach(p => children.push(petRow(p)));
+        const impBtn = el('button', {
+          class: 'btn sm primary', style: 'margin-top:6px',
+          html: icons.download + ' นำเข้าเป็นโปรไฟล์ลูกค้า',
+        });
+        // นำเข้าแล้ว listener customers/checkinForms จะรีเฟรชการ์ดเป็นข้อมูลจากโปรไฟล์เอง
+        impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(form, d, customers); };
+        children.push(impBtn);
+      } else {
+        // 3) ไม่มีทั้งโปรไฟล์และใบเช็คอิน → โชว์ชนิดสัตว์จากใบจอง + ปุ่มสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
+        const species = [...new Set((b.lineItems || []).map(li => petLabel(li.petType)).filter(Boolean))].join(', ');
+        children.push(el('div', { class: 'muted', text: species ? `ชนิดสัตว์ (จากใบจอง): ${species}` : 'ยังไม่มีข้อมูลสัตว์ในใบจอง' }));
+        children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
+        const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
+        addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
+        children.push(addBtn);
+      }
     }
     // โน้ตอิสระจากใบจอง (พันธุ์/สุขภาพ/เงื่อนไขพิเศษ) — สำคัญตอนรับน้อง
     if (b.notes) children.push(el('div', { class: 'summary-box', style: 'margin-top:8px' }, [
