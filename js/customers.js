@@ -88,9 +88,11 @@ export function matchCustomer(b, c) {
   return (b.customerName || '').trim() === (c.name || '').trim();
 }
 
-function openCustomerForm(existing) {
+// existing = ลูกค้าเดิม (แก้ไข) · seed = ค่าเริ่มต้นตอนสร้างใหม่ (เช่น prefill ชื่อ+เบอร์จากใบจอง)
+export function openCustomerForm(existing, seed = null) {
   const isNew = !existing;
-  const draft = existing ? structuredClone(existing) : { name: '', phone: '', pets: [], notes: '' };
+  const draft = existing ? structuredClone(existing)
+    : { name: seed?.name || '', phone: seed?.phone || '', pets: [], notes: '' };
   if (!draft.pets) draft.pets = [];
 
   const form = el('div', {});
