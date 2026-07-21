@@ -182,46 +182,57 @@ export function openBookingCockpit(booking) {
     return null;
   }
 
-  // ── บล็อกน้อง: โปรไฟล์ลูกค้า → ใบเช็คอินที่ยังไม่นำเข้า → ข้อมูลจากใบจอง ──
+  // ── บล็อกน้อง: เลือกแหล่งที่ "ข้อมูลครบสุด" ──
+  //   โปรไฟล์(ครบ) → ใบเช็คอิน → โปรไฟล์(บางๆ) → มีโปรไฟล์ไม่มีน้อง → สร้างใหม่
+  //   จุดสำคัญ: ถ้าโปรไฟล์มีน้องแต่ยังไม่กรอกสุขภาพ/วัคซีน อย่าหยุดแค่นั้น
+  //   ให้ไปดึงจากใบเช็คอินที่ข้อมูลครบกว่ามาโชว์แทน (แก้เคสข้อมูลไม่ครบเหมือนกันทุกคน)
   function petBlock(b, c) {
     const children = [];
-    if (c && (c.pets || []).length) {
-      // 1) มีโปรไฟล์ลูกค้าพร้อมข้อมูลน้อง → ใช้เลย (แม่นสุด)
-      c.pets.forEach(p => children.push(petRow(p)));
+    const custPets = (c && (c.pets || []).length) ? c.pets : null;
+    // "โปรไฟล์ครบ" = มีน้องอย่างน้อย 1 ตัวที่กรอกสุขภาพหรือวัคซีนไว้แล้ว
+    const profileRich = custPets && custPets.some(p => p.healthNotes || p.vaccineNotes);
+    const fm = profileRich ? null : formPetsFor(b);
+
+    if (profileRich) {
+      // 1) โปรไฟล์มีข้อมูลน้องครบ → ใช้เลย (แม่นสุด)
+      custPets.forEach(p => children.push(petRow(p)));
+    } else if (fm) {
+      // 2) ใบเช็คอินมีข้อมูลน้อง (ครบกว่าโปรไฟล์ที่ยังบางๆ หรือยังไม่มีโปรไฟล์) → โชว์จากใบ + ปุ่มนำเข้า
+      if (!fm.imported) children.push(el('div', {
+        class: 'pill yellow', style: 'align-self:flex-start;margin-bottom:2px',
+        text: 'จากใบเช็คอิน — ยังไม่นำเข้าเป็นโปรไฟล์',
+      }));
+      fm.pets.forEach(p => children.push(petRow(p)));
+      const impBtn = el('button', {
+        class: 'btn sm primary', style: 'margin-top:6px',
+        html: icons.download + ' นำเข้าประวัติเข้าโปรไฟล์',
+      });
+      // นำเข้าแล้ว listener customers/checkinForms จะรีเฟรชการ์ดเป็นข้อมูลจากโปรไฟล์เอง
+      impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(fm.form, fm.d, customers); };
+      children.push(impBtn);
+    } else if (custPets) {
+      // 3) มีน้องในโปรไฟล์แต่ข้อมูลยังบางๆ (ชื่อ/พันธุ์) และไม่มีใบเช็คอิน → โชว์เท่าที่มี + ปุ่มเติมข้อมูล
+      custPets.forEach(p => children.push(petRow(p)));
+      children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีข้อมูลสุขภาพ/วัคซีนของน้อง — เติมได้ในโปรไฟล์' }));
+      const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เติมข้อมูลสุขภาพ/วัคซีน' });
+      editBtn.onclick = () => openCustomerForm(c);
+      children.push(editBtn);
     } else {
-      const fm = formPetsFor(b);
-      if (fm) {
-        // 2) ลูกค้ากรอกใบเช็คอินบนเว็บไว้ → โชว์ข้อมูลน้องจากใบ + ปุ่มนำเข้าเข้าโปรไฟล์ถาวร
-        //    (โชว์แม้ใบจะ imported ไปแล้วแต่โปรไฟล์ยังไม่มีน้อง — กดนำเข้าอีกครั้งเพื่อซ่อมได้)
-        if (!fm.imported) children.push(el('div', {
-          class: 'pill yellow', style: 'align-self:flex-start;margin-bottom:2px',
-          text: 'จากใบเช็คอิน — ยังไม่นำเข้าเป็นโปรไฟล์',
-        }));
-        fm.pets.forEach(p => children.push(petRow(p)));
-        const impBtn = el('button', {
-          class: 'btn sm primary', style: 'margin-top:6px',
-          html: icons.download + ' นำเข้าประวัติเข้าโปรไฟล์',
-        });
-        // นำเข้าแล้ว listener customers/checkinForms จะรีเฟรชการ์ดเป็นข้อมูลจากโปรไฟล์เอง
-        impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(fm.form, fm.d, customers); };
-        children.push(impBtn);
+      // ชนิดสัตว์จากใบจอง (เห็นเสมอ ไม่ว่าจะมีโปรไฟล์หรือไม่)
+      const species = [...new Set((b.lineItems || []).map(li => petLabel(li.petType)).filter(Boolean))].join(', ');
+      children.push(el('div', { class: 'muted', text: species ? `ชนิดสัตว์ (จากใบจอง): ${species}` : 'ยังไม่มีข้อมูลสัตว์ในใบจอง' }));
+      if (c) {
+        // 4) มีโปรไฟล์แล้ว แต่ยังไม่มีข้อมูลน้อง (มักเป็นลูกค้าที่จองหน้าเคาน์เตอร์ ไม่มีใบเช็คอินเว็บ)
+        children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'มีโปรไฟล์ลูกค้าแล้ว แต่ยังไม่มีข้อมูลน้อง — กดเพิ่มได้เลย' }));
+        const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เพิ่มข้อมูลน้องในโปรไฟล์' });
+        editBtn.onclick = () => openCustomerForm(c);
+        children.push(editBtn);
       } else {
-        // ชนิดสัตว์จากใบจอง (เห็นเสมอ ไม่ว่าจะมีโปรไฟล์หรือไม่)
-        const species = [...new Set((b.lineItems || []).map(li => petLabel(li.petType)).filter(Boolean))].join(', ');
-        children.push(el('div', { class: 'muted', text: species ? `ชนิดสัตว์ (จากใบจอง): ${species}` : 'ยังไม่มีข้อมูลสัตว์ในใบจอง' }));
-        if (c) {
-          // 3) มีโปรไฟล์แล้ว แต่ยังไม่มีข้อมูลน้อง (มักเป็นลูกค้าที่จองหน้าเคาน์เตอร์ ไม่มีใบเช็คอินเว็บ)
-          children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'มีโปรไฟล์ลูกค้าแล้ว แต่ยังไม่มีข้อมูลน้อง — กดเพิ่มได้เลย' }));
-          const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เพิ่มข้อมูลน้องในโปรไฟล์' });
-          editBtn.onclick = () => openCustomerForm(c);
-          children.push(editBtn);
-        } else {
-          // 4) ไม่มีทั้งโปรไฟล์และใบเช็คอิน → ปุ่มสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
-          children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
-          const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
-          addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
-          children.push(addBtn);
-        }
+        // 5) ไม่มีทั้งโปรไฟล์และใบเช็คอิน → ปุ่มสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
+        children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
+        const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
+        addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
+        children.push(addBtn);
       }
     }
     // โน้ตอิสระจากใบจอง (พันธุ์/สุขภาพ/เงื่อนไขพิเศษ) — สำคัญตอนรับน้อง
