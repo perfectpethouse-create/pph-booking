@@ -5,13 +5,14 @@
 import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
-import { matchCustomer } from './customers.js';
+import { resolvePetInfo, worstVaccine } from './pet-info.js';
 import { groomServiceOf, groomServiceLabel } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
 let _customers = [];
 let _appts = [];
+let _checkinForms = []; // ใบลงทะเบียนเช็คอิน — ใช้ดึงข้อมูลน้องแม้ยังไม่นำเข้าโปรไฟล์
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
 
@@ -70,7 +71,7 @@ export function renderStaffToday(container) {
       zone('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)', `${hotelCount} รายการ`, [
         section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', icons.login),
         section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', icons.logout),
-        section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', icons.home),
+        section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', icons.home, { sortByCheckout: true, leaveTag: true }),
         section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', icons.calendar),
         section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar),
       ]),
@@ -139,15 +140,9 @@ export function renderStaffToday(container) {
     return card;
   }
 
-  // จับคู่ลูกค้าเพื่อดึงข้อมูลสัตว์ (ชื่อน้อง/โน้ตสุขภาพ) มาแสดงให้พี่เลี้ยง
-  // ใช้ matchCustomer ตัวเดียวกับหน้าลูกค้า — กติกาจับคู่จะได้ไม่หลุดกัน
-  function petsOf(b) {
-    return _customers.find(c => matchCustomer(b, c))?.pets || [];
-  }
-
   // สีของการ์ดมาจากโซนที่ครอบอยู่ ส่วนไอคอนบอกว่าเป็นงานประเภทไหน
-  // (เดิมใช้สีบอกประเภทงาน ทำให้สีชนกับสีโซนจนแยกไม่ออกว่าอันไหนโรงแรม อันไหนอาบน้ำ)
-  function section(title, list, emptyText, ico) {
+  // opts.sortByCheckout = เรียงตามใกล้ออกก่อน · opts.leaveTag = โชว์ป้าย "ออกพรุ่งนี้" (ใช้ในกล่องกำลังพัก)
+  function section(title, list, emptyText, ico, opts = {}) {
     const card = el('div', { class: 'card section-card' }, [
       el('h2', { class: 'sec-title' }, [
         el('span', { class: 'sec-ico', html: ico || '' }),
@@ -156,37 +151,53 @@ export function renderStaffToday(container) {
     ]);
     if (!list.length) { card.appendChild(el('p', { class: 'muted', text: emptyText })); return card; }
     const s = getSettings();
-    list.forEach(b => {
+    const tomorrow = addDaysISO(todayISO(), 1);
+    const ordered = opts.sortByCheckout
+      ? [...list].sort((a, b) => String(a.checkOut).localeCompare(String(b.checkOut)))
+      : list;
+    ordered.forEach(b => {
+      // ข้อมูลน้องจากแหล่งที่ครบสุด (โปรไฟล์ → ใบเช็คอิน) — ตรรกะเดียวกับการ์ดฝั่งเจ้าของ
+      const info = resolvePetInfo(b, _customers, _checkinForms);
+      const pets = info.pets;
       const rooms = b.lineItems.map(li => el('span', {
         class: `pet-chip pet-${li.petType || 'dog'} pet-chip-lg`,
         html: `${PET_ICONS[li.petType] || icons.paw} ${escapeHtml(s?.roomPrices?.[li.roomType]?.label || li.roomType)} × ${Number(li.rooms) || 1}`,
       }));
+      // ป้ายท้ายชื่อ: ธงวัคซีน · ออกพรุ่งนี้ · สถานะเช็คอิน (เรื่องที่ต้องระวัง/รู้ก่อน)
+      const vac = worstVaccine(pets);
+      const tags = [
+        vac === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
+          : vac === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' }) : null,
+        (opts.leaveTag && b.checkOut === tomorrow) ? el('span', { class: 'pill yellow', text: 'ออกพรุ่งนี้' }) : null,
+        b.stayStatus === 'checked-in' ? el('span', { class: 'pill green', text: 'เช็คอินแล้ว' })
+          : b.stayStatus === 'checked-out' ? el('span', { class: 'pill grey', text: 'เช็คเอาท์แล้ว' }) : null,
+      ].filter(Boolean);
       const box = el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [
             el('strong', { text: b.customerName || '-' }),
             el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: b.phone || '' }),
           ]),
-          b.stayStatus === 'checked-in' ? el('span', { class: 'pill green', text: 'เช็คอินแล้ว' })
-            : b.stayStatus === 'checked-out' ? el('span', { class: 'pill grey', text: 'เช็คเอาท์แล้ว' }) : null,
+          tags.length ? el('div', { class: 'row', style: 'gap:4px;flex-wrap:wrap' }, tags) : null,
         ].filter(Boolean)),
         el('div', { class: 'row', style: 'gap:6px;margin:8px 0 6px;flex-wrap:wrap' }, rooms),
         el('div', { class: 'muted', style: 'font-size:13px', text:
           `${formatDateTH(b.checkIn)} ${b.checkInTime || ''} → ${formatDateTH(b.checkOut)} ${b.checkOutTime || ''}` }),
       ]);
 
-      // ข้อมูลน้องแต่ละตัว + สิ่งที่ต้องระวัง (จากฐานข้อมูลลูกค้า)
-      petsOf(b).forEach(p => {
+      // ข้อมูลน้องแต่ละตัว + สิ่งที่ต้องระวัง (อาหาร/นิสัย/สุขภาพ อยู่ใน healthNotes)
+      pets.forEach(p => {
         const cat = p.species === 'cat';
-        const line = el('div', { class: 'row', style: 'gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap' }, [
+        box.appendChild(el('div', { class: 'row', style: 'gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap' }, [
           el('span', { class: `pet-chip pet-${cat ? 'cat' : 'dog'}`, html: `${cat ? icons.cat : icons.dog} ${escapeHtml(p.name || '-')}` }),
           p.breed ? el('span', { class: 'muted', style: 'font-size:12px', text: p.breed }) : null,
-        ].filter(Boolean));
-        box.appendChild(line);
-        if (p.healthNotes) {
-          box.appendChild(el('div', { class: 'care-note', text: p.healthNotes }));
-        }
+        ].filter(Boolean)));
+        if (p.healthNotes) box.appendChild(el('div', { class: 'care-note', text: p.healthNotes }));
       });
+      // บอกที่มาถ้าข้อมูลมาจากใบลงทะเบียนที่ยังไม่นำเข้า (พนักงานจะได้รู้ว่ายังไม่เข้าโปรไฟล์ถาวร)
+      if (info.source === 'form' && !info.imported) {
+        box.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px', text: '· ข้อมูลจากใบลงทะเบียนเช็คอิน (ยังไม่นำเข้าโปรไฟล์)' }));
+      }
 
       if (b.notes) box.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px', text: `หมายเหตุการจอง: ${b.notes}` }));
       card.appendChild(box);
@@ -197,4 +208,5 @@ export function renderStaffToday(container) {
   _unsub.push(listen('customers', arr => { _customers = arr; draw(); }));
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
+  _unsub.push(listen('checkinForms', arr => { _checkinForms = arr; draw(); }, { orderBy: null }));
 }

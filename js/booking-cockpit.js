@@ -14,10 +14,9 @@ import { matchCustomer, vaccineStatus, isLoyal, openCustomerForm } from './custo
 import { openBookingForm } from './bookings.js';
 import { buildCustomerCard, shareCard } from './summary-card.js';
 import { runCheckin, runCollectBalance, runCheckout } from './booking-actions.js';
-import { parseRaw, mapFormToPets, importToCustomer } from './registrations.js';
+import { importToCustomer } from './registrations.js';
+import { resolvePetInfo } from './pet-info.js';
 import { icons } from './icons.js';
-
-const norm = (t) => String(t ?? '').replace(/\D/g, '');
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id || ''; }
 function fmtTime(ts) {
@@ -83,7 +82,7 @@ export function openBookingCockpit(booking) {
       header(b, c),
       moneyBlock(b),
       stayBlock(b),
-      petBlock(b, c),
+      petBlock(b),
       addonBlock(b),
       linksRow(b, c),
       footer(b),
@@ -163,72 +162,44 @@ export function openBookingCockpit(booking) {
     ].filter(Boolean));
   }
 
-  // หาใบเช็คอินจากเว็บของลูกค้ารายนี้ที่ "มีข้อมูลน้อง" — จับด้วยเบอร์ (digits) หรือชื่อ
-  // ใช้เบอร์/ชื่อจาก raw.owner เป็นหลัก เพราะฟิลด์ระดับบนสุด (f.phone) บางใบไม่มี/ไม่ตรง
-  function formPetsFor(b) {
-    const bp = norm(b.phone);
-    const bn = String(b.customerName || '').trim();
-    for (const f of checkinForms) {
-      const d = parseRaw(f);
-      const owner = d.owner || {};
-      const fp = norm(owner.phone || f.phone);
-      const fn = String(owner.fullname || f.name || '').trim();
-      const hit = (bp && fp && bp === fp)
-        || (bn && fn && (fn === bn || fn.includes(bn) || bn.includes(fn)));
-      if (!hit) continue;
-      const pets = mapFormToPets(d);
-      if (pets.length) return { form: f, d, pets, imported: f.status === 'imported' };
-    }
-    return null;
-  }
-
-  // ── บล็อกน้อง: เลือกแหล่งที่ "ข้อมูลครบสุด" ──
-  //   โปรไฟล์(ครบ) → ใบเช็คอิน → โปรไฟล์(บางๆ) → มีโปรไฟล์ไม่มีน้อง → สร้างใหม่
-  //   จุดสำคัญ: ถ้าโปรไฟล์มีน้องแต่ยังไม่กรอกสุขภาพ/วัคซีน อย่าหยุดแค่นั้น
-  //   ให้ไปดึงจากใบเช็คอินที่ข้อมูลครบกว่ามาโชว์แทน (แก้เคสข้อมูลไม่ครบเหมือนกันทุกคน)
-  function petBlock(b, c) {
+  // ── บล็อกน้อง: ใช้ resolvePetInfo (แหล่งข้อมูลร่วมกับหน้าพนักงาน) เลือกแหล่งที่ครบสุด ──
+  //   profile → form(ใบเช็คอิน) → profile-sparse → profile-empty → none
+  function petBlock(b) {
     const children = [];
-    const custPets = (c && (c.pets || []).length) ? c.pets : null;
-    // "โปรไฟล์ครบ" = มีน้องอย่างน้อย 1 ตัวที่กรอกสุขภาพหรือวัคซีนไว้แล้ว
-    const profileRich = custPets && custPets.some(p => p.healthNotes || p.vaccineNotes);
-    const fm = profileRich ? null : formPetsFor(b);
+    const info = resolvePetInfo(b, customers, checkinForms);
 
-    if (profileRich) {
-      // 1) โปรไฟล์มีข้อมูลน้องครบ → ใช้เลย (แม่นสุด)
-      custPets.forEach(p => children.push(petRow(p)));
-    } else if (fm) {
-      // 2) ใบเช็คอินมีข้อมูลน้อง (ครบกว่าโปรไฟล์ที่ยังบางๆ หรือยังไม่มีโปรไฟล์) → โชว์จากใบ + ปุ่มนำเข้า
-      if (!fm.imported) children.push(el('div', {
+    if (info.source === 'profile' || info.source === 'profile-sparse') {
+      // มีน้องในโปรไฟล์ → โชว์ · ถ้ายังบางๆ (ไม่มีสุขภาพ/วัคซีน) เพิ่มปุ่มเติมข้อมูล
+      info.pets.forEach(p => children.push(petRow(p)));
+      if (info.source === 'profile-sparse') {
+        children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีข้อมูลสุขภาพ/วัคซีนของน้อง — เติมได้ในโปรไฟล์' }));
+        const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เติมข้อมูลสุขภาพ/วัคซีน' });
+        editBtn.onclick = () => openCustomerForm(info.customer);
+        children.push(editBtn);
+      }
+    } else if (info.source === 'form') {
+      // ดึงจากใบเช็คอิน (ครบกว่าโปรไฟล์บางๆ หรือยังไม่มีโปรไฟล์) + ปุ่มนำเข้าเข้าโปรไฟล์ถาวร
+      if (!info.imported) children.push(el('div', {
         class: 'pill yellow', style: 'align-self:flex-start;margin-bottom:2px',
         text: 'จากใบเช็คอิน — ยังไม่นำเข้าเป็นโปรไฟล์',
       }));
-      fm.pets.forEach(p => children.push(petRow(p)));
+      info.pets.forEach(p => children.push(petRow(p)));
       const impBtn = el('button', {
         class: 'btn sm primary', style: 'margin-top:6px',
         html: icons.download + ' นำเข้าประวัติเข้าโปรไฟล์',
       });
-      // นำเข้าแล้ว listener customers/checkinForms จะรีเฟรชการ์ดเป็นข้อมูลจากโปรไฟล์เอง
-      impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(fm.form, fm.d, customers); };
+      impBtn.onclick = async () => { impBtn.disabled = true; await importToCustomer(info.form, info.formData, customers); };
       children.push(impBtn);
-    } else if (custPets) {
-      // 3) มีน้องในโปรไฟล์แต่ข้อมูลยังบางๆ (ชื่อ/พันธุ์) และไม่มีใบเช็คอิน → โชว์เท่าที่มี + ปุ่มเติมข้อมูล
-      custPets.forEach(p => children.push(petRow(p)));
-      children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีข้อมูลสุขภาพ/วัคซีนของน้อง — เติมได้ในโปรไฟล์' }));
-      const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เติมข้อมูลสุขภาพ/วัคซีน' });
-      editBtn.onclick = () => openCustomerForm(c);
-      children.push(editBtn);
     } else {
-      // ชนิดสัตว์จากใบจอง (เห็นเสมอ ไม่ว่าจะมีโปรไฟล์หรือไม่)
+      // ไม่มีน้องให้โชว์ → ชนิดสัตว์จากใบจอง (เห็นเสมอ) + ปุ่มเพิ่ม/สร้างโปรไฟล์
       const species = [...new Set((b.lineItems || []).map(li => petLabel(li.petType)).filter(Boolean))].join(', ');
       children.push(el('div', { class: 'muted', text: species ? `ชนิดสัตว์ (จากใบจอง): ${species}` : 'ยังไม่มีข้อมูลสัตว์ในใบจอง' }));
-      if (c) {
-        // 4) มีโปรไฟล์แล้ว แต่ยังไม่มีข้อมูลน้อง (มักเป็นลูกค้าที่จองหน้าเคาน์เตอร์ ไม่มีใบเช็คอินเว็บ)
+      if (info.source === 'profile-empty') {
         children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'มีโปรไฟล์ลูกค้าแล้ว แต่ยังไม่มีข้อมูลน้อง — กดเพิ่มได้เลย' }));
         const editBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' เพิ่มข้อมูลน้องในโปรไฟล์' });
-        editBtn.onclick = () => openCustomerForm(c);
+        editBtn.onclick = () => openCustomerForm(info.customer);
         children.push(editBtn);
       } else {
-        // 5) ไม่มีทั้งโปรไฟล์และใบเช็คอิน → ปุ่มสร้างโปรไฟล์ (prefill ชื่อ+เบอร์)
         children.push(el('p', { class: 'muted', style: 'font-size:12px;margin:6px 0 0', text: 'ยังไม่มีโปรไฟล์ลูกค้าในระบบ — สร้างไว้เพื่อเก็บวัคซีน/โน้ตสุขภาพ' }));
         const addBtn = el('button', { class: 'btn sm ghost', style: 'margin-top:6px', html: icons.plus + ' สร้างโปรไฟล์ลูกค้า' });
         addBtn.onclick = () => openCustomerForm(null, { name: b.customerName, phone: b.phone });
