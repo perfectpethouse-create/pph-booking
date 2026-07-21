@@ -3,14 +3,16 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
-import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO } from './calc.js';
+import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO, nightsBetween } from './calc.js';
 import { groomServiceOf, groomServiceLabel } from './config-shop.js';
+import { matchCustomer, vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 import { runCheckin, runCollectBalance, runCheckout } from './booking-actions.js';
 import { openBookingCockpit } from './booking-cockpit.js';
 
 let _unsub = [];
 let _appts = [];
+let _customers = []; // สำหรับธงวัคซีนในกล่อง "กำลังพักอยู่"
 
 export function renderDashboard(container) {
   _unsub.forEach(u => u()); _unsub = [];
@@ -54,6 +56,7 @@ export function renderDashboard(container) {
   let _bookings = [];
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(_bookings); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(_bookings); }));
+  _unsub.push(listen('customers', arr => { _customers = arr; draw(_bookings); }));
 
   function draw(bookings) {
     const today = todayISO();
@@ -96,6 +99,7 @@ export function renderDashboard(container) {
     body.append(
       zoneGroup('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)',
         `${checkinToday.length + checkoutToday.length + staying.length} รายการ`, [
+        stayingSection(staying),
         section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, icons.login, 'checkin'),
         section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, icons.logout, 'checkout'),
         section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, icons.banknote, 'pay'),
@@ -237,4 +241,60 @@ export function renderDashboard(container) {
 function roomsDesc(b) {
   const s = getSettings();
   return b.lineItems.map(li => `${li.rooms || 1}×${(s?.roomPrices?.[li.roomType]?.label || li.roomType)}`).join(', ');
+}
+
+// ธงวัคซีนของลูกค้ารายนี้ (แดง=หมดอายุ · เหลือง=ใกล้หมด) — จับคู่ด้วยเบอร์/ชื่อ
+function vaccineFlag(b) {
+  const c = _customers.find(x => matchCustomer(b, x));
+  if (!c) return null;
+  const st = (c.pets || []).map(p => vaccineStatus(p));
+  if (st.includes('expired')) return el('span', { class: 'pill red', style: 'margin-left:6px', text: 'วัคซีนหมดอายุ' });
+  if (st.includes('soon')) return el('span', { class: 'pill yellow', style: 'margin-left:6px', text: 'วัคซีนใกล้หมด' });
+  return null;
+}
+
+// กล่อง "กำลังพักอยู่ตอนนี้" — แขกที่อยู่ในร้านวันนี้ เรียงตามใกล้ออกก่อน
+// รายละเอียดที่ต้องรู้: อยู่ห้องไหน · ออกวันไหน · คืนที่เท่าไหร่ · ยอดค้างไหม · ธงวัคซีน
+// คลิกแถวเปิดการ์ดรับลูกค้า (cockpit) เหมือน section อื่น
+function stayingSection(list) {
+  const today = todayISO();
+  const tomorrow = addDaysISO(today, 1);
+  const card = el('div', { class: 'card section-card' }, [
+    el('h2', { class: 'sec-title' }, [
+      el('span', { class: 'sec-ico', html: icons.home }),
+      el('span', { text: `กำลังพักอยู่ตอนนี้ (${list.length})` }),
+    ]),
+  ]);
+  if (!list.length) { card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: 'ตอนนี้ไม่มีแขกพักอยู่' })); return card; }
+
+  const sorted = [...list].sort((a, b) => String(a.checkOut).localeCompare(String(b.checkOut)));
+  const rows = sorted.map(b => {
+    const total = nightsBetween(b.checkIn, b.checkOut) || 1;
+    const nightNo = Math.min(total, Math.max(1, nightsBetween(b.checkIn, today) + 1));
+    const paid = b.depositStatus === 'จ่ายครบแล้ว' || b.balanceDue <= 0;
+
+    const nameCell = el('td', {}, [
+      el('div', {}, [el('strong', { text: b.customerName || '-' }), vaccineFlag(b)].filter(Boolean)),
+      el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' }),
+    ]);
+    const outCell = el('td', {}, [
+      el('span', { text: formatDateTH(b.checkOut) }),
+      b.checkOut === tomorrow ? el('span', { class: 'pill yellow', style: 'margin-left:6px', text: 'ออกพรุ่งนี้' }) : null,
+    ].filter(Boolean));
+    const statusCell = el('td', { class: 'num' }, [
+      paid ? el('span', { class: 'pill green', text: 'จ่ายครบ' })
+        : el('span', { class: 'pill red', text: `ค้าง ${formatBaht(b.balanceDue)}` }),
+    ]);
+    const tr = el('tr', { style: 'cursor:pointer' }, [
+      nameCell,
+      el('td', { text: roomsDesc(b) }),
+      outCell,
+      el('td', { text: `คืนที่ ${nightNo}/${total}` }),
+      statusCell,
+    ]);
+    tr.onclick = () => openBookingCockpit(b);
+    return tr;
+  });
+  card.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('tbody', {}, rows)])]));
+  return card;
 }
