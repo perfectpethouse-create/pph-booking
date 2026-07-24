@@ -9,7 +9,7 @@
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
 import { computeBooking, formatBaht, eachDate } from './calc.js';
-import { capacityOf, PAYMENT_METHODS } from './config-shop.js';
+import { capacityOf, PAYMENT_METHODS, petCountOf, APPOINTMENT_TYPES } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -27,6 +27,7 @@ export function renderReports(container) {
   container.append(summary, detail);
 
   let _bookings = [];
+  let _appts = []; // คิว Grooming/ออกกำลังกาย (รายได้บริการ)
 
   const draw = () => {
     const active = _bookings.filter(b => b.depositStatus !== 'ยกเลิก' && b.checkIn);
@@ -36,6 +37,9 @@ export function renderReports(container) {
       monthSet.add(b.checkIn.slice(0, 7));
       if (b.checkOut) eachDate(b.checkIn, b.checkOut, iso => monthSet.add(iso.slice(0, 7)));
     });
+    // รวมเดือนที่มีคิวบริการด้วย — เดือนที่มีแต่ Grooming/ออกกำลังกาย (ไม่มีจองห้อง) ต้องเลือกได้
+    const apptActive = _appts.filter(a => a.status !== 'ยกเลิก' && a.date);
+    apptActive.forEach(a => monthSet.add(a.date.slice(0, 7)));
     const months = [...monthSet].sort().reverse();
     const cur = monthSel.value || months[0] || '';
     monthSel.innerHTML = '';
@@ -57,6 +61,21 @@ export function renderReports(container) {
     const received = inMonth.reduce((s, b) =>
       s + (paidFull(b) ? b.grandTotal : paidDeposit(b) ? b.depositAmount : 0), 0);
     const discount = inMonth.reduce((s, b) => s + (b.totalDiscount || 0), 0);
+
+    // ── รายได้บริการ (Grooming/ออกกำลังกาย): อิงเดือนของวันนัด ──
+    // บริการจ่ายจบครั้งเดียว ไม่มีมัดจำ/ช่องทาง → นับยอดขายจากคิวที่ไม่ถูกยกเลิก
+    // "จำนวนตัว" นับตาม petCountOf (1 คิวอาจมีหลายน้อง)
+    const apptInMonth = apptActive.filter(a => a.date.slice(0, 7) === cur);
+    const serviceRevenue = apptInMonth.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
+    const svcByType = {};
+    apptInMonth.forEach(a => {
+      const t = a.type || 'grooming';
+      const g = svcByType[t] || (svcByType[t] = { queues: 0, pets: 0, revenue: 0 });
+      g.queues += 1; g.pets += petCountOf(a); g.revenue += Number(a.price) || 0;
+    });
+    const svcPets = apptInMonth.reduce((sum, a) => sum + petCountOf(a), 0);
+    const svcDone = apptInMonth.filter(a => a.status === 'เสร็จแล้ว').length;
+    const svcCancelled = _appts.filter(a => a.status === 'ยกเลิก' && a.date && a.date.slice(0, 7) === cur).length;
 
     // ── อัตราเข้าพัก: นับคืนที่นอนจริงในเดือนนี้ (กระจายรายวัน) ──
     const s = getSettings();
@@ -83,12 +102,14 @@ export function renderReports(container) {
 
     summary.innerHTML = '';
     [
-      ['จำนวนการจอง', String(inMonth.length), icons.bookings, 'blue'],
-      ['ยอดขายรวม', formatBaht(revenue), icons.chart, 'blue'],
-      ['รับเงินแล้วจริง', formatBaht(received), icons.banknote, 'green'],
+      ['การจองห้องพัก', String(inMonth.length), icons.bookings, 'blue'],
+      ['ยอดขายห้องพัก', formatBaht(revenue), icons.home, 'blue'],
+      ['ยอดขายบริการ', formatBaht(serviceRevenue), icons.star, 'purple'],
+      ['ยอดขายทั้งร้าน', formatBaht(revenue + serviceRevenue), icons.chart, 'green'],
+      ['รับเงินแล้วจริง (ห้องพัก)', formatBaht(received), icons.banknote, 'green'],
       ['รับมัดจำแล้ว', formatBaht(deposit), icons.check, 'green'],
-      ['ยอดค้างรับ', formatBaht(balance), icons.alert, 'red'],
-      ['รวมส่วนลด', formatBaht(discount), icons.star, 'orange'],
+      ['ยอดค้างรับ (ห้องพัก)', formatBaht(balance), icons.alert, 'red'],
+      ['รวมส่วนลด (ห้องพัก)', formatBaht(discount), icons.star, 'orange'],
       ['อัตราเข้าพัก', `${occupancy.toFixed(1)}%`, icons.chart, 'purple'],
     ].forEach(([l, n, ico, color]) => summary.appendChild(
       el('div', { class: `stat stat--${color}` }, [
@@ -190,10 +211,45 @@ export function renderReports(container) {
     }
     detail.appendChild(card);
     detail.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text: '* ยอดเงินคิดจากการจองที่มี Check-in ในเดือนที่เลือก · ไม่รวมการจองที่ยกเลิก' }));
+
+    // ── รายได้บริการ (Grooming & ออกกำลังกาย) ──
+    const svcCard = el('div', { class: 'card' }, [el('h2', { text: 'รายได้บริการ (Grooming & ออกกำลังกาย)' })]);
+    const svcRows = APPOINTMENT_TYPES.filter(t => svcByType[t.id]).map(t => {
+      const v = svcByType[t.id];
+      return el('tr', {}, [
+        el('td', { text: t.label }),
+        el('td', { class: 'num', text: String(v.queues) }),
+        el('td', { class: 'num', text: String(v.pets) }),
+        el('td', { class: 'num', text: formatBaht(v.revenue) }),
+      ]);
+    });
+    if (svcRows.length) {
+      svcCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [
+        el('thead', {}, [el('tr', {}, [
+          el('th', { text: 'ประเภทบริการ' }), el('th', { class: 'num', text: 'จำนวนคิว' }),
+          el('th', { class: 'num', text: 'จำนวนตัว' }), el('th', { class: 'num', text: 'ยอดขาย' }),
+        ])]),
+        el('tbody', {}, svcRows),
+        el('tfoot', {}, [el('tr', {}, [
+          el('td', {}, [el('strong', { text: 'รวมบริการ' })]),
+          el('td', { class: 'num' }, [el('strong', { text: String(apptInMonth.length) })]),
+          el('td', { class: 'num' }, [el('strong', { text: String(svcPets) })]),
+          el('td', { class: 'num' }, [el('strong', { text: formatBaht(serviceRevenue) })]),
+        ])]),
+      ])]));
+      svcCard.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text:
+        `* นับจากคิวที่ไม่ถูกยกเลิก · อ้างเดือนของวันนัด · เสร็จแล้ว ${svcDone} คิว`
+        + `${svcCancelled ? ` · ยกเลิก ${svcCancelled} คิว (ไม่นับในยอด)` : ''}`
+        + ' · บริการจ่ายจบครั้งเดียว จึงไม่แยกช่องทางรับเงิน' }));
+    } else {
+      svcCard.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีคิวบริการในเดือนนี้' }));
+    }
+    detail.appendChild(svcCard);
   };
 
   monthSel.onchange = draw;
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); }));
+  _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
 }
 
 function thMonth(mk) {
