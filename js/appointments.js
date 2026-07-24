@@ -17,6 +17,7 @@ import {
   DEFAULT_GROOMING_CAPACITY, groomingPrice,
   PET_TYPES,
   GROOMING_SERVICES, groomServiceOf, groomServiceLabel, groomingDuration,
+  petsOf, petCountOf, petPrice, petDuration,
 } from './config-shop.js';
 import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
@@ -46,11 +47,43 @@ export function capacityFor(type, settings) {
   return Number(settings?.groomingCapacity) || DEFAULT_GROOMING_CAPACITY;
 }
 
-// จำนวนที่จองแล้วในรอบนั้น (ไม่นับใบที่ยกเลิก และไม่นับตัวเองตอนแก้ไข)
+// จำนวน "ตัว" ที่จองแล้วในรอบนั้น (ไม่นับใบที่ยกเลิก และไม่นับตัวเองตอนแก้ไข)
+// นับตามจำนวนน้องจริง เพราะ 1 การ์ดอาจมีหลายตัว (petCountOf) — ใบเก่านับเป็น 1
 export function countInSlot(list, { type, date, time, excludeId }) {
   return list.filter(a =>
     a.type === type && a.date === date && a.time === time &&
-    a.status !== 'ยกเลิก' && a.id !== excludeId).length;
+    a.status !== 'ยกเลิก' && a.id !== excludeId
+  ).reduce((sum, a) => sum + petCountOf(a), 0);
+}
+
+// น้องเปล่า 1 ตัวตามประเภทโซน — ใช้ตอนเริ่มการ์ดใหม่/กด "เพิ่มน้อง"
+function blankPet(type) {
+  return type === 'exercise'
+    ? { petName: '', exSize: 'S', level: '1' }
+    : { petName: '', petType: 'dog', size: '', coatType: 'short', groomService: 'bath' };
+}
+// รูปแบบบริการรวมของทั้งการ์ด (ใช้เลือกรอบเวลาที่ทำได้) — ถ้ามีตัวใดตัดขน
+// ทั้งการ์ดต้องจำกัดรอบ ≤ 18:00 เหมือนงานตัดขน
+function cardService(d) {
+  return (d.pets || []).some(p => p.groomService === 'cut' || p.groomService === 'bathCut')
+    ? 'bathCut' : 'bath';
+}
+// ประกอบเอกสารที่จะบันทึก: เก็บ pets[] + ฟิลด์เดี่ยว "mirror" ของตัวแรก + ยอดรวม
+// mirror ไว้เพื่อให้จอ/ใบเก่าที่ยังอ่าน petName/price/durationMin เดี่ยว ทำงานต่อได้
+function mirrorRec(draft, settings) {
+  const pets = (draft.pets || []).map(p => ({ ...p }));
+  const first = pets[0] || {};
+  const price = pets.reduce((s, p) => s + petPrice(p, draft.type, settings), 0);
+  const durationMin = pets.reduce((s, p) => s + petDuration(p, draft.type), 0);
+  const petName = pets.map(p => p.petName).filter(Boolean).join(', ');
+  const rec = { ...draft, pets, price, durationMin, petCount: pets.length, petName };
+  if (draft.type === 'exercise') {
+    rec.petType = 'dog'; rec.exSize = first.exSize; rec.level = first.level;
+  } else {
+    rec.petType = first.petType; rec.size = first.size;
+    rec.coatType = first.coatType; rec.groomService = first.groomService;
+  }
+  return rec;
 }
 
 export function renderAppointments(container) {
@@ -140,12 +173,15 @@ function buildWeekBoard(type, startDate, onPickDay) {
     const date = addDaysISO(startDate, i);
     const dow = THAI_DAYS[new Date(date + 'T00:00:00').getDay()];
     const booked = _appts.filter(a => a.type === type.id && a.date === date && a.status !== 'ยกเลิก');
-    const openSlots = slots.filter(t => booked.filter(a => a.time === t).length < cap).length;
+    // นับตามจำนวนตัวจริง (1 การ์ดอาจมีหลายตัว) — ทั้งการวัดความเต็มและรอบที่ยังว่าง
+    const petsIn = t => booked.filter(a => a.time === t).reduce((sum, a) => sum + petCountOf(a), 0);
+    const openSlots = slots.filter(t => petsIn(t) < cap).length;
     const total = slots.length;
     // แถบวัดจาก "จำนวนตัวที่รับได้ทั้งวัน" ไม่ใช่จำนวนรอบที่เต็ม
     // เพราะรอบที่มี 2/3 ยังนับว่าว่าง ทำให้แถบขึ้น 0% ทั้งที่วันนั้นมีงานแล้ว
     const seats = total * cap;
-    const pct = seats ? Math.round((booked.length / seats) * 100) : 0;
+    const petsBooked = booked.reduce((sum, a) => sum + petCountOf(a), 0);
+    const pct = seats ? Math.round((petsBooked / seats) * 100) : 0;
     const state = openSlots === 0 ? 'full' : (booked.length ? 'part' : 'free');
 
     const cell = el('button', { class: `week-day week-day--${state}` + (date === today ? ' is-today' : '') }, [
@@ -190,7 +226,7 @@ function buildSlotBoard(type, date) {
   const grid = el('div', { class: 'slot-grid' });
   slotsFor(type.id).forEach(time => {
     const inSlot = _appts.filter(a => a.type === type.id && a.date === date && a.time === time && a.status !== 'ยกเลิก');
-    const n = inSlot.length;
+    const n = inSlot.reduce((sum, a) => sum + petCountOf(a), 0); // นับตัวจริง (การ์ดอาจมีหลายตัว)
     const state = n === 0 ? 'free' : (n >= cap ? 'full' : 'part');
     // รอบดึกที่รับเฉพาะอาบน้ำ — บอกไว้บนช่อง กันพนักงานรับงานตัดขนแล้วมาพบทีหลังว่าจองไม่ได้
     const bathOnly = type.id === 'grooming' && !slotsFor('grooming', true).includes(time);
@@ -201,16 +237,21 @@ function buildSlotBoard(type, date) {
       ]),
       bathOnly ? el('div', { class: 'slot-tag', text: 'อาบน้ำเท่านั้น' }) : null,
       ...inSlot.map(a => {
+        // 1 การ์ดอาจมีหลายตัว → ป้ายเดียวติด "×N ตัว" · ตัวเลข n/cap ด้านบนนับตัวจริง
+        const pets = petsOf(a);
+        const pcount = pets.length;
+        const firstName = pets[0]?.petName || a.customerName || '-';
+        const hasCut = a.type === 'grooming' && pets.some(p => groomServiceOf(p) !== 'bath');
         // งานตัดขนกินเวลานานกว่าเท่าตัว — ติดป้ายไว้ให้เห็นตอนวางแผนคิวทั้งวัน
         const chip = el('button', {
           class: 'slot-chip',
-          title: `${a.type === 'grooming' ? groomServiceLabel(groomServiceOf(a)) : 'ออกกำลังกาย'} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
+          title: `${a.type === 'grooming' ? groomServiceLabel(groomServiceOf(a)) : 'ออกกำลังกาย'}${pcount > 1 ? ` · ${pcount} ตัว` : ''} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
         }, [
-          el('span', { class: 'slot-pet', text: a.petName || a.customerName || '-' }),
+          el('span', { class: 'slot-pet', text: pcount > 1 ? `${firstName} ×${pcount} ตัว` : firstName }),
           el('span', { class: 'slot-price', text: formatBaht(a.price) }),
           // ป้ายอยู่ท้ายสุดใน DOM เพื่อให้ตกลงบรรทัดใหม่ ไม่ไปบีบชื่อน้องจนอ่านไม่ออก
-          a.type === 'grooming' && groomServiceOf(a) !== 'bath'
-            ? el('span', { class: 'slot-tag slot-tag--inline', text: groomServiceOf(a) === 'cut' ? 'ตัดขน' : 'อาบน้ำ+ตัดขน' }) : null,
+          hasCut
+            ? el('span', { class: 'slot-tag slot-tag--inline', text: pcount > 1 ? 'มีตัดขน' : (groomServiceOf(a) === 'cut' ? 'ตัดขน' : 'อาบน้ำ+ตัดขน') }) : null,
         ].filter(Boolean));
         chip.onclick = () => openAppointmentForm(a);
         return chip;
@@ -232,18 +273,20 @@ function buildSlotBoard(type, date) {
 export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {}) {
   const s = getSettings();
   const isNew = !existing?.id;
-  const draft = existing ? structuredClone(existing) : {
-    type: prefill.type || 'grooming',
-    date: dateHint,
-    time: prefill.time || '',
-    customerName: '', phone: '', petName: '', petType: 'dog',
-    // grooming
-    size: '', coatType: 'short', groomService: 'bath',
-    // exercise
-    exSize: 'S', level: '1',
-    price: 0, status: 'จองแล้ว', notes: '',
-    source: 'counter',
-  };
+  let draft;
+  if (existing) {
+    draft = structuredClone(existing);
+    // ใบเก่า/ร่างจากหน้าอื่นที่ยังไม่มี pets[] → สังเคราะห์เป็น 1 ตัวจากฟิลด์เดี่ยว
+    if (!Array.isArray(draft.pets) || !draft.pets.length) draft.pets = petsOf(draft);
+  } else {
+    const type = prefill.type || 'grooming';
+    draft = {
+      type, date: dateHint, time: prefill.time || '',
+      customerName: '', phone: '',
+      pets: [blankPet(type)],
+      status: 'จองแล้ว', notes: '', source: 'counter',
+    };
+  }
 
   // พนักงานเห็นราคาได้ — ต้องแจ้งลูกค้าหน้าเคาน์เตอร์
   const form = el('div', {});
@@ -269,7 +312,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       draft.price = computePrice(draft, s);
       priceBox.innerHTML = '';
       priceBox.appendChild(el('div', { class: 'sum-row sum-total' }, [
-        el('span', { text: 'ราคา' }),
+        el('span', { text: draft.pets.length > 1 ? `ราคารวม (${draft.pets.length} ตัว)` : 'ราคา' }),
         el('strong', { text: formatBaht(draft.price) }),
       ]));
       refreshCapacity();
@@ -281,7 +324,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       if (!draft.date || !draft.time) return;
       const cap = capacityFor(draft.type, s);
       const n = countInSlot(_appts, { type: draft.type, date: draft.date, time: draft.time, excludeId: existing?.id });
-      const willBe = n + 1;
+      const willBe = n + petCountOf(draft);
       const over = willBe > cap;
       capacityNote.appendChild(el('p', {
         class: 'pill ' + (over ? 'yellow' : 'green'),
@@ -295,70 +338,96 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
 
     const typeSel = selectEl(APPOINTMENT_TYPES.map(t => [t.id, t.label]), draft.type, v => {
       draft.type = v;
+      // ช่องข้อมูลน้องของสองโซนคนละชุด (อาบน้ำ vs ออกกำลังกาย) — เริ่มใหม่ 1 ตัว
+      draft.pets = [blankPet(v)];
       // รอบเวลาของสองโซนไม่เหมือนกัน — ถ้าเวลาเดิมไม่มีในโซนใหม่ต้องล้างทิ้ง
-      if (!slotsFor(v, draft.groomService).includes(draft.time)) draft.time = '';
+      if (!slotsFor(v, cardService(draft)).includes(draft.time)) draft.time = '';
       rerender();
     });
     const dateInp = el('input', { type: 'date', value: draft.date || '' });
     dateInp.oninput = () => { draft.date = dateInp.value; recalc(); };
     const timeSel = selectEl(
-      [['', '— เลือกรอบ —'], ...slotsFor(draft.type, draft.groomService).map(t => [t, t])],
+      [['', '— เลือกรอบ —'], ...slotsFor(draft.type, cardService(draft)).map(t => [t, t])],
       draft.time || '', v => { draft.time = v; recalc(); });
 
     const nameInp = el('input', { value: draft.customerName || '', placeholder: 'ชื่อลูกค้า' });
     nameInp.oninput = () => draft.customerName = nameInp.value;
     const phoneInp = el('input', { value: draft.phone || '', placeholder: 'เบอร์โทร', type: 'tel' });
     phoneInp.oninput = () => draft.phone = phoneInp.value;
-    const petInp = el('input', { value: draft.petName || '', placeholder: 'ชื่อน้อง' });
-    petInp.oninput = () => draft.petName = petInp.value;
 
-    // ── ช่องเฉพาะประเภท ──
-    let typeFields;
-    if (draft.type === 'exercise') {
-      // โซนออกกำลังกายรับเฉพาะน้องหมา (สระ + สนามออกแบบมาเพื่อสุนัข)
-      draft.petType = 'dog';
-      const sizeSel = selectEl(EXERCISE_SIZES.map(x => [x.id, x.label]), draft.exSize, v => { draft.exSize = v; recalc(); });
-      const lvlSel = selectEl(EXERCISE_LEVELS.map(x => [x.id, x.label]), draft.level, v => { draft.level = v; recalc(); });
-      typeFields = el('div', {}, [
-        el('p', { class: 'muted', style: 'margin:0 0 10px;font-size:13px', text: 'โซนออกกำลังกายรับเฉพาะน้องหมา · รอบละ 60 นาที · พี่เลี้ยง 1 ต่อ 3 ตัว' }),
-        el('div', { class: 'row' }, [labeled('ขนาดน้อง', sizeSel), labeled('ระดับบริการ', lvlSel)]),
-      ]);
-    } else {
-      const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), draft.petType, v => {
-        draft.petType = v;
-        draft.size = ''; // ตารางไซส์หมา/แมวคนละชุด ต้องเลือกใหม่
-        draft.coatType = 'short';
+    // ── รายการน้อง (หลายตัวในการ์ดเดียว) ──
+    // แต่ละตัวเลือกบริการ/ขนาด/ขน อิสระ · เปลี่ยน select แล้ว rerender เพื่ออัปเดตราคาต่อตัว+ยอดรวม
+    // (ช่องพิมพ์ชื่อไม่ rerender จะได้ไม่หลุดโฟกัสระหว่างพิมพ์)
+    const petRow = (pet, idx) => {
+      const rm = draft.pets.length > 1 ? el('button', { class: 'btn sm ghost', html: icons.trash, 'aria-label': 'ลบน้องตัวนี้' }) : null;
+      if (rm) rm.onclick = () => {
+        draft.pets.splice(idx, 1);
+        if (!draft.pets.length) draft.pets.push(blankPet(draft.type));
         rerender();
-      });
-      const sizes = GROOMING_SIZES[draft.petType] || [];
-      const sizeSel = selectEl([['', '— เลือกขนาด —'], ...sizes.map(x => [x.id, x.label])], draft.size || '', v => { draft.size = v; recalc(); });
-      const coats = COAT_TYPES[draft.petType] || [];
-      const coatSel = selectEl(coats.map(x => [x.id, x.label]), draft.coatType, v => { draft.coatType = v; recalc(); });
-      // รูปแบบบริการ 3 แบบ — อาบน้ำอย่างเดียว / ตัดขนอย่างเดียว / อาบน้ำ+ตัดขน
-      const svcSel = selectEl(GROOMING_SERVICES.map(x => [x.id, x.label]), draft.groomService || 'bath', v => {
-        draft.groomService = v;
-        // เลือกงานที่มีตัดขนทั้งที่จองรอบดึกไว้แล้ว → รอบนั้นใช้ไม่ได้ ต้องล้างและบอกเหตุผล
-        // (ถ้าปล่อยไว้ ผู้ใช้จะเห็นเวลาค้างอยู่แต่ระบบบันทึกรอบที่ไม่มีอยู่จริง)
-        if (draft.time && !slotsFor('grooming', v).includes(draft.time)) {
-          toast(`รอบ ${draft.time} รับเฉพาะอาบน้ำ — งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT} กรุณาเลือกรอบใหม่`);
-          draft.time = '';
-        }
-        rerender();
-      });
-      // ตัดขนอย่างเดียวไม่ต้องเลือกลักษณะขน เพราะราคาคิดจากไซส์อย่างเดียว
-      const cutOnly = draft.groomService === 'cut';
-      typeFields = el('div', {}, [
-        el('p', { class: 'muted', style: 'margin:0 0 10px;font-size:13px', text:
-          `${groomServiceLabel(draft.groomService || 'bath')} ใช้เวลาประมาณ ${groomingDurationLabel(draft.groomService)}`
-          + ` · อาบน้ำรับถึงรอบ ${GROOMING_SLOTS[GROOMING_SLOTS.length - 1]} · งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT}` }),
-        el('div', { class: 'row' }, [labeled('รูปแบบบริการ', svcSel)]),
-        el('div', { class: 'row' }, [
-          labeled('ชนิดสัตว์', petSel),
-          labeled('ขนาด', sizeSel),
-          cutOnly ? null : labeled('ลักษณะขน', coatSel),
-        ].filter(Boolean)),
+      };
+      const head = el('div', { class: 'row', style: 'justify-content:space-between;align-items:center;margin-bottom:8px' }, [
+        el('span', { class: 'muted', style: 'font-size:13px;font-weight:600', text: `น้องตัวที่ ${idx + 1}` }),
+        rm,
+      ].filter(Boolean));
+      const nameI = el('input', { value: pet.petName || '', placeholder: 'ชื่อน้อง' });
+      nameI.oninput = () => pet.petName = nameI.value;
+
+      let fields;
+      if (draft.type === 'exercise') {
+        const sizeSel = selectEl(EXERCISE_SIZES.map(x => [x.id, x.label]), pet.exSize, v => { pet.exSize = v; rerender(); });
+        const lvlSel = selectEl(EXERCISE_LEVELS.map(x => [x.id, x.label]), pet.level, v => { pet.level = v; rerender(); });
+        fields = el('div', {}, [
+          el('div', { class: 'row' }, [labeled('ชื่อน้อง', nameI)]),
+          el('div', { class: 'row' }, [labeled('ขนาดน้อง', sizeSel), labeled('ระดับบริการ', lvlSel)]),
+        ]);
+      } else {
+        const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), pet.petType, v => {
+          pet.petType = v; pet.size = ''; pet.coatType = 'short'; rerender(); // ตารางไซส์หมา/แมวคนละชุด
+        });
+        const sizes = GROOMING_SIZES[pet.petType] || [];
+        const sizeSel = selectEl([['', '— เลือกขนาด —'], ...sizes.map(x => [x.id, x.label])], pet.size || '', v => { pet.size = v; rerender(); });
+        const coats = COAT_TYPES[pet.petType] || [];
+        const coatSel = selectEl(coats.map(x => [x.id, x.label]), pet.coatType, v => { pet.coatType = v; rerender(); });
+        const svcSel = selectEl(GROOMING_SERVICES.map(x => [x.id, x.label]), pet.groomService || 'bath', v => {
+          pet.groomService = v;
+          // ตัวนี้เพิ่มงานตัดขน แต่รอบที่เลือกไว้เป็นรอบดึก → ทั้งการ์ดจำกัด ≤18:00 ต้องล้างรอบ
+          if (draft.time && !slotsFor('grooming', cardService(draft)).includes(draft.time)) {
+            toast(`รอบ ${draft.time} รับเฉพาะอาบน้ำ — งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT} กรุณาเลือกรอบใหม่`);
+            draft.time = '';
+          }
+          rerender();
+        });
+        // ตัดขนอย่างเดียวไม่ต้องเลือกลักษณะขน เพราะราคาคิดจากไซส์อย่างเดียว
+        const cutOnly = pet.groomService === 'cut';
+        fields = el('div', {}, [
+          el('div', { class: 'row' }, [labeled('ชื่อน้อง', nameI), labeled('รูปแบบบริการ', svcSel)]),
+          el('div', { class: 'row' }, [
+            labeled('ชนิดสัตว์', petSel),
+            labeled('ขนาด', sizeSel),
+            cutOnly ? null : labeled('ลักษณะขน', coatSel),
+          ].filter(Boolean)),
+        ]);
+      }
+      return el('div', { style: 'border:1px solid var(--hairline-soft);border-radius:12px;padding:12px;margin-bottom:10px' }, [
+        head, fields,
+        el('div', { class: 'row', style: 'justify-content:flex-end;align-items:baseline;gap:6px;margin-top:2px' }, [
+          el('span', { class: 'muted', style: 'font-size:13px', text: 'ราคาตัวนี้' }),
+          el('strong', { text: formatBaht(petPrice(pet, draft.type, s)) }),
+        ]),
       ]);
-    }
+    };
+
+    const addPetBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มน้อง' });
+    addPetBtn.onclick = () => { draft.pets.push(blankPet(draft.type)); rerender(); };
+
+    const petsIntro = draft.type === 'exercise'
+      ? 'โซนออกกำลังกายรับเฉพาะน้องหมา · รอบละ 60 นาที · พี่เลี้ยง 1 ต่อ 3 ตัว'
+      : `อาบน้ำ 1–2 ชม. · อาบน้ำ+ตัดขน 2–3 ชม. · อาบน้ำรับถึงรอบ ${GROOMING_SLOTS[GROOMING_SLOTS.length - 1]} · งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT}`;
+    const petsSection = el('div', {}, [
+      el('p', { class: 'muted', style: 'margin:0 0 10px;font-size:13px', text: petsIntro }),
+      ...draft.pets.map((pet, idx) => petRow(pet, idx)),
+      addPetBtn,
+    ]);
 
     const statusSel = selectEl(APPOINTMENT_STATUSES.map(x => [x, x]), draft.status, v => draft.status = v);
     const notesInp = el('textarea', { placeholder: 'โรคประจำตัว / สายพันธุ์ / ข้อควรระวัง' });
@@ -376,7 +445,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       : doSave(draft, isNew, m, existing?.id, s);
     // ดูการ์ดก่อนบันทึกได้ เผื่อลูกค้ายืนรออยู่แล้วอยากเห็นก่อนตกลง
     const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ด' });
-    cardBtn.onclick = () => openApptCard({ ...draft, price: computePrice(draft, s), durationMin: durationFor(draft.type, draft.groomService) });
+    cardBtn.onclick = () => openApptCard(mirrorRec(draft, s));
     // ลบได้เฉพาะเจ้าของร้าน (firestore.rules บล็อกฝั่ง server ด้วย)
     const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
     if (delBtn) delBtn.onclick = async () => {
@@ -391,10 +460,9 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         el('div', { class: 'row' }, [labeled('ประเภท', typeSel)]),
         el('div', { class: 'row' }, [labeled('วันที่', dateInp), labeled('รอบเวลา', timeSel)]),
         capacityNote),
-      formGroup(icons.users, 'ลูกค้า & น้อง', 'blue',
-        el('div', { class: 'row' }, [labeled('ชื่อลูกค้า', nameInp), labeled('เบอร์โทร', phoneInp)]),
-        el('div', { class: 'row' }, [labeled('ชื่อน้อง', petInp)])),
-      formGroup(icons.paw, 'รายละเอียดบริการ', 'purple', typeFields),
+      formGroup(icons.users, 'ลูกค้า', 'blue',
+        el('div', { class: 'row' }, [labeled('ชื่อลูกค้า', nameInp), labeled('เบอร์โทร', phoneInp)])),
+      formGroup(icons.paw, 'รายละเอียดบริการ', 'purple', petsSection),
       formGroup(icons.bookings, 'สถานะ & หมายเหตุ', 'grey',
         el('div', { class: 'row' }, [labeled('สถานะ', statusSel)]),
         el('div', { class: 'field' }, [el('label', { text: 'หมายเหตุ' }), notesInp]),
@@ -406,40 +474,40 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
   }
 }
 
-// ราคาคำนวณจากของที่มีอยู่แล้วใน config-shop — ไม่ตั้งราคาเองในไฟล์นี้
+// ราคารวมทั้งการ์ด = ผลรวมราคาต่อตัว (reuse ตารางราคาเดิมผ่าน petPrice)
+// รับได้ทั้งร่างที่มี pets[] และใบเก่าฟิลด์เดี่ยว (petsOf สังเคราะห์ให้)
 export function computePrice(d, settings) {
-  if (d.type === 'exercise') return exercisePrice(d.exSize, d.level, settings);
-  if (!d.size) return 0;
-  return groomingPrice(d.petType, d.size, d.coatType, groomServiceOf(d));
+  return petsOf(d).reduce((sum, pet) => sum + petPrice(pet, d.type, settings), 0);
 }
 
 async function doSave(draft, isNew, modal, existingId, settings) {
   if (!draft.customerName?.trim()) return toast('กรุณากรอกชื่อลูกค้า');
   if (!draft.date) return toast('กรุณาเลือกวันที่');
   if (!draft.time) return toast('กรุณาเลือกรอบเวลา');
-  if (draft.type === 'grooming' && !draft.size) return toast('กรุณาเลือกขนาดน้อง');
+  if (draft.type === 'grooming' && draft.pets.some(p => !p.size)) return toast('กรุณาเลือกขนาดน้องให้ครบทุกตัว');
   // ด่านสุดท้าย — กันข้อมูลที่เป็นไปไม่ได้หลุดลงฐานข้อมูล เผื่อร่างมาจากหน้าอื่น
   // (เช่นแปลงจากคำขอเว็บ) ซึ่งไม่ได้ผ่านการล้างค่าในฟอร์ม
-  if (!slotsFor(draft.type, draft.groomService).includes(draft.time)) {
-    return toast(draft.groomService !== 'bath'
+  // ทั้งการ์ดจำกัดรอบตาม cardService — ถ้ามีตัวใดตัดขน ต้อง ≤18:00
+  const svc = cardService(draft);
+  if (!slotsFor(draft.type, svc).includes(draft.time)) {
+    return toast(svc !== 'bath'
       ? `งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT} — กรุณาเลือกรอบใหม่`
       : `รอบ ${draft.time} ไม่มีในโซนนี้ — กรุณาเลือกรอบใหม่`);
   }
 
-  // เกินความจุ = เตือนให้ยืนยัน ไม่ห้าม (ร้านอาจรับได้จริงในบางกรณี)
+  // เกินความจุ = เตือนให้ยืนยัน ไม่ห้าม (ร้านอาจรับได้จริงในบางกรณี) — นับตามจำนวนตัว
   const cap = capacityFor(draft.type, settings);
   const n = countInSlot(_appts, { type: draft.type, date: draft.date, time: draft.time, excludeId: existingId });
-  if (n + 1 > cap) {
+  const add = petCountOf(draft);
+  if (n + add > cap) {
     const ok = await confirmDialog(
-      `รอบ ${draft.time} วันที่ ${formatDateTH(draft.date)} มีอยู่แล้ว ${n} ตัว (รับได้ ${cap}) — จองเพิ่มเลยไหม?`,
+      `รอบ ${draft.time} วันที่ ${formatDateTH(draft.date)} มีอยู่แล้ว ${n} ตัว จะเพิ่มอีก ${add} (รับได้ ${cap}) — จองเพิ่มเลยไหม?`,
       { okText: 'จองเพิ่ม' });
     if (!ok) return;
   }
 
   const rec = {
-    ...draft,
-    price: computePrice(draft, settings),
-    durationMin: durationFor(draft.type, draft.groomService),
+    ...mirrorRec(draft, settings),
     createdBy: draft.createdBy || currentUser()?.email || '',
   };
   await save('appointments', rec);

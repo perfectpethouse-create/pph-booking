@@ -4,7 +4,7 @@
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
 import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO, nightsBetween } from './calc.js';
-import { groomServiceOf, groomServiceLabel } from './config-shop.js';
+import { groomServiceOf, groomServiceLabel, petCountOf } from './config-shop.js';
 import { matchCustomer, vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './booking-actions.js';
@@ -181,7 +181,7 @@ export function renderDashboard(container) {
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [
-            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}` }),
+            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}${petCountOf(a) > 1 ? ` (${petCountOf(a)} ตัว)` : ''}` }),
             el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: a.customerName || '' }),
           ]),
           el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),

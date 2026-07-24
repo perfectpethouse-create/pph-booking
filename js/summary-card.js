@@ -5,7 +5,7 @@ import { el, toast, getSettings } from './ui.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import {
   PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, GROOMING_SIZES, COAT_TYPES,
-  groomServiceOf, groomServiceLabel,
+  groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice,
 } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 
@@ -196,23 +196,27 @@ export async function shareCard(cardEl, bookingRaw, opts = {}) {
 // แยกจากการ์ดห้องพักเพราะข้อมูลคนละชุด: อันนี้เป็นรอบเวลา ไม่มีมัดจำ/จำนวนคืน
 // ใช้คลาส .cust-card ร่วมกัน จึงได้หน้าตาและกลไกแชร์/ดาวน์โหลดเดิมทั้งหมด
 
-// บรรยายบริการเป็นข้อความเดียว ใช้ทั้งบนการ์ดและในข้อความคัดลอก
-export function describeAppointment(a) {
-  if (a.type === 'exercise') {
-    const size = (EXERCISE_SIZES.find(x => x.id === a.exSize) || {}).label || a.exSize;
-    const lvl = (EXERCISE_LEVELS.find(x => x.id === String(a.level)) || {}).label || `ระดับ ${a.level}`;
+// บรรยายบริการของน้อง 1 ตัว เป็นข้อความเดียว ใช้ทั้งบนการ์ดและในข้อความคัดลอก
+function describePet(pet, type) {
+  if (type === 'exercise') {
+    const size = (EXERCISE_SIZES.find(x => x.id === pet.exSize) || {}).label || pet.exSize;
+    const lvl = (EXERCISE_LEVELS.find(x => x.id === String(pet.level)) || {}).label || `ระดับ ${pet.level}`;
     return { title: 'โซนออกกำลังกาย', detail: `${size} · ${lvl}` };
   }
-  const service = groomServiceOf(a);
-  const sizes = GROOMING_SIZES[a.petType] || [];
-  const size = (sizes.find(x => x.id === a.size) || {}).label || a.size || '-';
+  const service = groomServiceOf(pet);
+  const sizes = GROOMING_SIZES[pet.petType] || [];
+  const size = (sizes.find(x => x.id === pet.size) || {}).label || pet.size || '-';
   // ตัดขนอย่างเดียวคิดราคาจากไซส์อย่างเดียว ไม่เกี่ยวกับชนิดขน — ไม่ต้องโชว์ให้ลูกค้าสับสน
-  const coats = COAT_TYPES[a.petType] || [];
-  const coat = service === 'cut' ? '' : ((coats.find(x => x.id === a.coatType) || {}).label || '');
+  const coats = COAT_TYPES[pet.petType] || [];
+  const coat = service === 'cut' ? '' : ((coats.find(x => x.id === pet.coatType) || {}).label || '');
   return {
     title: groomServiceLabel(service),
-    detail: [petLabel(a.petType), size, coat].filter(Boolean).join(' · '),
+    detail: [petLabel(pet.petType), size, coat].filter(Boolean).join(' · '),
   };
+}
+// (คงไว้เพื่อ backward-compat) อธิบายทั้งนัดจากน้องตัวแรก
+export function describeAppointment(a) {
+  return describePet(petsOf(a)[0], a.type);
 }
 
 function durationText(a) {
@@ -222,16 +226,28 @@ function durationText(a) {
 
 export function buildAppointmentCard(a) {
   const s = getSettings();
-  const d = describeAppointment(a);
+  const pets = petsOf(a);
+  const multi = pets.length > 1;
   const rows = [];
   const push = (k, v) => rows.push(el('div', { class: 'cc-row' }, [
     el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v }),
   ]));
 
   if (a.customerName) push('ชื่อลูกค้า', a.customerName);
-  if (a.petName) push('ชื่อน้อง', a.petName);
-  push('บริการ', d.title);
-  if (d.detail) push('รายละเอียด', d.detail);
+  if (multi) {
+    // แจกแจงรายตัว: ชื่อน้อง → บริการ + ราคาต่อตัว · รายละเอียดไซส์/ขน
+    pets.forEach((pet, i) => {
+      const d = describePet(pet, a.type);
+      push(`น้อง ${pet.petName || (i + 1)}`, `${d.title} · ${formatBaht(petPrice(pet, a.type, s))}`);
+      if (d.detail) push('รายละเอียด', d.detail);
+    });
+  } else {
+    const pet = pets[0];
+    const d = describePet(pet, a.type);
+    if (pet.petName) push('ชื่อน้อง', pet.petName);
+    push('บริการ', d.title);
+    if (d.detail) push('รายละเอียด', d.detail);
+  }
   push('วันที่', formatDateTH(a.date));
   push('เวลา', `${a.time || '-'} น. · ${durationText(a)}`);
 
@@ -243,7 +259,8 @@ export function buildAppointmentCard(a) {
     ]),
     ...rows,
     el('div', { class: 'cc-total' }, [
-      el('span', { text: 'ค่าบริการ' }), el('span', { text: formatBaht(a.price) }),
+      el('span', { text: multi ? `ค่าบริการรวม (${pets.length} ตัว)` : 'ค่าบริการ' }),
+      el('span', { text: formatBaht(a.price) }),
     ]),
     // เตือนเรื่องน้ำหนัก: ราคาผูกกับขนาดตัว ถ้าชั่งจริงแล้วคนละไซส์ ราคาจะขยับ
     el('div', { class: 'cc-note', text: 'ราคาคิดตามขนาดตัวจริงที่ชั่งหน้าร้าน หากต่างจากที่แจ้งไว้ ราคาอาจปรับตามจริง' }),
@@ -257,15 +274,25 @@ export function buildAppointmentCard(a) {
 
 export function buildAppointmentText(a) {
   const s = getSettings();
-  const d = describeAppointment(a);
+  const pets = petsOf(a);
+  const multi = pets.length > 1;
   const L = [];
   L.push(`🐾 ยืนยันการจองคิว — ${s?.shopInfo?.name || 'Perfect Pet House'}`);
   if (a.customerName) L.push(`ชื่อลูกค้า: ${a.customerName}`);
-  if (a.petName) L.push(`ชื่อน้อง: ${a.petName}`);
-  L.push(`บริการ: ${d.title}${d.detail ? ` (${d.detail})` : ''}`);
+  if (multi) {
+    pets.forEach((pet, i) => {
+      const d = describePet(pet, a.type);
+      L.push(`น้อง ${pet.petName || (i + 1)}: ${d.title}${d.detail ? ` (${d.detail})` : ''} · ${formatBaht(petPrice(pet, a.type, s))}`);
+    });
+  } else {
+    const pet = pets[0];
+    const d = describePet(pet, a.type);
+    if (pet.petName) L.push(`ชื่อน้อง: ${pet.petName}`);
+    L.push(`บริการ: ${d.title}${d.detail ? ` (${d.detail})` : ''}`);
+  }
   L.push(`วันที่: ${formatDateTH(a.date)}`);
   L.push(`เวลา: ${a.time || '-'} น. · ${durationText(a)}`);
-  L.push(`ค่าบริการ: ${formatBaht(a.price)}`);
+  L.push(`${multi ? `ค่าบริการรวม (${pets.length} ตัว)` : 'ค่าบริการ'}: ${formatBaht(a.price)}`);
   L.push('หมายเหตุ: ราคาคิดตามขนาดตัวจริงที่ชั่งหน้าร้าน หากต่างจากที่แจ้งไว้ ราคาอาจปรับตามจริง');
   if (s?.shopInfo?.phone) L.push(`📞 โทรสอบถาม ${s.shopInfo.phone}`);
   return L.join('\n');

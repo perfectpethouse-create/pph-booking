@@ -396,6 +396,35 @@ export function exercisePrice(size, level, settings) {
   return table?.[size]?.[level] ?? EXERCISE_PRICES?.[size]?.[level] ?? 0;
 }
 
+// ── หลายน้องในคิวเดียว (appointment.pets[]) ──
+// อ่านรายการน้องแบบเข้ากันได้กับข้อมูลเก่า: ถ้าไม่มี pets[] ให้สังเคราะห์เป็น 1 ตัว
+// จากฟิลด์เดี่ยวเดิม (petName/size/coat/... หรือ exSize/level) → คิวเก่าทำงานได้หมด
+export function petsOf(a) {
+  if (Array.isArray(a?.pets) && a.pets.length) return a.pets;
+  if (a?.type === 'exercise') {
+    return [{ petName: a.petName || '', exSize: a.exSize || 'S', level: a.level || '1' }];
+  }
+  return [{
+    petName: a?.petName || '', petType: a?.petType || 'dog',
+    size: a?.size || '', coatType: a?.coatType || 'short', groomService: groomServiceOf(a),
+  }];
+}
+// จำนวนน้องในคิว = ความจุที่กินไปในรอบ (ใบเก่าไม่มี pets[] = 1 ตัว)
+export function petCountOf(a) {
+  return Array.isArray(a?.pets) && a.pets.length ? a.pets.length : 1;
+}
+// ราคาต่อน้อง 1 ตัว — reuse ตารางราคาเดิม (grooming/exercise)
+export function petPrice(pet, type, settings) {
+  if (type === 'exercise') return exercisePrice(pet.exSize, pet.level, settings);
+  if (!pet.size) return 0;
+  return groomingPrice(pet.petType, pet.size, pet.coatType, groomServiceOf(pet));
+}
+// เวลาที่ต้องกันไว้ต่อน้อง 1 ตัว
+export function petDuration(pet, type) {
+  if (type === 'exercise') return EXERCISE_DURATION_MIN;
+  return groomingDuration(groomServiceOf(pet));
+}
+
 // ── สิทธิ์พี่เลี้ยง: เมนูที่เจ้าของร้านเปิด-ปิดได้เอง ──
 // ⚠️ "ตั้งค่า" และ "สำรองข้อมูล" ไม่อยู่ในลิสต์นี้โดยตั้งใจ และห้ามเพิ่มเข้ามา:
 //    · เปิด "ตั้งค่า" = พี่เลี้ยงลบอีเมลตัวเองออกจาก staffEmails แล้วกลายเป็นเจ้าของร้านได้

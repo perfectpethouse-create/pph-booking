@@ -6,7 +6,7 @@ import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { resolvePetInfo, worstVaccine } from './pet-info.js';
-import { groomServiceOf, groomServiceLabel } from './config-shop.js';
+import { groomServiceOf, groomServiceLabel, petCountOf } from './config-shop.js';
 import { icons } from './icons.js';
 
 let _unsub = [];
@@ -125,7 +125,7 @@ export function renderStaffToday(container) {
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [
-            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}` }),
+            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}${petCountOf(a) > 1 ? ` (${petCountOf(a)} ตัว)` : ''}` }),
             el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: a.customerName || '' }),
           ]),
           el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
