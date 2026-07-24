@@ -7,7 +7,7 @@ import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO, nightsB
 import { groomServiceOf, groomServiceLabel } from './config-shop.js';
 import { matchCustomer, vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
-import { runCheckin, runCollectBalance, runCheckout } from './booking-actions.js';
+import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './booking-actions.js';
 import { openBookingCockpit } from './booking-cockpit.js';
 
 let _unsub = [];
@@ -38,9 +38,13 @@ export function renderDashboard(container) {
     reqBanner.appendChild(el('span', { class: 'btn sm primary', text: 'เปิดดู' }));
   }, { orderBy: null }));
 
+  // แจ้งเตือน "จองใหม่วันนี้ที่ยังรอโอนมัดจำ 50%" — เนื้อหาอัปเดตใน draw()
+  // กดแล้วเลื่อนไปที่การ์ด "จองใหม่วันนี้" ในโซนโรงแรม (อยู่หน้าเดียวกัน)
+  const depositBanner = el('div', { class: 'promo-banner warn hidden', style: 'margin-bottom:14px;cursor:pointer' });
+
   const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
   const body = el('div', {});
-  container.append(regBanner, reqBanner, statGrid, body);
+  container.append(regBanner, reqBanner, depositBanner, statGrid, body);
 
   _unsub.push(listen('checkinForms', forms => {
     const n = forms.filter(f => (f.status || 'new') === 'new').length;
@@ -69,6 +73,9 @@ export function renderDashboard(container) {
     const staying = active.filter(b => b.checkIn <= today && today < b.checkOut);
     const unpaid = active.filter(b => b.depositStatus !== 'จ่ายครบแล้ว' && b.grandTotal > 0);
     const notRecorded = active.filter(b => b.recordStatus === 'ยังไม่ลงระบบ');
+    // จองใหม่วันนี้ = บันทึกเข้าระบบวันนี้ (เทียบด้วยวันที่ท้องถิ่น กัน off-by-one)
+    const newToday = active.filter(b => localDateISO(b.createdAt) === today);
+    const pendingDeposit = newToday.filter(b => b.depositStatus === 'ยังไม่มัดจำ');
     // ค้างเท่าไหร่จริง: ยังไม่มัดจำ = ค้างทั้งก้อน · มัดจำแล้ว = ค้างครึ่งหลัง
     const owedOf = b => b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal;
     const balanceSum = unpaid.reduce((s, b) => s + owedOf(b), 0);
@@ -87,6 +94,17 @@ export function renderDashboard(container) {
       ])
     ));
 
+    // แถบเตือนบนสุด: มีจองใหม่วันนี้ที่ยังรอโอนมัดจำ 50% — กันหลุดตอนมีหลายห้อง
+    depositBanner.innerHTML = '';
+    if (pendingDeposit.length) {
+      depositBanner.classList.remove('hidden');
+      depositBanner.appendChild(el('span', { class: 'promo-text', html:
+        `${icons.banknote} จองใหม่วันนี้ <strong>${newToday.length} รายการ</strong> · รอโอนมัดจำ <strong>${pendingDeposit.length} ราย</strong> — ตรวจสลิปมัดจำ 50%` }));
+      depositBanner.appendChild(el('span', { class: 'btn sm primary', text: 'ดูรายการ' }));
+    } else {
+      depositBanner.classList.add('hidden');
+    }
+
     // จัดเป็นโซนเหมือนหน้า "งานวันนี้" — สีเดียวกันทั้งแอป
     // (เดิมการ์ดทุกใบหน้าตาเหมือนกัน แยกไม่ออกว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ)
     // แสดงคิวพรุ่งนี้ด้วย เพื่อให้เตรียมของ/จัดคนล่วงหน้าได้ (โซนโรงแรมมีส่วนพรุ่งนี้อยู่แล้ว)
@@ -95,10 +113,15 @@ export function renderDashboard(container) {
     const exToday = apptsOfDay(today, 'exercise');
     const exTomorrow = apptsOfDay(tomorrow, 'exercise');
 
+    // การ์ด "จองใหม่วันนี้" — เก็บ ref ไว้ให้แถบเตือนกดแล้วเลื่อนมาหา
+    const newCard = newBookingsSection(newToday);
+    depositBanner.onclick = () => newCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
     body.innerHTML = '';
     body.append(
       zoneGroup('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)',
-        `${checkinToday.length + checkoutToday.length + staying.length} รายการ`, [
+        `${newToday.length + checkinToday.length + checkoutToday.length + staying.length} รายการ`, [
+        newCard,
         stayingSection(staying),
         section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, icons.login, 'checkin'),
         section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, icons.logout, 'checkout'),
@@ -241,6 +264,64 @@ export function renderDashboard(container) {
 function roomsDesc(b) {
   const s = getSettings();
   return b.lineItems.map(li => `${li.rooms || 1}×${(s?.roomPrices?.[li.roomType]?.label || li.roomType)}`).join(', ');
+}
+
+// createdAt เก็บเป็น ISO เวลา UTC → แปลงเป็นวันที่ท้องถิ่น 'YYYY-MM-DD'
+// ใช้ trick เดียวกับ todayISO() กัน off-by-one ตอนจองช่วงดึก (เช่น ตี 5 ไทย = เมื่อวานแบบ UTC)
+function localDateISO(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  if (isNaN(d)) return '';
+  const off = d.getTimezoneOffset() * 60000;
+  return new Date(d - off).toISOString().slice(0, 10);
+}
+
+// กล่อง "จองใหม่วันนี้" — การจองที่เพิ่งเข้าระบบวันนี้ + สถานะมัดจำชัดเจน
+// จุดสำคัญ: บอกให้รู้ทันทีว่ารายไหน "รอโอนมัดจำ 50%" อยู่ (แดง) กันหลุดตอนมีหลายห้อง
+// แดง=รอโอนมัดจำ (+ปุ่มลัดรับมัดจำ) · เขียว=มัดจำแล้ว/จ่ายครบ · คลิกแถวเปิดการ์ดรับลูกค้า
+function newBookingsSection(list) {
+  const card = el('div', { class: 'card section-card' }, [
+    el('h2', { class: 'sec-title' }, [
+      el('span', { class: 'sec-ico', html: icons.bookings }),
+      el('span', { text: `จองใหม่วันนี้ (${list.length})` }),
+    ]),
+  ]);
+  if (!list.length) { card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: 'วันนี้ยังไม่มีจองใหม่' })); return card; }
+
+  // ใหม่สุดอยู่บน
+  const sorted = [...list].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  const rows = sorted.map(b => {
+    const statusCell = el('td', { class: 'num' });
+    if (b.depositStatus === 'ยังไม่มัดจำ') {
+      statusCell.appendChild(el('span', { class: 'pill red', text: 'รอโอนมัดจำ' }));
+      const btn = el('button', { class: 'btn sm primary', style: 'margin-top:4px', text: 'รับมัดจำแล้ว' });
+      btn.onclick = (e) => { e.stopPropagation(); runMarkDeposit(b); };
+      statusCell.appendChild(el('div', {}, [btn]));
+    } else if (b.depositStatus === 'จ่ายครบแล้ว') {
+      statusCell.appendChild(el('span', { class: 'pill green', text: 'จ่ายครบ' }));
+    } else {
+      statusCell.appendChild(el('span', { class: 'pill green', text: 'มัดจำแล้ว' }));
+    }
+    const tr = el('tr', { style: 'cursor:pointer' }, [
+      el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
+      el('td', { text: roomsDesc(b) }),
+      el('td', { text: `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)}` }),
+      el('td', { class: 'num', text: formatBaht(b.depositAmount) }),
+      statusCell,
+    ]);
+    tr.onclick = () => openBookingCockpit(b);
+    return tr;
+  });
+  card.appendChild(el('div', { class: 'table-wrap' }, [
+    el('table', {}, [
+      el('thead', {}, [el('tr', {}, [
+        el('th', { text: 'ลูกค้า' }), el('th', { text: 'ห้อง' }), el('th', { text: 'เข้า–ออก' }),
+        el('th', { class: 'num', text: 'มัดจำ 50%' }), el('th', { class: 'num', text: 'สถานะ' }),
+      ])]),
+      el('tbody', {}, rows),
+    ]),
+  ]));
+  return card;
 }
 
 // ธงวัคซีนของลูกค้ารายนี้ (แดง=หมดอายุ · เหลือง=ใกล้หมด) — จับคู่ด้วยเบอร์/ชื่อ

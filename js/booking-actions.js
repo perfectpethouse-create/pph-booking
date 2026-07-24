@@ -74,6 +74,31 @@ export function runCheckin(b) {
   cancelBtn.onclick = () => m.close();
 }
 
+// รับมัดจำ 50% — ใช้ตอนลูกค้าโอนสลิปมัดจำเข้ามาหลังจอง (จองใหม่ที่ยัง "ยังไม่มัดจำ")
+// ปุ่มลัดในแดชบอร์ด "จองใหม่วันนี้" กดปุ่มเดียวปิดงานได้ไว — เลือกช่องทางแล้วบันทึก
+export async function runMarkDeposit(b) {
+  return new Promise(resolve => {
+    let done = false;
+    const sel = methodSelect(b.depositMethod || undefined);
+    const okBtn = el('button', { class: 'btn primary', text: 'รับมัดจำแล้ว' });
+    const cancelBtn = el('button', { class: 'btn ghost', text: 'ยกเลิก' });
+    const m = openModal(el('div', {}, [
+      el('h2', { text: `รับมัดจำ ${b.customerName || ''}` }),
+      el('p', { class: 'muted', style: 'margin-top:-6px', text: `มัดจำ ${b.depositPct}% = ${formatBaht(b.depositAmount)} — ระบบจะบันทึกเป็น "มัดจำแล้ว"` }),
+      el('div', { class: 'field' }, [el('label', { text: 'รับมัดจำทางช่องทางไหน' }), sel]),
+      el('div', { class: 'row', style: 'justify-content:flex-end;gap:8px' }, [cancelBtn, okBtn]),
+    ]), { onClose: () => resolve(done) });
+    okBtn.onclick = async () => {
+      const method = sel.value;
+      done = true;
+      await save('bookings', { ...b, depositStatus: 'มัดจำแล้ว', depositPaidAt: Date.now(), depositMethod: method });
+      m.close();
+      toast(`รับมัดจำ ${b.customerName} แล้ว (${method})`);
+    };
+    cancelBtn.onclick = () => m.close();
+  });
+}
+
 // รับยอดคงเหลือ สำหรับคนที่เช็คอินไปแล้วแต่ยังไม่จ่ายครบ
 export async function runCollectBalance(b) {
   const method = await askPayMethod(b);
