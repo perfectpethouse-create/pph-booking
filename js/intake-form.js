@@ -184,8 +184,11 @@ export function printSheet(sheetEl, { filename } = {}) {
   closeBtn.onclick = () => cleanup();
   backBtn.onclick = () => cleanup();
 
-  // รอให้ browser เรนเดอร์ก่อนเรียก print (กันใบว่าง)
-  setTimeout(() => window.print(), 100);
+  // เรียก print แบบ synchronous "ในจังหวะกดปุ่ม" — iOS Safari จะบล็อก (เด้ง
+  // "เว็บไซต์นี้ถูกปิดกั้นไม่ให้พิมพ์") ถ้าเรียกผ่าน setTimeout เพราะถือว่าหลุด
+  // จาก user gesture = พิมพ์อัตโนมัติ · บังคับ reflow ให้ใบถูกวางเลย์เอาต์ก่อน กันหน้าว่าง
+  void host.offsetHeight;
+  window.print();
   // กันเหนียวถ้า afterprint ไม่ยิงและผู้ใช้ไม่กดอะไรเลย — ตั้งไว้ยาวโดยตั้งใจ
   // เพราะถ้าลบใบทิ้งระหว่างกล่องพิมพ์ยังเปิดอยู่ งานพิมพ์จะออกมาเป็นหน้าว่าง
   failsafe = setTimeout(() => cleanup(), 60000);
