@@ -39,6 +39,7 @@ export function renderBookings(container) {
   ]));
   container.appendChild(el('div', { class: 'card' }, [
     el('div', { class: 'toolbar' }, [searchInput, statusFilter]),
+    buildStatusLegend(),
     tableWrap,
   ]));
 
@@ -55,17 +56,40 @@ export function renderBookings(container) {
   searchInput.oninput = draw;
   statusFilter.onchange = draw;
 
-  _unsub.push(listen('bookings', arr => { _bookings = sortByCheckIn(arr); draw(); }));
+  _unsub.push(listen('bookings', arr => { _bookings = sortByBookingDate(arr); draw(); }));
   _unsub.push(listen('customers', arr => { _customers = arr; }));
 }
 
-function sortByCheckIn(arr) {
-  return [...arr].sort((a, b) => (b.checkIn || '').localeCompare(a.checkIn || ''));
+// เรียงตาม "วันที่จอง/โอนมัดจำ" ล่าสุดก่อน — เห็นทันทีว่าจองเข้ามาล่าสุดวันไหน
+// เท่ากันให้ทับด้วย createdAt (ใบที่บันทึกทีหลังอยู่บน) · ไม่มี depositDate ค่อย fallback createdAt/checkIn
+function sortByBookingDate(arr) {
+  const key = b => b.depositDate || (b.createdAt || '').slice(0, 10) || b.checkIn || '';
+  return [...arr].sort((a, b) => {
+    const d = key(b).localeCompare(key(a));
+    if (d) return d;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
 }
 
+// สีสถานะสื่อความหมาย: เขียว=จบครบ · ส้ม=มัดจำแล้วรอครึ่งหลัง · แดง=รอโอนมัดจำ (ต้องตาม) · เทา=ยกเลิก
 function statusPill(s) {
-  const map = { 'จ่ายครบแล้ว': 'green', 'มัดจำแล้ว': 'yellow', 'ยกเลิก': 'red', 'ยังไม่มัดจำ': 'grey' };
+  const map = { 'จ่ายครบแล้ว': 'green', 'มัดจำแล้ว': 'yellow', 'ยังไม่มัดจำ': 'red', 'ยกเลิก': 'grey' };
   return el('span', { class: 'pill ' + (map[s] || 'grey'), text: s || '-' });
+}
+
+// คำอธิบายว่าแต่ละสี/สถานะหมายถึงอะไร — วางใต้แถบค้นหา ให้ดูปราดเดียวรู้
+function buildStatusLegend() {
+  const items = [
+    ['จ่ายครบแล้ว', 'green', 'รับเงินครบแล้ว'],
+    ['มัดจำแล้ว', 'yellow', 'รับมัดจำ 50% · ค้างครึ่งหลัง'],
+    ['ยังไม่มัดจำ', 'red', 'รอลูกค้าโอนมัดจำ'],
+    ['ยกเลิก', 'grey', 'ยกเลิกการจอง'],
+  ];
+  return el('div', { style: 'display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:0 2px 12px' },
+    items.map(([label, color, hint]) => el('span', { style: 'display:inline-flex;align-items:center;gap:6px' }, [
+      statusPill(label),
+      el('span', { class: 'muted', style: 'font-size:12px', text: hint }),
+    ])));
 }
 
 function buildTable(rows) {
