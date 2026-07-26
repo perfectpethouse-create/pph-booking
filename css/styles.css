@@ -592,7 +592,8 @@ body.modal-open { overflow: hidden; }
 .zone-body {
   border-left: 3px solid var(--cat);
   border-radius: 0 0 0 14px;
-  padding-left: 10px; margin-top: 8px;
+  /* ช่องว่างซ้าย-ขวาเท่ากัน การ์ดในโซนจึงสมดุล ไม่เยื้องไปทางเดียว */
+  padding-left: 10px; padding-right: 10px; margin-top: 8px;
   display: flex; flex-direction: column; gap: 10px;
 }
 .zone-body .section-card { margin: 0; }
@@ -601,7 +602,7 @@ body.modal-open { overflow: hidden; }
 .sec-ico svg { width: 17px; height: 17px; }
 
 @media (max-width: 760px) {
-  .zone-body { padding-left: 7px; }
+  .zone-body { padding-left: 7px; padding-right: 7px; }
   .zone-title { font-size: 14.5px; }
   .zone-head { padding: 10px 13px; }
 }
