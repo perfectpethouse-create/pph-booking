@@ -797,6 +797,14 @@ body.modal-open { overflow: hidden; }
 
 /* ═══ ใบรับฝากสัตว์เลี้ยง (พิมพ์/บันทึก PDF) ═══ */
 #intake-host { position: fixed; inset: 0; z-index: 100; background: var(--bg); overflow: auto; }
+/* แถบปุ่มบนสุด (ปิด · สั่งพิมพ์/บันทึก PDF) — ค้างบนสุดขณะเลื่อนอ่านใบ */
+.intake-bar {
+  position: sticky; top: 0; z-index: 101;
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px; background: var(--card);
+  border-bottom: 1px solid var(--hairline-soft); box-shadow: var(--shadow);
+}
+.intake-bar-sp { flex: 1; }
 /* ปุ่มปิด (X) ลอยค้างมุมขวาบน — ทางออกหลักบนมือถือที่ไม่มีแถบเบราว์เซอร์ */
 .intake-close {
   position: fixed; top: 12px; right: 12px; z-index: 102;
@@ -915,8 +923,9 @@ body.modal-open { overflow: hidden; }
   body.printing-intake .modal-bg,
   body.printing-intake .mode-badge,
   body.printing-intake .toast,
-  /* ปุ่มทางออกเป็นของหน้าจอเท่านั้น ห้ามติดไปบนกระดาษ/PDF */
+  /* ปุ่มทางออก/แถบสั่งพิมพ์เป็นของหน้าจอเท่านั้น ห้ามติดไปบนกระดาษ/PDF */
   .intake-close,
+  .intake-bar,
   .intake-exit { display: none !important; }
   body.printing-intake #intake-host { position: static; background: #fff; overflow: visible; }
   .intake-sheet {

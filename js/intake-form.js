@@ -133,18 +133,24 @@ export function buildIntakeSheet(bookingRaw, customers = []) {
   return sheet;
 }
 
-// พิมพ์ "แผ่นเอกสาร" ใดๆ ที่ใช้คลาส .intake-sheet — ใช้ร่วมกับ @media print เดิม
+// แสดง "แผ่นเอกสาร" ใดๆ ที่ใช้คลาส .intake-sheet เต็มจอ + ปุ่มสั่งพิมพ์/บันทึก PDF
 // (ใบรับฝากจาก booking และใบยืนยันจากใบลงทะเบียน ใช้กลไกเดียวกัน)
+//
+// ⚠️ ทำไม "โชว์ใบก่อน แล้วให้ผู้ใช้กดปุ่มพิมพ์เอง" (ไม่ auto-print):
+//   บน iOS การเรียก window.print() อัตโนมัติมีปัญหา 2 ทาง —
+//   • ผ่าน setTimeout → หลุด user gesture → เด้ง "เว็บไซต์นี้ถูกปิดกั้นไม่ให้พิมพ์"
+//   • เรียก sync ทันทีหลังสร้างใบใหญ่ → iOS ไม่ทันเพนต์/ยีลด์ → หน้าต่างพิมพ์ช้ามาก/ไม่ขึ้น
+//   วิธีที่ชัวร์: เรนเดอร์ใบให้เห็นก่อน แล้วผู้ใช้ "แตะปุ่มพิมพ์" = gesture สด บนใบที่เพนต์แล้ว
+//   → iOS เปิดหน้าต่างพิมพ์/บันทึก PDF ได้ทันทีทั้งใน Safari และโหมดติดตั้งเป็นแอป (standalone)
 // filename: ตั้งชื่อเอกสารชั่วคราว → เบราว์เซอร์ใช้เป็นชื่อไฟล์แนะนำตอน "บันทึกเป็น PDF"
-// ⚠️ ทางออกต้องมีเสมอ: บน iOS ที่ติดตั้งเป็นแอป (display: standalone) ไม่มีแถบเบราว์เซอร์
-//    และ afterprint มักไม่ยิงเมื่อผู้ใช้ปิดกล่องพิมพ์โดยไม่พิมพ์ ถ้าไม่มีปุ่มปิด
-//    ผู้ใช้จะติดค้างอยู่กับใบเต็มจอโดยออกไปไหนไม่ได้เลย จึงมีทางออก 4 ทาง:
-//    ปุ่ม X · ปุ่ม "กลับ" ท้ายใบ · ปุ่ม Esc · ปุ่มย้อนกลับของเครื่อง
+// ทางออกปิดใบมี 4 ทาง: ปุ่มปิด · ปุ่ม "กลับ" ท้ายใบ · ปุ่ม Esc · ปุ่มย้อนกลับของเครื่อง
 export function printSheet(sheetEl, { filename } = {}) {
-  const closeBtn = el('button', { class: 'intake-close', 'aria-label': 'ปิด', html: icons.x });
+  const printBtn = el('button', { class: 'btn primary', html: icons.print + ' สั่งพิมพ์ / บันทึก PDF' });
+  const closeBtn = el('button', { class: 'btn ghost', html: icons.x + ' ปิด' });
   const backBtn = el('button', { class: 'btn', text: 'กลับ' });
+  const bar = el('div', { class: 'intake-bar' }, [closeBtn, el('div', { class: 'intake-bar-sp' }), printBtn]);
   const host = el('div', { id: 'intake-host' }, [
-    closeBtn,
+    bar,
     sheetEl,
     el('div', { class: 'intake-exit' }, [backBtn]),
   ]);
@@ -159,39 +165,27 @@ export function printSheet(sheetEl, { filename } = {}) {
   try { history.pushState({ intakeSheet: true }, ''); pushedState = true; } catch { /* ไม่รองรับก็ข้าม */ }
 
   let done = false;
-  let failsafe = null; // ประกาศก่อน cleanup เพราะ cleanup อ้างถึง (กัน TDZ)
-  // fromPopstate: มาจากปุ่มย้อนกลับ → history ถอยให้แล้ว ไม่ต้องถอยซ้ำ
   const cleanup = (fromPopstate) => {
-    if (done) return; // กันเรียกซ้ำ (afterprint + timer + ผู้ใช้กดปิด อาจยิงพร้อมกัน)
+    if (done) return; // กันเรียกซ้ำ (Esc + back + ผู้ใช้กดปิด อาจยิงพร้อมกัน)
     done = true;
     document.body.classList.remove('printing-intake');
     host.remove();
     if (filename) document.title = prevTitle;
-    window.removeEventListener('afterprint', onAfterPrint);
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('popstate', onPop);
-    clearTimeout(failsafe);
     if (pushedState && !fromPopstate) history.back();
   };
 
-  const onAfterPrint = () => cleanup();
   const onKey = (e) => { if (e.key === 'Escape') cleanup(); };
   const onPop = () => cleanup(true);
 
-  window.addEventListener('afterprint', onAfterPrint);
   document.addEventListener('keydown', onKey);
   window.addEventListener('popstate', onPop);
   closeBtn.onclick = () => cleanup();
   backBtn.onclick = () => cleanup();
-
-  // เรียก print แบบ synchronous "ในจังหวะกดปุ่ม" — iOS Safari จะบล็อก (เด้ง
-  // "เว็บไซต์นี้ถูกปิดกั้นไม่ให้พิมพ์") ถ้าเรียกผ่าน setTimeout เพราะถือว่าหลุด
-  // จาก user gesture = พิมพ์อัตโนมัติ · บังคับ reflow ให้ใบถูกวางเลย์เอาต์ก่อน กันหน้าว่าง
-  void host.offsetHeight;
-  window.print();
-  // กันเหนียวถ้า afterprint ไม่ยิงและผู้ใช้ไม่กดอะไรเลย — ตั้งไว้ยาวโดยตั้งใจ
-  // เพราะถ้าลบใบทิ้งระหว่างกล่องพิมพ์ยังเปิดอยู่ งานพิมพ์จะออกมาเป็นหน้าว่าง
-  failsafe = setTimeout(() => cleanup(), 60000);
+  // สั่งพิมพ์เมื่อผู้ใช้แตะปุ่ม — gesture สดบนใบที่เรนเดอร์+เพนต์เสร็จแล้ว ไม่ปิดใบอัตโนมัติ
+  // (เผื่ออยากพิมพ์และบันทึก PDF ต่อเนื่อง — ปิดเองเมื่อเสร็จ)
+  printBtn.onclick = () => window.print();
 }
 
 // เปิดใบรับฝากในหน้าต่างพิมพ์ (ผู้ใช้กด "Save as PDF" หรือสั่งพิมพ์ได้)
