@@ -425,6 +425,58 @@ export function petDuration(pet, type) {
   return groomingDuration(groomServiceOf(pet));
 }
 
+// ── บริการเสริม (add-on) ของโซนออกกำลังกาย: อาบน้ำ/ตัดขน ต่อจากรอบเล่น ──
+// ราคาใช้เรต Grooming เดิมทั้งดุ้น (โซนนี้รับเฉพาะน้องหมา → petType ล็อก 'dog')
+// น้องเก็บฟิลด์เพิ่ม: addOn ('none'|'bath'|'cut'|'bathCut') · gSize (ไซส์ Grooming) · coatType
+//   ระดับ 3 มีอาบน้ำอยู่แล้ว → ตัวเลือกที่มีอาบน้ำถูกซ่อน กันคิดค่าอาบน้ำซ้ำ
+export const EXERCISE_ADDON_NONE = 'none';
+export const EXERCISE_ADDON_OPTIONS = [
+  { id: EXERCISE_ADDON_NONE, label: '— ไม่เพิ่ม —' },
+  ...GROOMING_SERVICES, // bath · cut · bathCut (ใช้ label เดียวกับ Grooming)
+];
+export function addonHasBath(addOn) { return addOn === 'bath' || addOn === 'bathCut'; }
+export function addonHasCut(addOn) { return addOn === 'cut' || addOn === 'bathCut'; }
+export function addonIsSet(addOn) { return !!addOn && addOn !== EXERCISE_ADDON_NONE; }
+
+// ตัวเลือก add-on ที่ใช้ได้ตามระดับ — ระดับ 3 (มีอาบน้ำแล้ว) เหลือแค่ 'ไม่เพิ่ม / ตัดขน'
+export function addonOptionsForLevel(level) {
+  return String(level) === '3'
+    ? EXERCISE_ADDON_OPTIONS.filter(o => !addonHasBath(o.id))
+    : EXERCISE_ADDON_OPTIONS;
+}
+
+// รอบที่งานกรูมของ add-on จะ "เริ่ม" = รอบเล่น + 1 ชม. (เล่น 1 ชม. ก่อน แล้วต่อกรูม)
+export function exerciseGroomTime(exTime) {
+  if (!exTime) return '';
+  const [h, m] = exTime.split(':').map(Number);
+  return `${String(h + 1).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+// รอบกรูมที่คำนวณได้ทำจริงไม่ได้ไหม → คืนเหตุผล (พักเที่ยง/เกินเวลาตัดขน) ไม่งั้นคืน null
+export function addonGroomIssue(exTime, addOn) {
+  if (!exTime || !addonIsSet(addOn)) return null;
+  const gt = exerciseGroomTime(exTime);
+  if (!GROOMING_SLOTS.includes(gt)) {
+    return `รอบเล่น ${exTime} + 1 ชม. = ${gt} น. ตรงพักเที่ยง/นอกเวลาทำการ กรูมต่อไม่ได้ — เลือกรอบเล่นอื่น`;
+  }
+  if (addonHasCut(addOn) && gt > GROOMING_CUT_LAST_SLOT) {
+    return `งานตัดขนต้องเริ่มไม่เกิน ${GROOMING_CUT_LAST_SLOT} น. แต่รอบเล่น ${exTime} + 1 ชม. = ${gt} น. — เลือกรอบเล่นก่อนหน้า หรือเอา "ตัดขน" ออก`;
+  }
+  return null;
+}
+
+// ราคา add-on ต่อน้อง 1 ตัว — reuse ตาราง Grooming (หมาเท่านั้น)
+export function exerciseAddOnPrice(pet) {
+  if (!pet || !addonIsSet(pet.addOn) || !pet.gSize) return 0;
+  return groomingPrice('dog', pet.gSize, pet.coatType || 'short', pet.addOn);
+}
+// แปลงน้องออกกำลังกาย (ที่เลือก add-on) → น้อง Grooming สำหรับคิวที่ผูกกัน
+export function addonGroomPet(pet) {
+  return {
+    petName: pet.petName || '', petType: 'dog',
+    size: pet.gSize || '', coatType: pet.coatType || 'short', groomService: pet.addOn,
+  };
+}
+
 // ── สิทธิ์พี่เลี้ยง: เมนูที่เจ้าของร้านเปิด-ปิดได้เอง ──
 // ⚠️ "ตั้งค่า" และ "สำรองข้อมูล" ไม่อยู่ในลิสต์นี้โดยตั้งใจ และห้ามเพิ่มเข้ามา:
 //    · เปิด "ตั้งค่า" = พี่เลี้ยงลบอีเมลตัวเองออกจาก staffEmails แล้วกลายเป็นเจ้าของร้านได้

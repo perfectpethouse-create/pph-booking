@@ -6,6 +6,7 @@ import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween }
 import {
   PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, GROOMING_SIZES, COAT_TYPES,
   groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice,
+  addonIsSet, addonHasBath, exerciseAddOnPrice, exerciseGroomTime,
 } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 
@@ -214,6 +215,18 @@ function describePet(pet, type) {
     detail: [petLabel(pet.petType), size, coat].filter(Boolean).join(' · '),
   };
 }
+// บรรยายบริการเสริม (add-on อาบน้ำ/ตัดขน) ของน้องออกกำลังกาย 1 ตัว — คืน null ถ้าไม่มี
+function describeAddOn(pet) {
+  if (!addonIsSet(pet.addOn)) return null;
+  const size = (GROOMING_SIZES.dog.find(x => x.id === pet.gSize) || {}).label || pet.gSize || '-';
+  const coat = addonHasBath(pet.addOn) ? ((COAT_TYPES.dog.find(x => x.id === pet.coatType) || {}).label || '') : '';
+  return { label: groomServiceLabel(pet.addOn), price: exerciseAddOnPrice(pet), detail: [size, coat].filter(Boolean).join(' · ') };
+}
+// ยอดรวมค่าเสริมทั้งใบ (โซนออกกำลังกายเท่านั้น)
+function addOnTotalOf(a) {
+  return a.type === 'exercise' ? petsOf(a).reduce((sum, p) => sum + exerciseAddOnPrice(p), 0) : 0;
+}
+
 // (คงไว้เพื่อ backward-compat) อธิบายทั้งนัดจากน้องตัวแรก
 export function describeAppointment(a) {
   return describePet(petsOf(a)[0], a.type);
@@ -233,13 +246,19 @@ export function buildAppointmentCard(a) {
     el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v }),
   ]));
 
+  const addOnTotal = addOnTotalOf(a);
   if (a.customerName) push('ชื่อลูกค้า', a.customerName);
   if (multi) {
-    // แจกแจงรายตัว: ชื่อน้อง → บริการ + ราคาต่อตัว · รายละเอียดไซส์/ขน
+    // แจกแจงรายตัว: ชื่อน้อง → บริการ + ราคาต่อตัว · รายละเอียดไซส์/ขน · บริการเสริม (ถ้ามี)
     pets.forEach((pet, i) => {
       const d = describePet(pet, a.type);
       push(`น้อง ${pet.petName || (i + 1)}`, `${d.title} · ${formatBaht(petPrice(pet, a.type, s))}`);
       if (d.detail) push('รายละเอียด', d.detail);
+      const ad = describeAddOn(pet);
+      if (ad) {
+        push('+ เพิ่มบริการ', `${ad.label} · ${formatBaht(ad.price)}`);
+        if (ad.detail) push('รายละเอียดเสริม', ad.detail);
+      }
     });
   } else {
     const pet = pets[0];
@@ -247,9 +266,16 @@ export function buildAppointmentCard(a) {
     if (pet.petName) push('ชื่อน้อง', pet.petName);
     push('บริการ', d.title);
     if (d.detail) push('รายละเอียด', d.detail);
+    const ad = describeAddOn(pet);
+    if (ad) {
+      push('+ เพิ่มบริการ', `${ad.label} · ${formatBaht(ad.price)}`);
+      if (ad.detail) push('รายละเอียดเสริม', ad.detail);
+    }
   }
   push('วันที่', formatDateTH(a.date));
   push('เวลา', `${a.time || '-'} น. · ${durationText(a)}`);
+  // งานกรูมของ add-on เริ่มต่อจากรอบเล่น — บอกลูกค้าให้ชัด
+  if (addOnTotal > 0 && a.time) push('รอบอาบน้ำ/ตัดขน', `${exerciseGroomTime(a.time)} น. (ต่อจากออกกำลังกาย)`);
 
   return el('div', { class: `cust-card cust-card--${a.type}`, id: 'appointment-card-capture' }, [
     el('div', { class: 'cc-head' }, [
@@ -258,9 +284,13 @@ export function buildAppointmentCard(a) {
       el('div', { class: 'cc-sub', text: s?.shopInfo?.name || 'Perfect Pet House' }),
     ]),
     ...rows,
+    ...(addOnTotal > 0 ? [
+      el('div', { class: 'cc-row' }, [el('span', { class: 'k', text: 'ค่าออกกำลังกาย' }), el('span', { class: 'v', text: formatBaht(a.price) })]),
+      el('div', { class: 'cc-row' }, [el('span', { class: 'k', text: 'ค่าอาบน้ำ/ตัดขน (เสริม)' }), el('span', { class: 'v', text: formatBaht(addOnTotal) })]),
+    ] : []),
     el('div', { class: 'cc-total' }, [
-      el('span', { text: multi ? `ค่าบริการรวม (${pets.length} ตัว)` : 'ค่าบริการ' }),
-      el('span', { text: formatBaht(a.price) }),
+      el('span', { text: addOnTotal > 0 ? 'ยอดรวมทั้งสิ้น' : (multi ? `ค่าบริการรวม (${pets.length} ตัว)` : 'ค่าบริการ') }),
+      el('span', { text: formatBaht((Number(a.price) || 0) + addOnTotal) }),
     ]),
     // เตือนเรื่องน้ำหนัก: ราคาผูกกับขนาดตัว ถ้าชั่งจริงแล้วคนละไซส์ ราคาจะขยับ
     el('div', { class: 'cc-note', text: 'ราคาคิดตามขนาดตัวจริงที่ชั่งหน้าร้าน หากต่างจากที่แจ้งไว้ ราคาอาจปรับตามจริง' }),
@@ -279,20 +309,34 @@ export function buildAppointmentText(a) {
   const L = [];
   L.push(`🐾 ยืนยันการจองคิว — ${s?.shopInfo?.name || 'Perfect Pet House'}`);
   if (a.customerName) L.push(`ชื่อลูกค้า: ${a.customerName}`);
+  const addOnTotal = addOnTotalOf(a);
+  const addOnLine = (pet) => {
+    const ad = describeAddOn(pet);
+    return ad ? `   + เพิ่มบริการ: ${ad.label}${ad.detail ? ` (${ad.detail})` : ''} · ${formatBaht(ad.price)}` : null;
+  };
   if (multi) {
     pets.forEach((pet, i) => {
       const d = describePet(pet, a.type);
       L.push(`น้อง ${pet.petName || (i + 1)}: ${d.title}${d.detail ? ` (${d.detail})` : ''} · ${formatBaht(petPrice(pet, a.type, s))}`);
+      const al = addOnLine(pet); if (al) L.push(al);
     });
   } else {
     const pet = pets[0];
     const d = describePet(pet, a.type);
     if (pet.petName) L.push(`ชื่อน้อง: ${pet.petName}`);
     L.push(`บริการ: ${d.title}${d.detail ? ` (${d.detail})` : ''}`);
+    const al = addOnLine(pet); if (al) L.push(al);
   }
   L.push(`วันที่: ${formatDateTH(a.date)}`);
   L.push(`เวลา: ${a.time || '-'} น. · ${durationText(a)}`);
-  L.push(`${multi ? `ค่าบริการรวม (${pets.length} ตัว)` : 'ค่าบริการ'}: ${formatBaht(a.price)}`);
+  if (addOnTotal > 0 && a.time) L.push(`รอบอาบน้ำ/ตัดขน: ${exerciseGroomTime(a.time)} น. (ต่อจากออกกำลังกาย)`);
+  if (addOnTotal > 0) {
+    L.push(`ค่าออกกำลังกาย: ${formatBaht(a.price)}`);
+    L.push(`ค่าอาบน้ำ/ตัดขน (เสริม): ${formatBaht(addOnTotal)}`);
+    L.push(`ยอดรวมทั้งสิ้น: ${formatBaht((Number(a.price) || 0) + addOnTotal)}`);
+  } else {
+    L.push(`${multi ? `ค่าบริการรวม (${pets.length} ตัว)` : 'ค่าบริการ'}: ${formatBaht(a.price)}`);
+  }
   L.push('หมายเหตุ: ราคาคิดตามขนาดตัวจริงที่ชั่งหน้าร้าน หากต่างจากที่แจ้งไว้ ราคาอาจปรับตามจริง');
   if (s?.shopInfo?.phone) L.push(`📞 โทรสอบถาม ${s.shopInfo.phone}`);
   return L.join('\n');

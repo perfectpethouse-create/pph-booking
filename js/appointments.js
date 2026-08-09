@@ -18,6 +18,9 @@ import {
   PET_TYPES,
   GROOMING_SERVICES, groomServiceOf, groomServiceLabel, groomingDuration,
   petsOf, petCountOf, petPrice, petDuration,
+  EXERCISE_ADDON_NONE, addonIsSet, addonHasBath, addonHasCut,
+  addonOptionsForLevel, exerciseGroomTime, addonGroomIssue,
+  exerciseAddOnPrice, addonGroomPet,
 } from './config-shop.js';
 import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
@@ -59,7 +62,7 @@ export function countInSlot(list, { type, date, time, excludeId }) {
 // น้องเปล่า 1 ตัวตามประเภทโซน — ใช้ตอนเริ่มการ์ดใหม่/กด "เพิ่มน้อง"
 function blankPet(type) {
   return type === 'exercise'
-    ? { petName: '', exSize: 'S', level: '1' }
+    ? { petName: '', exSize: 'S', level: '1', addOn: EXERCISE_ADDON_NONE, gSize: '', coatType: 'short' }
     : { petName: '', petType: 'dog', size: '', coatType: 'short', groomService: 'bath' };
 }
 // รูปแบบบริการรวมของทั้งการ์ด (ใช้เลือกรอบเวลาที่ทำได้) — ถ้ามีตัวใดตัดขน
@@ -79,10 +82,42 @@ function mirrorRec(draft, settings) {
   const rec = { ...draft, pets, price, durationMin, petCount: pets.length, petName };
   if (draft.type === 'exercise') {
     rec.petType = 'dog'; rec.exSize = first.exSize; rec.level = first.level;
+    // ยอดค่าเสริม (อาบน้ำ/ตัดขน) — เก็บไว้โชว์บนการ์ด/ชิป ไม่รวมใน price (price = ค่าเล่นล้วน)
+    // ราคางานกรูมจริงไปอยู่บน "คิว Grooming ที่ผูกกัน" เพื่อให้รายงานแยกยอดถูก
+    rec.addOnTotal = pets.reduce((sum, p) => sum + exerciseAddOnPrice(p), 0);
   } else {
     rec.petType = first.petType; rec.size = first.size;
     rec.coatType = first.coatType; rec.groomService = first.groomService;
   }
+  return rec;
+}
+
+// น้องออกกำลังกายที่เลือก add-on (อาบน้ำ/ตัดขน)
+function addOnPetsOf(draft) {
+  return draft.type === 'exercise' ? (draft.pets || []).filter(p => addonIsSet(p.addOn)) : [];
+}
+// ประกอบ "คิว Grooming ที่ผูกกัน" จากน้องที่เลือก add-on — เป็นนัดหมาย type='grooming' เต็มตัว
+//   จึงโผล่ในบอร์ด Grooming, นับความจุช่าง และเข้ารายงานรายได้ Grooming ด้วยกลไกเดิมทั้งหมด
+//   time = รอบเล่น + 1 ชม. · price = ค่ากรูมล้วน (รายงานจึงแยกยอดถูก ไม่ซ้ำกับค่าเล่น)
+function buildCompanionGroom(draft, exerciseId, priorGroomId, settings) {
+  const addPets = addOnPetsOf(draft).map(addonGroomPet);
+  const price = addPets.reduce((sum, p) => sum + petPrice(p, 'grooming', settings), 0);
+  const durationMin = addPets.reduce((sum, p) => sum + petDuration(p, 'grooming'), 0);
+  const petName = addPets.map(p => p.petName).filter(Boolean).join(', ');
+  const first = addPets[0] || {};
+  const rec = {
+    type: 'grooming',
+    date: draft.date, time: exerciseGroomTime(draft.time),
+    customerName: draft.customerName || '', phone: draft.phone || '',
+    pets: addPets, price, durationMin, petCount: addPets.length, petName,
+    petType: 'dog', size: first.size, coatType: first.coatType, groomService: first.groomService,
+    status: draft.status,
+    notes: (draft.notes ? draft.notes + ' · ' : '') + 'บริการเสริมต่อจากโซนออกกำลังกาย',
+    source: 'exercise-addon',
+    linkedApptId: exerciseId,
+    createdBy: draft.createdBy || currentUser()?.email || '',
+  };
+  if (priorGroomId) rec.id = priorGroomId; // แก้คิวเดิมที่ผูกไว้ ไม่สร้างใหม่ซ้ำ
   return rec;
 }
 
@@ -252,6 +287,11 @@ function buildSlotBoard(type, date) {
           // ป้ายอยู่ท้ายสุดใน DOM เพื่อให้ตกลงบรรทัดใหม่ ไม่ไปบีบชื่อน้องจนอ่านไม่ออก
           hasCut
             ? el('span', { class: 'slot-tag slot-tag--inline', text: pcount > 1 ? 'มีตัดขน' : (groomServiceOf(a) === 'cut' ? 'ตัดขน' : 'อาบน้ำ+ตัดขน') }) : null,
+          // โซนออกกำลังกายที่มี add-on → มีคิวกรูมผูกอยู่ · คิวกรูมที่มาจากการเล่น → บอกที่มา
+          (a.type === 'exercise' && Number(a.addOnTotal) > 0)
+            ? el('span', { class: 'slot-tag slot-tag--inline', text: '+ กรูม' }) : null,
+          (a.type === 'grooming' && a.source === 'exercise-addon')
+            ? el('span', { class: 'slot-tag slot-tag--inline', text: 'เสริมจากเล่น' }) : null,
         ].filter(Boolean));
         chip.onclick = () => openAppointmentForm(a);
         return chip;
@@ -309,12 +349,31 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     const capacityNote = el('div', { class: 'capacity-note' });
 
     const recalc = () => {
+      // price = ค่าเล่นล้วน (คงไว้เพื่อให้รายงานออกกำลังกายถูก) · addOnTotal = ค่าอาบน้ำ/ตัดขน
       draft.price = computePrice(draft, s);
+      draft.addOnTotal = draft.type === 'exercise'
+        ? draft.pets.reduce((sum, p) => sum + exerciseAddOnPrice(p), 0) : 0;
       priceBox.innerHTML = '';
-      priceBox.appendChild(el('div', { class: 'sum-row sum-total' }, [
-        el('span', { text: draft.pets.length > 1 ? `ราคารวม (${draft.pets.length} ตัว)` : 'ราคา' }),
-        el('strong', { text: formatBaht(draft.price) }),
-      ]));
+      if (draft.addOnTotal > 0) {
+        const groomTime = exerciseGroomTime(draft.time);
+        priceBox.appendChild(el('div', { class: 'sum-row' }, [
+          el('span', { text: draft.pets.length > 1 ? `ค่าออกกำลังกาย (${draft.pets.length} ตัว)` : 'ค่าออกกำลังกาย' }),
+          el('span', { text: formatBaht(draft.price) }),
+        ]));
+        priceBox.appendChild(el('div', { class: 'sum-row' }, [
+          el('span', { text: `ค่าอาบน้ำ/ตัดขน (add-on)${draft.time ? ` · กรูม ${groomTime} น.` : ''}` }),
+          el('span', { text: formatBaht(draft.addOnTotal) }),
+        ]));
+        priceBox.appendChild(el('div', { class: 'sum-row sum-total' }, [
+          el('span', { text: 'ยอดรวมทั้งสิ้น' }),
+          el('strong', { text: formatBaht(draft.price + draft.addOnTotal) }),
+        ]));
+      } else {
+        priceBox.appendChild(el('div', { class: 'sum-row sum-total' }, [
+          el('span', { text: draft.pets.length > 1 ? `ราคารวม (${draft.pets.length} ตัว)` : 'ราคา' }),
+          el('strong', { text: formatBaht(draft.price) }),
+        ]));
+      }
       refreshCapacity();
     };
 
@@ -375,11 +434,40 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       let fields;
       if (draft.type === 'exercise') {
         const sizeSel = selectEl(EXERCISE_SIZES.map(x => [x.id, x.label]), pet.exSize, v => { pet.exSize = v; rerender(); });
-        const lvlSel = selectEl(EXERCISE_LEVELS.map(x => [x.id, x.label]), pet.level, v => { pet.level = v; rerender(); });
+        const lvlSel = selectEl(EXERCISE_LEVELS.map(x => [x.id, x.label]), pet.level, v => {
+          pet.level = v;
+          // ระดับ 3 มีอาบน้ำอยู่แล้ว — ถ้า add-on เดิมมีอาบน้ำ ปรับเหลือ "ตัดขน" หรือ "ไม่เพิ่ม" กันคิดซ้ำ
+          if (String(v) === '3' && addonHasBath(pet.addOn)) pet.addOn = addonHasCut(pet.addOn) ? 'cut' : EXERCISE_ADDON_NONE;
+          rerender();
+        });
+        // ── บริการเสริม (add-on): อาบน้ำ/ตัดขน ต่อจากรอบเล่น 1 ชม. ──
+        const addonOpts = addonOptionsForLevel(pet.level);
+        if (!addonOpts.some(o => o.id === (pet.addOn || EXERCISE_ADDON_NONE))) pet.addOn = EXERCISE_ADDON_NONE;
+        const addonSel = selectEl(addonOpts.map(o => [o.id, o.label]), pet.addOn || EXERCISE_ADDON_NONE, v => { pet.addOn = v; rerender(); });
+        // เลือก add-on แล้วต้องกรอกไซส์ Grooming ทุกครั้ง + ลักษณะขน (เฉพาะบริการที่มีอาบน้ำ)
+        let addonDetail = null;
+        if (addonIsSet(pet.addOn)) {
+          const gSizeSel = selectEl(
+            [['', '— เลือกไซส์ Grooming —'], ...GROOMING_SIZES.dog.map(x => [x.id, x.label])],
+            pet.gSize || '', v => { pet.gSize = v; rerender(); });
+          const coatSel = addonHasBath(pet.addOn)
+            ? selectEl(COAT_TYPES.dog.map(x => [x.id, x.label]), pet.coatType || 'short', v => { pet.coatType = v; rerender(); })
+            : null;
+          const issue = addonGroomIssue(draft.time, pet.addOn);
+          addonDetail = el('div', { style: 'margin-top:2px' }, [
+            el('div', { class: 'row' }, [
+              labeled('ไซส์ Grooming', gSizeSel),
+              coatSel ? labeled('ลักษณะขน', coatSel) : null,
+            ].filter(Boolean)),
+            issue ? el('p', { class: 'pill yellow', style: 'margin:6px 0 0', text: '⚠️ ' + issue }) : null,
+          ].filter(Boolean));
+        }
         fields = el('div', {}, [
           el('div', { class: 'row' }, [labeled('ชื่อน้อง', nameI)]),
           el('div', { class: 'row' }, [labeled('ขนาดน้อง', sizeSel), labeled('ระดับบริการ', lvlSel)]),
-        ]);
+          el('div', { class: 'row' }, [labeled('เพิ่มบริการ (อาบน้ำ/ตัดขน)', addonSel)]),
+          addonDetail,
+        ].filter(Boolean));
       } else {
         const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), pet.petType, v => {
           pet.petType = v; pet.size = ''; pet.coatType = 'short'; rerender(); // ตารางไซส์หมา/แมวคนละชุด
@@ -408,13 +496,20 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
           ].filter(Boolean)),
         ]);
       }
+      const addOnLine = (draft.type === 'exercise' && addonIsSet(pet.addOn) && exerciseAddOnPrice(pet) > 0)
+        ? el('div', { class: 'row', style: 'justify-content:flex-end;align-items:baseline;gap:6px;margin-top:2px' }, [
+            el('span', { class: 'muted', style: 'font-size:13px', text: `+ ${groomServiceLabel(pet.addOn)} (add-on)` }),
+            el('strong', { text: formatBaht(exerciseAddOnPrice(pet)) }),
+          ])
+        : null;
       return el('div', { style: 'border:1px solid var(--hairline-soft);border-radius:12px;padding:12px;margin-bottom:10px' }, [
         head, fields,
         el('div', { class: 'row', style: 'justify-content:flex-end;align-items:baseline;gap:6px;margin-top:2px' }, [
-          el('span', { class: 'muted', style: 'font-size:13px', text: 'ราคาตัวนี้' }),
+          el('span', { class: 'muted', style: 'font-size:13px', text: draft.type === 'exercise' && addOnLine ? 'ค่าเล่นตัวนี้' : 'ราคาตัวนี้' }),
           el('strong', { text: formatBaht(petPrice(pet, draft.type, s)) }),
         ]),
-      ]);
+        addOnLine,
+      ].filter(Boolean));
     };
 
     const addPetBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มน้อง' });
@@ -450,6 +545,8 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
     if (delBtn) delBtn.onclick = async () => {
       if (await confirmDialog('ลบนัดหมายนี้?', { danger: true, okText: 'ลบ' })) {
+        // ลบคิว Grooming ที่ผูกกัน (ถ้ามี) ให้หายตามกัน — ไม่ทิ้งคิวค้าง
+        if (existing.linkedGroomingId) await remove('appointments', existing.linkedGroomingId);
         await remove('appointments', existing.id); m.close(); toast('ลบแล้ว');
       }
     };
@@ -495,6 +592,16 @@ async function doSave(draft, isNew, modal, existingId, settings) {
       : `รอบ ${draft.time} ไม่มีในโซนนี้ — กรุณาเลือกรอบใหม่`);
   }
 
+  // ── บริการเสริม (add-on) โซนออกกำลังกาย: ต้องกรอกไซส์ Grooming ครบ + รอบกรูมต้องทำได้จริง ──
+  const addPets = addOnPetsOf(draft);
+  const hasAddOn = addPets.length > 0;
+  const priorGroomId = draft.linkedGroomingId || null;
+  if (hasAddOn) {
+    if (addPets.some(p => !p.gSize)) return toast('กรุณาเลือกไซส์ Grooming ให้น้องที่เพิ่มบริการทุกตัว');
+    const issue = addPets.map(p => addonGroomIssue(draft.time, p.addOn)).find(Boolean);
+    if (issue) return toast(issue); // ตกพักเที่ยง/เกินเวลาตัดขน — บล็อกตามที่ตกลง
+  }
+
   // เกินความจุ = เตือนให้ยืนยัน ไม่ห้าม (ร้านอาจรับได้จริงในบางกรณี) — นับตามจำนวนตัว
   const cap = capacityFor(draft.type, settings);
   const n = countInSlot(_appts, { type: draft.type, date: draft.date, time: draft.time, excludeId: existingId });
@@ -506,11 +613,37 @@ async function doSave(draft, isNew, modal, existingId, settings) {
     if (!ok) return;
   }
 
+  // เตือนความจุช่างที่รอบกรูม (เล่น + 1 ชม.) — ไม่บล็อก เผื่อร้านรับไหว
+  if (hasAddOn) {
+    const gTime = exerciseGroomTime(draft.time);
+    const gCap = capacityFor('grooming', settings);
+    const gN = countInSlot(_appts, { type: 'grooming', date: draft.date, time: gTime, excludeId: priorGroomId });
+    if (gN + addPets.length > gCap) {
+      const ok = await confirmDialog(
+        `รอบกรูม ${gTime} วันที่ ${formatDateTH(draft.date)} ช่างรับได้ ${gCap} แต่จะมี ${gN + addPets.length} ตัว — จองเพิ่มเลยไหม?`,
+        { okText: 'จองเพิ่ม' });
+      if (!ok) return;
+    }
+  }
+
   const rec = {
     ...mirrorRec(draft, settings),
     createdBy: draft.createdBy || currentUser()?.email || '',
   };
+
+  // ── ซิงก์ "คิว Grooming ที่ผูกกัน" ก่อน แล้วค่อยผูก id เข้าใบเล่น ──
+  // ทำคิวกรูมก่อนเพื่อให้ "บันทึกใบเล่นครั้งเดียวจบ" (ไม่ต้อง update ตามหลัง)
+  // firestore.rules อนุญาต create ให้พนักงาน แต่ update/delete เฉพาะเจ้าของร้าน —
+  // ถ้าไป update ใบเล่นทีหลัง พนักงานที่จองใหม่จะโดนบล็อก จึงตั้ง linkedGroomingId ให้ครบก่อนบันทึก
+  if (hasAddOn) {
+    const groomRec = buildCompanionGroom(draft, existingId || '', priorGroomId, settings);
+    rec.linkedGroomingId = await save('appointments', groomRec); // create (ใหม่) หรือ update (คิวเดิม)
+  } else {
+    rec.linkedGroomingId = null; // เผื่อเคยมี add-on แล้วเอาออก — ตัดตัวเชื่อมทิ้ง
+    if (priorGroomId) await remove('appointments', priorGroomId);
+  }
   await save('appointments', rec);
+
   modal.close();
   toast(isNew ? 'จองคิวแล้ว' : 'อัปเดตแล้ว');
   // เปิดการ์ดให้เลย — ลูกค้ายืนรออยู่หน้าเคาน์เตอร์ ส่งเข้า Line ต่อได้ทันที
