@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, escapeHtml, getSettings } from './ui.js';
-import { formatDateTH, todayISO } from './calc.js';
+import { formatDateTH, todayISO, computeBooking, formatBaht } from './calc.js';
 import { icons, brandLogo } from './icons.js';
 import { printSheet } from './intake-form.js';
 import { INTAKE_TERMS, INTAKE_CONSENT } from './config-shop.js';
@@ -13,6 +13,8 @@ import { qrSVG } from './qrcode.js';
 let _unsub = [];
 let _forms = [];
 let _customers = [];
+let _bookings = [];
+let _bookingsLoaded = false;
 
 // ป้ายชื่อฟิลด์ของสัตว์ (จากฟอร์มบนเว็บ) — คีย์ไหนไม่รู้จักจะโชว์ชื่อคีย์ตรงๆ
 const PET_LABELS = {
@@ -190,6 +192,62 @@ function stayActions(f) {
   return btns.length ? el('div', { style: 'margin-top:10px;display:flex;gap:8px;flex-wrap:wrap' }, btns) : null;
 }
 
+// ── จับคู่ใบเช็คอิน ↔ ใบจอง (bookings) ด้วย เบอร์โทร + วันเข้าพัก ──
+// ref ใช้จับคู่ไม่ได้ (เป็น timestamp ตอนส่งฟอร์ม ไม่ใช่รหัสจองเดิม) จึงใช้กุญแจธรรมชาติ
+// คืน { kind: linked|exact|near|none, booking?, candidates? }
+function matchBooking(f) {
+  if (f.bookingId) {
+    const b = _bookings.find(b => b.id === f.bookingId);
+    if (b) return { kind: 'linked', booking: b };
+  }
+  const ph = regNorm(f.phone);
+  if (!ph || !f.checkIn) return { kind: 'none', candidates: [] };
+  const active = _bookings.filter(b => b.depositStatus !== 'ยกเลิก' && regNorm(b.phone) === ph);
+  const exact = active.filter(b => b.checkIn === f.checkIn);
+  if (exact.length === 1) return { kind: 'exact', booking: exact[0] };
+  if (exact.length > 1) return { kind: 'near', candidates: exact };
+  const near = active.filter(b => { const d = regDayDiff(b.checkIn, f.checkIn); return d != null && Math.abs(d) <= 2; });
+  return near.length ? { kind: 'near', candidates: near } : { kind: 'none', candidates: [] };
+}
+// ป้ายใบจองบนการ์ด (โชว์เมื่อโหลด bookings แล้วเท่านั้น กันกระพริบ "ไม่พบ")
+function bookingChip(f) {
+  if (!_bookingsLoaded) return null;
+  const res = matchBooking(f);
+  if (res.kind === 'exact' || res.kind === 'linked') {
+    const dep = res.booking.depositStatus || '';
+    return { text: 'ใบจอง · ' + dep, cls: dep === 'ยังไม่มัดจำ' ? 'yellow' : 'green' };
+  }
+  if (res.kind === 'near') return { text: 'อาจตรงกับใบจอง', cls: 'gold' };
+  return { text: 'ยังไม่ผูกใบจอง', cls: 'grey' };
+}
+// ส่วน "ใบจองที่เชื่อมโยง" ในหน้ารายละเอียด (เติมหลังเปิด modal เพื่อให้ปุ่มปิด modal ได้)
+function fillBookingSection(slot, f, m) {
+  slot.innerHTML = '';
+  const res = matchBooking(f);
+  const box = el('div', { class: 'lineitem' }, [el('div', { class: 'li-head' }, [el('strong', { text: 'ใบจองที่เชื่อมโยง' })])]);
+  const bkRow = (b, extra) => el('div', { class: 'cc-row' }, [
+    el('span', { class: 'k', text: `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)}` }),
+    el('span', { class: 'v', style: 'white-space:normal', text: `${b.customerName || ''} · ${formatBaht(b.grandTotal)} · ${b.depositStatus || ''}` }),
+    extra || null,
+  ].filter(Boolean));
+  const linkBtn = (b) => { const x = el('button', { class: 'btn sm primary', text: 'ผูกใบนี้' }); x.onclick = async () => { await save('checkinForms', { id: f.id, bookingId: b.id }); f.bookingId = b.id; toast('ผูกใบจองแล้ว'); m.close(); }; return x; };
+  if (res.kind === 'exact' || res.kind === 'linked') {
+    box.appendChild(el('p', { class: 'muted', style: 'font-size:12px;margin:0 0 6px', text: res.kind === 'linked' ? 'ผูกโดยพนักงาน' : 'จับคู่อัตโนมัติจากเบอร์ + วันเข้าพัก' }));
+    box.appendChild(bkRow(res.booking));
+    if (res.kind === 'linked') {
+      const un = el('button', { class: 'btn sm ghost', style: 'margin-top:8px', text: 'ยกเลิกการผูก' });
+      un.onclick = async () => { await save('checkinForms', { id: f.id, bookingId: null }); f.bookingId = null; toast('ยกเลิกการผูกแล้ว'); m.close(); };
+      box.appendChild(un);
+    }
+  } else if (res.kind === 'near') {
+    box.appendChild(el('p', { class: 'muted', style: 'font-size:12px;margin:0 0 6px', text: 'พบใบจองใกล้เคียง (เบอร์ตรง วันคลาด) — ยืนยันว่าใช่ใบไหน' }));
+    res.candidates.slice(0, 4).forEach(b => box.appendChild(bkRow(b, linkBtn(b))));
+  } else {
+    box.appendChild(el('p', { class: 'muted', style: 'font-size:13px;margin:0', text: 'ไม่พบใบจองที่ตรง (จับคู่ด้วยเบอร์โทร + วันเข้าพัก) — อาจยังไม่ได้ทำใบจอง' }));
+  }
+  slot.appendChild(box);
+}
+
 export function renderRegistrations(container) {
   _unsub.forEach(u => u()); _unsub = [];
   let filter = 'all';
@@ -275,6 +333,7 @@ export function renderRegistrations(container) {
       ]),
       el('div', { style: 'margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
         el('span', { class: 'reg-ref', text: bookingRef(f) }),
+        (() => { const c = stay !== 'cancelled' ? bookingChip(f) : null; return c ? el('span', { class: 'pill ' + c.cls, style: 'font-size:11px', text: c.text }) : null; })(),
         el('span', { class: 'pill ' + (isNew ? 'yellow' : 'green'), style: 'font-size:11px', text: isNew ? 'ยังไม่นำเข้า' : 'นำเข้าแล้ว' }),
         dupeN ? el('span', { class: 'pill red', style: 'font-size:11px', text: `⚠ ส่งซ้ำ ${dupeN} ใบ` }) : null,
         f.signedAt ? el('span', { class: 'pill green', style: 'font-size:11px', text: '✓ เซ็นรับแล้ว' }) : null,
@@ -331,6 +390,7 @@ export function renderRegistrations(container) {
 
   _unsub.push(listen('checkinForms', arr => { _forms = arr; draw(); }, { orderBy: null }));
   _unsub.push(listen('customers', arr => { _customers = arr; }));
+  _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); _bookingsLoaded = true; draw(); }));
 }
 
 // ── รายละเอียดใบลงทะเบียน ──
@@ -354,6 +414,10 @@ function openDetail(f) {
     ]));
   });
   wrap.appendChild(ownerBox);
+
+  // ใบจองที่เชื่อมโยง (เติมเนื้อหาหลังเปิด modal — ปุ่มผูก/ยกเลิกต้องอ้าง m)
+  const bookingSlot = el('div', {});
+  wrap.appendChild(bookingSlot);
 
   // การเข้าพัก
   wrap.appendChild(el('div', { class: 'lineitem' }, [
@@ -420,6 +484,7 @@ function openDetail(f) {
   wrap.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:14px;gap:8px;flex-wrap:wrap' }, [delBtn, signBtn, pdfBtn, printBtn, importBtn]));
 
   const m = openModal(wrap);
+  fillBookingSection(bookingSlot, f, m);
 
   const storedOpts = () => ({ signOwner: f.signOwner, signStaff: f.signStaff, intakePhoto: f.intakePhoto, signedAt: f.signedAt });
   const pdfName = () => `ใบยืนยันเข้าพัก-${bookingRef(f)}`;
