@@ -117,6 +117,7 @@ const REG_GROUPS = [
   { key: 'staying', label: 'กำลังพักอยู่', icon: 'home' },
   { key: 'upcoming', label: 'รอเข้าพัก', icon: 'login' },
   { key: 'past', label: 'เช็คเอาท์แล้ว', icon: 'logout' },
+  { key: 'cancelled', label: 'ยกเลิก', icon: 'trash' },
   { key: 'undated', label: 'ไม่ระบุวันเข้าพัก', icon: 'inbox' },
 ];
 // ป้ายบอกจังหวะเวลาสั้นๆ บนการ์ด
@@ -136,6 +137,57 @@ function stayHint(f, today, bucket) {
     if (n != null && n > 0) return { text: n === 1 ? 'เหลือคืนสุดท้าย' : `เหลือ ${n} คืน`, cls: 'grey' };
   }
   return null;
+}
+
+// ── สถานะการเข้าพักที่พนักงานกดเอง (แยกแกนจาก f.status ที่แปลว่า "นำเข้าโปรไฟล์ลูกค้าแล้วหรือยัง") ──
+const STAY_META = {
+  waiting: { label: 'รอเข้าพัก', pill: 'grey' },
+  checkedin: { label: 'เช็คอินแล้ว', pill: 'blue' },
+  checkedout: { label: 'เช็คเอาท์แล้ว', pill: 'grey' },
+  cancelled: { label: 'ยกเลิก', pill: 'red' },
+};
+function getStay(f) { return f.stayStatus || 'waiting'; }
+// bucket ที่ "จริง" = สถานะที่พนักงานกดชนะการคำนวณจากวันที่ (เช่น เช็คเอาท์ก่อนกำหนด/ยกเลิก)
+function effectiveBucket(f, today) {
+  const s = getStay(f);
+  if (s === 'cancelled') return 'cancelled';
+  if (s === 'checkedout') return 'past';
+  if (s === 'checkedin') return f.checkOut === today ? 'today' : 'staying';
+  return stayBucket(f, today);
+}
+// บันทึกสถานะใหม่ (setDoc merge → อัปเดตเฉพาะฟิลด์นี้ · listener realtime วาดใหม่ให้เอง)
+async function setStay(f, status) {
+  const stamp = status === 'checkedin' ? { checkedInAt: Date.now() }
+    : status === 'checkedout' ? { checkedOutAt: Date.now() }
+      : status === 'cancelled' ? { cancelledAt: Date.now() } : {};
+  await save('checkinForms', { id: f.id, stayStatus: status, ...stamp });
+  toast(status === 'checkedin' ? `เช็คอิน ${f.name || ''} แล้ว`
+    : status === 'checkedout' ? `เช็คเอาท์ ${f.name || ''} แล้ว`
+      : status === 'cancelled' ? 'ทำเครื่องหมายยกเลิกแล้ว' : 'คืนสถานะแล้ว');
+}
+async function cancelStay(f) {
+  if (!await confirmDialog(`ยกเลิกการเข้าพักของ ${f.name || 'รายการนี้'}?`, { okText: 'ยกเลิกการเข้าพัก' })) return;
+  await setStay(f, 'cancelled');
+}
+// แถวปุ่มเปลี่ยนสถานะบนการ์ด (stopPropagation กันชนกับคลิกเปิดรายละเอียด)
+function stayActions(f) {
+  const stay = getStay(f);
+  const mk = (label, cls, handler) => {
+    const b = el('button', { class: 'btn sm ' + cls, type: 'button', text: label });
+    b.onclick = (e) => { e.stopPropagation(); handler(); };
+    return b;
+  };
+  let btns = [];
+  if (stay === 'waiting') {
+    btns = [mk('เช็คอิน', 'primary', () => setStay(f, 'checkedin')), mk('ยกเลิก', 'ghost', () => cancelStay(f))];
+  } else if (stay === 'checkedin') {
+    btns = [mk('เช็คเอาท์', 'primary', () => setStay(f, 'checkedout')), mk('ยกเลิก', 'ghost', () => cancelStay(f))];
+  } else if (stay === 'checkedout') {
+    btns = [mk('ย้อนเป็นพักอยู่', 'ghost', () => setStay(f, 'checkedin'))];
+  } else if (stay === 'cancelled') {
+    btns = [mk('คืนสถานะ', 'ghost', () => setStay(f, 'waiting'))];
+  }
+  return btns.length ? el('div', { style: 'margin-top:10px;display:flex;gap:8px;flex-wrap:wrap' }, btns) : null;
 }
 
 export function renderRegistrations(container) {
@@ -167,9 +219,9 @@ export function renderRegistrations(container) {
     const today = todayISO();
     const count = computeDupes();
     const dupeGroups = Object.values(count).filter(n => n > 1).length;
-    const arrToday = _forms.filter(f => f.checkIn === today).length;
-    const staying = _forms.filter(f => stayBucket(f, today) === 'staying').length;
-    const upcoming = _forms.filter(f => stayBucket(f, today) === 'upcoming').length;
+    const arrToday = _forms.filter(f => f.checkIn === today && getStay(f) !== 'cancelled').length;
+    const staying = _forms.filter(f => effectiveBucket(f, today) === 'staying').length;
+    const upcoming = _forms.filter(f => effectiveBucket(f, today) === 'upcoming').length;
     statGrid.innerHTML = '';
     [
       ['มาวันนี้', arrToday, icons.login, 'green', 'today'],
@@ -190,7 +242,7 @@ export function renderRegistrations(container) {
     segWrap.innerHTML = '';
     const tabs = [
       ['all', 'ทั้งหมด'], ['today', 'วันนี้'], ['staying', 'กำลังพัก'],
-      ['upcoming', 'รอเข้าพัก'], ['past', 'เช็คเอาท์แล้ว'],
+      ['upcoming', 'รอเข้าพัก'], ['past', 'เช็คเอาท์แล้ว'], ['cancelled', 'ยกเลิก'],
     ];
     segWrap.appendChild(el('div', { class: 'seg', style: 'flex-wrap:wrap' }, tabs.map(([k, lb]) => {
       const b = el('button', { class: 'seg-btn' + (filter === k ? ' active' : ''), text: lb });
@@ -201,26 +253,35 @@ export function renderRegistrations(container) {
 
   function regCard(f, today, dupeN) {
     const isNew = (f.status || 'new') === 'new';
-    const bucket = stayBucket(f, today);
-    const hint = stayHint(f, today, bucket);
-    const card = el('div', { class: 'card day-guest' + (dupeN ? ' reg-dupe' : ''), style: 'padding:16px 18px' }, [
+    const stay = getStay(f);
+    const bucket = effectiveBucket(f, today);
+    // ป้ายมุมขวาบน: ยังไม่กด (waiting) โชว์จังหวะเวลา · กดแล้วโชว์สถานะที่กด
+    let topPill = null;
+    if (stay === 'waiting') {
+      const hint = stayHint(f, today, bucket);
+      if (hint) topPill = { text: hint.text, cls: hint.cls };
+    } else {
+      topPill = { text: STAY_META[stay].label, cls: STAY_META[stay].pill };
+    }
+    const card = el('div', { class: 'card day-guest' + (dupeN ? ' reg-dupe' : '') + (stay === 'cancelled' ? ' reg-cancelled' : ''), style: 'padding:16px 18px' }, [
       el('div', { class: 'li-head' }, [
         el('div', {}, [
           el('strong', { text: f.name || '-' }),
           el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: f.phone || '' }),
         ]),
         el('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end' }, [
-          hint ? el('span', { class: 'pill ' + hint.cls, text: hint.text }) : null,
-          el('span', { class: 'pill ' + (isNew ? 'yellow' : 'green'), text: isNew ? 'ใหม่ — ยังไม่นำเข้า' : 'นำเข้าแล้ว' }),
+          topPill ? el('span', { class: 'pill ' + topPill.cls, text: topPill.text }) : null,
         ].filter(Boolean)),
       ]),
       el('div', { style: 'margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
         el('span', { class: 'reg-ref', text: bookingRef(f) }),
+        el('span', { class: 'pill ' + (isNew ? 'yellow' : 'green'), style: 'font-size:11px', text: isNew ? 'ยังไม่นำเข้า' : 'นำเข้าแล้ว' }),
         dupeN ? el('span', { class: 'pill red', style: 'font-size:11px', text: `⚠ ส่งซ้ำ ${dupeN} ใบ` }) : null,
         f.signedAt ? el('span', { class: 'pill green', style: 'font-size:11px', text: '✓ เซ็นรับแล้ว' }) : null,
       ].filter(Boolean)),
       el('div', { class: 'muted', style: 'font-size:13px;margin-top:4px', text:
         `เข้าพัก ${formatDateTH(f.checkIn)} → ${formatDateTH(f.checkOut)} · สัตว์ ${f.petCount || '?'} ตัว · ส่งเมื่อ ${f.submittedAt ? new Date(f.submittedAt).toLocaleString('th-TH') : '-'}` }),
+      stayActions(f),
     ]);
     card.onclick = () => openDetail(f);
     return card;
@@ -234,7 +295,7 @@ export function renderRegistrations(container) {
     const q = searchInput.value.trim().toLowerCase();
     let forms = [..._forms].filter(f =>
       !q || `${bookingRef(f)} ${f.name || ''} ${f.phone || ''}`.toLowerCase().includes(q));
-    if (filter !== 'all') forms = forms.filter(f => stayBucket(f, today) === filter);
+    if (filter !== 'all') forms = forms.filter(f => effectiveBucket(f, today) === filter);
 
     if (!forms.length) {
       listWrap.appendChild(el('div', { class: 'card' }, [
@@ -248,7 +309,7 @@ export function renderRegistrations(container) {
     }
 
     const grouped = {};
-    forms.forEach(f => { const b = stayBucket(f, today); (grouped[b] = grouped[b] || []).push(f); });
+    forms.forEach(f => { const b = effectiveBucket(f, today); (grouped[b] = grouped[b] || []).push(f); });
     REG_GROUPS.forEach(g => {
       const arr = grouped[g.key];
       if (!arr || !arr.length) return;

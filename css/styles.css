@@ -881,6 +881,8 @@ body.modal-open { overflow: hidden; }
 .reg-ghead .ic svg { width: 16px; height: 16px; }
 .reg-ghead .c { font-weight: 400; opacity: 0.6; }
 .card.reg-dupe { border-color: rgba(201, 52, 0, 0.4); }
+.card.reg-cancelled { opacity: 0.62; }
+.pill.blue { background: rgba(0, 122, 255, 0.12); color: #0060DF; }
 
 /* ── ใบยืนยัน: แถวข้อมูลที่ "สำคัญต่อการดูแล" เน้นสีแดง ── */
 .intake-row.crit .k { color: #B30000; font-weight: 700; }
