@@ -874,6 +874,14 @@ body.modal-open { overflow: hidden; }
 }
 .intake-meta .reg-ref { font-size: 14px; background: #eee; color: #111; }
 
+/* ── หน้าลงทะเบียนเช็คอิน: หัวกลุ่มตามสถานะการเข้าพัก + ไฮไลต์ใบซ้ำ ── */
+.reg-ghead { display: flex; align-items: center; gap: 7px; margin: 20px 0 9px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.reg-ghead:first-child { margin-top: 4px; }
+.reg-ghead .ic { display: inline-flex; color: var(--muted); }
+.reg-ghead .ic svg { width: 16px; height: 16px; }
+.reg-ghead .c { font-weight: 400; opacity: 0.6; }
+.card.reg-dupe { border-color: rgba(201, 52, 0, 0.4); }
+
 /* ── ใบยืนยัน: แถวข้อมูลที่ "สำคัญต่อการดูแล" เน้นสีแดง ── */
 .intake-row.crit .k { color: #B30000; font-weight: 700; }
 .intake-row.crit .v { color: #B30000; font-weight: 700; }

@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, escapeHtml, getSettings } from './ui.js';
-import { formatDateTH } from './calc.js';
+import { formatDateTH, todayISO } from './calc.js';
 import { icons, brandLogo } from './icons.js';
 import { printSheet } from './intake-form.js';
 import { INTAKE_TERMS, INTAKE_CONSENT } from './config-shop.js';
@@ -93,53 +93,180 @@ const INTAKE_CHECK_ITEMS = [
   'อาหารที่นำมาเอง', 'ยา / วิตามิน', 'ชามอาหาร / น้ำ', 'อื่นๆ',
 ];
 
+// ── จัดกลุ่มใบเช็คอินตาม "สถานะการเข้าพัก" (คำนวณจากวันที่ ไม่แตะข้อมูล) ──
+// ใช้ตรรกะวันเดียวกับ dashboard.js: checkIn <= today < checkOut = กำลังพัก
+const regNorm = (t) => (t || '').replace(/\D/g, '');
+function regDayDiff(fromISO, toISO) {
+  if (!fromISO || !toISO) return null;
+  const a = new Date(fromISO + 'T00:00:00'), b = new Date(toISO + 'T00:00:00');
+  if (isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+// คืน bucket: today | staying | upcoming | past | undated
+function stayBucket(f, today) {
+  const ci = f.checkIn, co = f.checkOut;
+  if (!ci) return 'undated';
+  if (ci === today || co === today) return 'today';
+  if (ci > today) return 'upcoming';
+  if (co && co < today) return 'past';
+  return 'staying';
+}
+// กลุ่มเรียงตามความสำคัญต่อการปฏิบัติงาน (บนลงล่าง)
+const REG_GROUPS = [
+  { key: 'today', label: 'วันนี้', icon: 'calendar' },
+  { key: 'staying', label: 'กำลังพักอยู่', icon: 'home' },
+  { key: 'upcoming', label: 'รอเข้าพัก', icon: 'login' },
+  { key: 'past', label: 'เช็คเอาท์แล้ว', icon: 'logout' },
+  { key: 'undated', label: 'ไม่ระบุวันเข้าพัก', icon: 'inbox' },
+];
+// ป้ายบอกจังหวะเวลาสั้นๆ บนการ์ด
+function stayHint(f, today, bucket) {
+  if (bucket === 'today') {
+    const arrive = f.checkIn === today, leave = f.checkOut === today;
+    if (arrive && leave) return { text: 'มา–ออกวันนี้', cls: 'green' };
+    if (arrive) return { text: 'มาวันนี้', cls: 'green' };
+    if (leave) return { text: 'เช็คเอาท์วันนี้', cls: 'gold' };
+  }
+  if (bucket === 'upcoming') {
+    const n = regDayDiff(today, f.checkIn);
+    if (n != null) return { text: n === 1 ? 'พรุ่งนี้' : `อีก ${n} วัน`, cls: 'grey' };
+  }
+  if (bucket === 'staying') {
+    const n = regDayDiff(today, f.checkOut);
+    if (n != null && n > 0) return { text: n === 1 ? 'เหลือคืนสุดท้าย' : `เหลือ ${n} คืน`, cls: 'grey' };
+  }
+  return null;
+}
+
 export function renderRegistrations(container) {
   _unsub.forEach(u => u()); _unsub = [];
+  let filter = 'all';
 
   const searchInput = el('input', { placeholder: 'ค้นหารหัสจอง / ชื่อ / เบอร์', style: 'max-width:260px' });
+  const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:14px' });
+  const segWrap = el('div', { style: 'margin-bottom:14px' });
   const listWrap = el('div', {});
   container.appendChild(el('div', { class: 'page-title' }, [
     el('h1', { text: 'ลงทะเบียนเช็คอิน' }),
     el('span', { class: 'muted', style: 'font-size:13px', text: 'จากฟอร์ม perfectbkk.com/checkin.html' }),
   ]));
-  container.appendChild(el('div', { class: 'toolbar', style: 'margin-bottom:14px' }, [searchInput]));
+  container.appendChild(statGrid);
+  container.appendChild(el('div', { class: 'toolbar', style: 'margin-bottom:10px' }, [searchInput]));
+  container.appendChild(segWrap);
   container.appendChild(listWrap);
 
-  const draw = () => {
+  // นับใบซ้ำ: เบอร์เดียวกัน + วันเข้าพักเดียวกัน (เฉพาะที่กรอกเบอร์)
+  const dupeKeyOf = (f) => (regNorm(f.phone) && f.checkIn) ? regNorm(f.phone) + '|' + f.checkIn : null;
+  function computeDupes() {
+    const count = {};
+    _forms.forEach(f => { const k = dupeKeyOf(f); if (k) count[k] = (count[k] || 0) + 1; });
+    return count;
+  }
+
+  function drawStats() {
+    const today = todayISO();
+    const count = computeDupes();
+    const dupeGroups = Object.values(count).filter(n => n > 1).length;
+    const arrToday = _forms.filter(f => f.checkIn === today).length;
+    const staying = _forms.filter(f => stayBucket(f, today) === 'staying').length;
+    const upcoming = _forms.filter(f => stayBucket(f, today) === 'upcoming').length;
+    statGrid.innerHTML = '';
+    [
+      ['มาวันนี้', arrToday, icons.login, 'green', 'today'],
+      ['กำลังพักอยู่', staying, icons.home, 'blue', 'staying'],
+      ['รอเข้าพัก', upcoming, icons.calendar, 'orange', 'upcoming'],
+      ['ส่งซ้ำ', dupeGroups, icons.copy, 'red', 'all'],
+    ].forEach(([l, n, ico, color, jump]) => {
+      const s = el('div', { class: `stat stat--${color}`, style: 'cursor:pointer' }, [
+        el('div', { class: 'stat-ico', html: ico }),
+        el('div', {}, [el('div', { class: 'n', text: String(n) }), el('div', { class: 'l', text: l })]),
+      ]);
+      s.onclick = () => { filter = jump; drawSeg(); drawList(); };
+      statGrid.appendChild(s);
+    });
+  }
+
+  function drawSeg() {
+    segWrap.innerHTML = '';
+    const tabs = [
+      ['all', 'ทั้งหมด'], ['today', 'วันนี้'], ['staying', 'กำลังพัก'],
+      ['upcoming', 'รอเข้าพัก'], ['past', 'เช็คเอาท์แล้ว'],
+    ];
+    segWrap.appendChild(el('div', { class: 'seg', style: 'flex-wrap:wrap' }, tabs.map(([k, lb]) => {
+      const b = el('button', { class: 'seg-btn' + (filter === k ? ' active' : ''), text: lb });
+      b.onclick = () => { filter = k; drawSeg(); drawList(); };
+      return b;
+    })));
+  }
+
+  function regCard(f, today, dupeN) {
+    const isNew = (f.status || 'new') === 'new';
+    const bucket = stayBucket(f, today);
+    const hint = stayHint(f, today, bucket);
+    const card = el('div', { class: 'card day-guest' + (dupeN ? ' reg-dupe' : ''), style: 'padding:16px 18px' }, [
+      el('div', { class: 'li-head' }, [
+        el('div', {}, [
+          el('strong', { text: f.name || '-' }),
+          el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: f.phone || '' }),
+        ]),
+        el('div', { style: 'display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end' }, [
+          hint ? el('span', { class: 'pill ' + hint.cls, text: hint.text }) : null,
+          el('span', { class: 'pill ' + (isNew ? 'yellow' : 'green'), text: isNew ? 'ใหม่ — ยังไม่นำเข้า' : 'นำเข้าแล้ว' }),
+        ].filter(Boolean)),
+      ]),
+      el('div', { style: 'margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
+        el('span', { class: 'reg-ref', text: bookingRef(f) }),
+        dupeN ? el('span', { class: 'pill red', style: 'font-size:11px', text: `⚠ ส่งซ้ำ ${dupeN} ใบ` }) : null,
+        f.signedAt ? el('span', { class: 'pill green', style: 'font-size:11px', text: '✓ เซ็นรับแล้ว' }) : null,
+      ].filter(Boolean)),
+      el('div', { class: 'muted', style: 'font-size:13px;margin-top:4px', text:
+        `เข้าพัก ${formatDateTH(f.checkIn)} → ${formatDateTH(f.checkOut)} · สัตว์ ${f.petCount || '?'} ตัว · ส่งเมื่อ ${f.submittedAt ? new Date(f.submittedAt).toLocaleString('th-TH') : '-'}` }),
+    ]);
+    card.onclick = () => openDetail(f);
+    return card;
+  }
+
+  function drawList() {
     listWrap.innerHTML = '';
+    const today = todayISO();
+    const count = computeDupes();
+    const dupeN = (f) => { const k = dupeKeyOf(f); return (k && count[k] > 1) ? count[k] : 0; };
     const q = searchInput.value.trim().toLowerCase();
-    const forms = [..._forms]
-      .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || ''))
-      .filter(f => !q || `${bookingRef(f)} ${f.name || ''} ${f.phone || ''}`.toLowerCase().includes(q));
+    let forms = [..._forms].filter(f =>
+      !q || `${bookingRef(f)} ${f.name || ''} ${f.phone || ''}`.toLowerCase().includes(q));
+    if (filter !== 'all') forms = forms.filter(f => stayBucket(f, today) === filter);
+
     if (!forms.length) {
       listWrap.appendChild(el('div', { class: 'card' }, [
         el('p', { class: 'muted', style: 'padding:16px;text-align:center', text:
-          q ? 'ไม่พบใบลงทะเบียนที่ตรงกับคำค้น' : 'ยังไม่มีใบลงทะเบียนเข้ามา — ลูกค้ากรอกฟอร์มบนเว็บแล้วจะเด้งมาที่นี่อัตโนมัติ' }),
+          q ? 'ไม่พบใบลงทะเบียนที่ตรงกับคำค้น'
+            : (filter === 'all'
+              ? 'ยังไม่มีใบลงทะเบียนเข้ามา — ลูกค้ากรอกฟอร์มบนเว็บแล้วจะเด้งมาที่นี่อัตโนมัติ'
+              : 'ไม่มีใบในกลุ่มนี้') }),
       ]));
       return;
     }
-    forms.forEach(f => {
-      const isNew = (f.status || 'new') === 'new';
-      const card = el('div', { class: 'card day-guest', style: 'padding:16px 18px' }, [
-        el('div', { class: 'li-head' }, [
-          el('div', {}, [
-            el('strong', { text: f.name || '-' }),
-            el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: f.phone || '' }),
-          ]),
-          el('span', { class: 'pill ' + (isNew ? 'yellow' : 'green'), text: isNew ? 'ใหม่ — ยังไม่นำเข้า' : 'นำเข้าแล้ว' }),
-        ]),
-        el('div', { style: 'margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap' }, [
-          el('span', { class: 'reg-ref', text: bookingRef(f) }),
-          f.signedAt ? el('span', { class: 'pill green', style: 'font-size:11px', text: '✓ เซ็นรับแล้ว' }) : null,
-        ].filter(Boolean)),
-        el('div', { class: 'muted', style: 'font-size:13px;margin-top:4px', text:
-          `เข้าพัก ${formatDateTH(f.checkIn)} → ${formatDateTH(f.checkOut)} · สัตว์ ${f.petCount || '?'} ตัว · ส่งเมื่อ ${f.submittedAt ? new Date(f.submittedAt).toLocaleString('th-TH') : '-'}` }),
-      ]);
-      card.onclick = () => openDetail(f);
-      listWrap.appendChild(card);
+
+    const grouped = {};
+    forms.forEach(f => { const b = stayBucket(f, today); (grouped[b] = grouped[b] || []).push(f); });
+    REG_GROUPS.forEach(g => {
+      const arr = grouped[g.key];
+      if (!arr || !arr.length) return;
+      // เรียงในกลุ่ม: อดีต = ออกล่าสุดก่อน · อื่นๆ = วันเข้าพักใกล้ก่อน แล้วส่งล่าสุดก่อน
+      arr.sort((a, b) => g.key === 'past'
+        ? (b.checkOut || '').localeCompare(a.checkOut || '')
+        : ((a.checkIn || '').localeCompare(b.checkIn || '') || (b.submittedAt || '').localeCompare(a.submittedAt || '')));
+      listWrap.appendChild(el('div', { class: 'reg-ghead' }, [
+        el('span', { class: 'ic', html: icons[g.icon] || '' }),
+        el('span', { text: g.label }),
+        el('span', { class: 'c', text: `· ${arr.length}` }),
+      ]));
+      arr.forEach(f => listWrap.appendChild(regCard(f, today, dupeN(f))));
     });
-  };
-  searchInput.oninput = draw;
+  }
+
+  const draw = () => { drawStats(); drawSeg(); drawList(); };
+  searchInput.oninput = drawList;
 
   _unsub.push(listen('checkinForms', arr => { _forms = arr; draw(); }, { orderBy: null }));
   _unsub.push(listen('customers', arr => { _customers = arr; }));
