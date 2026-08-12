@@ -11,7 +11,7 @@ import {
   FREE_BATH_MIN_NIGHTS, FREE_BATH_ADDON_NAME,
   PAYMENT_METHODS, DEFAULT_DEPOSIT_METHOD,
 } from './config-shop.js';
-import { buildCustomerCard, downloadCardPNG, copySummaryText, shareCard } from './summary-card.js';
+import { buildCustomerCard, downloadCardPNG, copySummaryText, copyText, shareCard } from './summary-card.js';
 import { openIntakeForm } from './intake-form.js';
 import { vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
@@ -556,7 +556,8 @@ async function doSave(draft, isNew, modal) {
     depositAmount: b.depositAmount, balanceDue: b.balanceDue, depositPct: b.depositPct,
     createdBy: draft.createdBy || currentUser()?.email || '',
   };
-  await save('bookings', rec);
+  const savedId = await save('bookings', rec);
+  if (!rec.id) rec.id = savedId; // ใบใหม่: เก็บ id ที่เพิ่งสร้าง เพื่อทำลิงก์เช็คอินได้
   await upsertCustomer(draft);
   modal.close();
   toast(isNew ? 'บันทึกการจองแล้ว' : 'อัปเดตแล้ว');
@@ -580,6 +581,7 @@ function openCardPreview(draft, savedMode = false) {
   const dlBtn = el('button', { class: 'btn', html: icons.download + ' ดาวน์โหลด PNG' });
   const copyBtn = el('button', { class: 'btn', html: icons.copy + ' คัดลอกข้อความ' });
   const intakeBtn = el('button', { class: 'btn ghost', html: icons.print + ' พิมพ์ใบรับฝาก' });
+  const checkinLinkBtn = el('button', { class: 'btn ghost', html: icons.login + ' คัดลอกลิงก์เช็คอิน' });
   const doneBtn = el('button', { class: 'btn primary block', html: icons.check + ' เสร็จแล้ว — กลับหน้ารายการจอง' });
 
   const m = openModal(el('div', {}, [
@@ -589,7 +591,7 @@ function openCardPreview(draft, savedMode = false) {
       : 'กดแชร์ส่งเข้า Line ได้เลย หรือดาวน์โหลด/คัดลอกเป็นข้อความ' }),
     el('div', { style: 'display:flex;justify-content:center;margin:10px 0' }, [card]),
     el('div', { class: 'row', style: 'justify-content:center;gap:8px' }, [copyBtn, dlBtn, shareBtn]),
-    el('div', { class: 'row', style: 'justify-content:center;margin-top:4px' }, [intakeBtn]),
+    el('div', { class: 'row', style: 'justify-content:center;gap:8px;margin-top:4px' }, [intakeBtn, checkinLinkBtn]),
     // ทางออกชัดๆ หลังบันทึก — กันงงว่า "แล้วไปไหนต่อ" โดยเฉพาะบนมือถือ
     ...(savedMode ? [el('div', { style: 'margin-top:14px' }, [doneBtn])] : []),
   ]));
@@ -598,5 +600,7 @@ function openCardPreview(draft, savedMode = false) {
   dlBtn.onclick = () => downloadCardPNG(card, `สรุป-${draft.customerName || 'ลูกค้า'}.png`);
   copyBtn.onclick = () => copySummaryText(draft);
   intakeBtn.onclick = () => openIntakeForm(draft, _customers); // ส่งลูกค้าไปด้วยเพื่อดึงข้อมูลสัตว์มาลงใบ
+  // ลิงก์ให้ลูกค้ากรอกฟอร์มเช็คอินก่อนมาถึง — ฝัง ?b=<bookingId> เพื่อให้ใบที่ส่งกลับจับคู่ใบจองนี้อัตโนมัติ
+  checkinLinkBtn.onclick = () => copyText('https://perfectbkk.com/checkin.html' + (draft.id ? '?b=' + encodeURIComponent(draft.id) : ''));
   doneBtn.onclick = () => { m.close(); window.__go && window.__go('bookings'); };
 }
