@@ -7,6 +7,7 @@ import { STAFF_PERM_ITEMS } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 
 import { renderDashboard } from './dashboard.js';
+import { renderAnnouncements, initNewsPopup } from './announcements.js';
 import { renderStaffToday } from './staff-today.js';
 import { renderBookings } from './bookings.js';
 import { renderCalendar } from './calendar.js';
@@ -20,6 +21,7 @@ import { renderBackup } from './backup.js';
 
 const ROUTES = {
   dashboard: renderDashboard,
+  news: renderAnnouncements,
   today: renderStaffToday,
   bookings: renderBookings,
   appointments: renderAppointments,
@@ -39,6 +41,7 @@ const contentEl = document.getElementById('content');
 // ใส่ไอคอน SVG ให้เมนูตาม route (แทน emoji — คมชัด/สม่ำเสมอทุกเครื่อง)
 const NAV_ICONS = {
   dashboard: icons.home,
+  news: icons.megaphone,
   today: icons.home,
   bookings: icons.bookings,
   appointments: icons.star,
@@ -101,12 +104,14 @@ function showApp(user) {
     if (firstNavPending) {
       firstNavPending = false;
       navigate(location.hash.replace('#', '') || defaultRoute());
+      initNewsPopup(); // เด้งข่าวปักหมุด (ถ้ามี) หลังหน้าแรกพร้อม — กันเด้งทับจอโหลด
     }
   });
 
   if (!firstNavPending) {
     applyRoleUI();
     navigate(location.hash.replace('#', '') || defaultRoute());
+    initNewsPopup();
   } else {
     // ระหว่างรอ: ซ่อนเมนูทั้งหมดไว้ก่อน กันข้อมูลแวบ
     document.querySelectorAll('.navlink').forEach(b => b.classList.add('hidden'));
@@ -123,6 +128,8 @@ function defaultRoute() {
 
 // พี่เลี้ยงเข้าได้เฉพาะเมนูที่เจ้าของร้านเปิดสวิตช์ไว้ · เจ้าของเข้าได้ทุกหน้ายกเว้น "งานวันนี้" (ใช้แดชบอร์ดแทน)
 function routeAllowed(route) {
+  // ข่าวสารร้าน — พนักงานทุกคนเห็นได้เสมอ (เจ้าของโพสต์ · พี่เลี้ยงอ่าน) ไม่ต้องเปิดสวิตช์
+  if (route === 'news') return true;
   return isStaff() ? staffCan(route) : route !== 'today';
 }
 

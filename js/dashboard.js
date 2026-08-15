@@ -9,6 +9,7 @@ import { matchCustomer, vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './booking-actions.js';
 import { openBookingCockpit } from './booking-cockpit.js';
+import { mountNewsCard } from './announcements.js';
 
 let _unsub = [];
 let _appts = [];
@@ -43,8 +44,12 @@ export function renderDashboard(container) {
   const depositBanner = el('div', { class: 'promo-banner warn hidden', style: 'margin-bottom:14px;cursor:pointer' });
 
   const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
+  // การ์ด "ข่าวสารร้าน" — วางบนสุดของเนื้อหา ให้พนักงานเห็นประกาศ/โปรฯ ก่อนเริ่มงาน
+  // จัดการ subscription เอง คืน unsub มาให้เก็บใน _unsub (เคลียร์ตอนกลับเข้าหน้านี้)
+  const newsMount = el('div', { style: 'margin-bottom:16px' });
   const body = el('div', {});
-  container.append(regBanner, reqBanner, depositBanner, statGrid, body);
+  container.append(regBanner, reqBanner, depositBanner, newsMount, statGrid, body);
+  _unsub.push(mountNewsCard(newsMount));
 
   _unsub.push(listen('checkinForms', forms => {
     const n = forms.filter(f => (f.status || 'new') === 'new').length;

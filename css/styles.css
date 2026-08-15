@@ -1076,3 +1076,104 @@ body.modal-open { overflow: hidden; }
   .form-section { margin-top: 16px; padding-top: 12px; }
   .form-group-body { padding: 12px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   ข่าวสารร้าน (announcements) — การ์ดแดชบอร์ด · หน้าข่าว · ป๊อปอัป
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── ป้ายหมวด 3 สี ── */
+.news-tag {
+  display: inline-flex; align-items: center;
+  font-size: 12px; font-weight: 600; line-height: 1.4;
+  padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+}
+.news-tag--notice { background: rgba(0, 122, 255, 0.12); color: #0060DF; } /* ประกาศ = ฟ้า */
+.news-tag--promo  { background: var(--accent-tint); color: var(--accent-dark); } /* โปรโมชั่น = ส้มแบรนด์ */
+.news-tag--urgent { background: var(--red-tint); color: var(--red); } /* ด่วน = แดง */
+
+/* ── ตราปักหมุด + ธงแสดงบนเว็บ ── */
+.news-pin { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; color: var(--accent); }
+.news-pin svg { width: 13px; height: 13px; }
+.news-pin.sm svg { width: 12px; height: 12px; }
+.news-flag { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; color: #248A3D; }
+.news-flag svg { width: 13px; height: 13px; }
+.news-time { color: var(--muted); font-size: 12px; margin-left: auto; }
+
+/* ── รูปประกอบข่าว ── */
+.news-img { margin: 4px 0 10px; }
+.news-img img { width: 100%; max-height: 360px; object-fit: cover; border-radius: 12px; display: block; }
+
+/* ── การ์ดข่าวบนแดชบอร์ด ── */
+.news-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.news-card-head h2 { margin: 0; }
+.news-more { flex-shrink: 0; }
+.news-mini {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 11px 0 3px; border-top: 1px solid var(--hairline-soft); cursor: pointer;
+}
+.news-mini:first-of-type { border-top: none; padding-top: 12px; }
+.news-mini-thumb { flex-shrink: 0; width: 52px; height: 52px; border-radius: 10px; overflow: hidden; background: var(--fill); }
+.news-mini-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.news-mini-main { flex: 1; min-width: 0; }
+.news-mini-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.news-mini-title { font-weight: 600; font-size: 15px; line-height: 1.4; }
+.news-mini:hover .news-mini-title { color: var(--accent); }
+.news-mini-body {
+  color: var(--muted); font-size: 13px; line-height: 1.5; margin-top: 2px; white-space: pre-wrap;
+  /* ตัดเหลือ 2 บรรทัดบนการ์ด — เนื้อหาเต็มอยู่ในหน้าข่าว */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.news-mini--pinned .news-mini-title { color: var(--accent-dark); }
+
+/* ── หน้าข่าวเต็ม ── */
+.news-list { display: flex; flex-direction: column; gap: 14px; }
+.news-item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.news-item--pinned { border-left: 4px solid var(--accent); }
+.news-title { font-size: 18px; font-weight: 600; margin: 0 0 6px; line-height: 1.35; }
+.news-body { white-space: pre-wrap; line-height: 1.6; color: var(--ink); font-size: 15px; }
+.news-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.news-archive-toggle { margin-top: 4px; }
+
+/* ── สรุป "ใครอ่านแล้ว" (เจ้าของเห็น) ── */
+.news-reads { margin-top: 12px; }
+.news-reads-summary {
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font-size: 13px; font-weight: 600; color: var(--muted);
+  background: var(--fill); border: none; border-radius: 999px; padding: 4px 12px;
+}
+.news-reads-summary svg { width: 14px; height: 14px; }
+.news-reads-summary.done { color: #248A3D; background: var(--green-tint); }
+.news-reads-detail { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+
+/* ── ตัวแก้ไขข่าว (โมดัล) ── */
+.news-editor h2 { margin-bottom: 6px; }
+.news-editor input[type="date"] { max-width: 200px; }
+.news-img-preview:empty { display: none; }
+.news-img-preview { margin-top: 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.news-img-preview img { max-width: 100%; max-height: 180px; border-radius: 10px; display: block; }
+.news-toggle {
+  display: flex; align-items: flex-start; gap: 10px; cursor: pointer;
+  padding: 12px; background: var(--fill); border-radius: var(--radius-sm); margin-top: 8px;
+}
+.news-toggle input { width: auto; margin: 3px 0 0; flex-shrink: 0; }
+
+/* ── ป๊อปอัปข่าวปักหมุด ── */
+.news-popup { text-align: center; max-width: 420px; margin: 0 auto; }
+.news-popup-icon {
+  width: 56px; height: 56px; margin: 4px auto 14px; border-radius: 50%;
+  background: var(--accent-tint); color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.news-popup-icon svg { width: 28px; height: 28px; }
+.news-popup-tag { margin-bottom: 10px; }
+.news-popup-title { font-size: 20px; margin: 0 0 10px; line-height: 1.35; }
+.news-popup .news-img { margin: 0 0 14px; }
+.news-popup .news-body { text-align: left; margin-bottom: 18px; max-height: 42vh; overflow-y: auto; }
+
+@media (max-width: 760px) {
+  .news-title { font-size: 17px; }
+  .news-popup-title { font-size: 18px; }
+  .news-actions .btn { flex: 1; } /* ปุ่มแก้/เก็บ/ลบ เต็มความกว้าง กดง่ายบนมือถือ */
+  .news-mini-thumb { width: 44px; height: 44px; }
+  .news-img img { max-height: 240px; }
+}

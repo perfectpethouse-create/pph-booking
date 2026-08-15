@@ -37,6 +37,8 @@ const LS = {
   checkinForms: 'pph_checkin_forms', // ใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
   bookingRequests: 'pph_booking_requests', // คำขอจองจากฟอร์มจองบนเว็บ (index/app/exercise-zone)
   appointments: 'pph_appointments', // นัดหมายรายรอบ: Grooming / โซนออกกำลังกาย
+  announcements: 'pph_announcements', // ข่าวสารร้าน (ประกาศ/โปรโมชั่นภายในสำหรับพนักงาน)
+  announcementReads: 'pph_announcement_reads', // สถานะ "ใครอ่านข่าวแล้ว" (พี่เลี้ยงเขียนของตัวเอง)
   settings: 'pph_settings',
   user: 'pph_mock_user',
 };
@@ -55,7 +57,7 @@ function emit(col, arr) {
 }
 // ซิงค์ข้ามแท็บในเครื่องเดียวกัน
 window.addEventListener('storage', (e) => {
-  for (const col of ['bookings', 'customers', 'checkinForms', 'bookingRequests', 'settings']) {
+  for (const col of ['bookings', 'customers', 'checkinForms', 'bookingRequests', 'appointments', 'announcements', 'announcementReads', 'settings']) {
     if (e.key === LS[col]) emit(col, mockRead(col));
   }
 });
@@ -218,14 +220,26 @@ export async function savePublicPrices(settings) {
   }, { merge: true });
 }
 
+// ─── ข่าวที่ติดธง "แสดงบนเว็บลูกค้า" → publicInfo/announcements ───
+// หลักการเดียวกับ savePublicPrices: เก็บเป็นสตริง JSON ก้อนเดียว ฝั่งเว็บอ่านผ่าน REST ได้ง่าย
+// (เก็บแค่หัวข้อ/รายละเอียด/หมวด/วันที่ — ไม่รวมรูป เพื่อคุมขนาดเอกสารสาธารณะ)
+export async function savePublicAnnouncements(items) {
+  if (MODE !== 'firestore') return; // โหมดทดลองไม่มีที่ให้เว็บอ่าน
+  const { doc, setDoc } = fb.fsMod;
+  await setDoc(doc(fb.store, 'publicInfo', 'announcements'), {
+    json: JSON.stringify(items || []),
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+}
+
 // ⚠️ เพิ่ม collection ใหม่ในระบบเมื่อไหร่ ต้องเพิ่มที่นี่ทั้ง exportAll และ importAll ด้วย
 //    ไม่งั้นเจ้าของร้านสำรองแล้วกู้คืน ข้อมูลชุดนั้นจะหายเงียบๆ โดยไม่มีคำเตือน
 export async function exportAll() {
-  const [bookings, customers, checkinForms, bookingRequests, appointments, settings] = await Promise.all([
+  const [bookings, customers, checkinForms, bookingRequests, appointments, announcements, announcementReads, settings] = await Promise.all([
     getAll('bookings'), getAll('customers'), getAll('checkinForms'), getAll('bookingRequests'),
-    getAll('appointments'), getSettings(),
+    getAll('appointments'), getAll('announcements'), getAll('announcementReads'), getSettings(),
   ]);
-  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, bookingRequests, appointments, settings };
+  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, bookingRequests, appointments, announcements, announcementReads, settings };
 }
 
 export async function importAll(data) {
@@ -236,5 +250,8 @@ export async function importAll(data) {
   for (const r of (data.bookingRequests || [])) await save('bookingRequests', r);
   // ไฟล์สำรองเก่า (ก่อนมีระบบนัดหมาย) จะไม่มีคีย์นี้ — ข้ามไปเฉยๆ ไม่ใช่ error
   for (const a of (data.appointments || [])) await save('appointments', a);
+  // ข่าวสารร้าน — ไฟล์สำรองเก่า (ก่อนมีฟีเจอร์นี้) จะไม่มีคีย์นี้ ข้ามไปเฉยๆ
+  for (const n of (data.announcements || [])) await save('announcements', n);
+  for (const r of (data.announcementReads || [])) await save('announcementReads', r);
   if (data.settings) await saveSettings(data.settings);
 }
