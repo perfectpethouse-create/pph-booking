@@ -426,27 +426,48 @@ export function mountNewsCard(container) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// ป๊อปอัปข่าวปักหมุด — เด้งครั้งเดียวต่อข่าว (จำต่อเครื่อง) เฉพาะข่าวที่ยัง active
+// ป๊อปอัปข่าว — เด้ง "ทุกข่าวใหม่" ที่ยังไม่เห็นบนเครื่องนี้ (ปักหมุดก่อน) เด้งทีละอันต่อคิว
+//   • จำเป็น "เซ็ตของคีย์" ที่เห็นแล้ว (ไม่ใช่คีย์เดียว) → หลายข่าวไม่เด้งวนซ้ำ
+//   • เด้งเฉพาะข่าวที่ยัง active และ (ปักหมุด หรือ ใหม่ภายใน 14 วัน)
+//     → เครื่อง/บัญชีใหม่ไม่โดนถล่มป๊อปอัปย้อนหลังทั้งคลัง
 // ─────────────────────────────────────────────────────────────
 const SEEN_KEY = 'pph_news_seen';
+const RECENT_MS = 14 * 24 * 60 * 60 * 1000;
 let _popupInited = false;
 let _popupOpen = false;
+let _popupList = [];
+
+function keyOf(n) { return `${n.id}:${n.updatedAt || n.createdAt || ''}`; }
+function isRecent(n) {
+  const t = Date.parse(n.createdAt || n.updatedAt || '');
+  return !!t && (Date.now() - t) < RECENT_MS;
+}
+function seenSet() {
+  // รองรับค่ารูปแบบเก่า (เคยเก็บเป็นคีย์เดี่ยว/สตริง) → เริ่มเซ็ตใหม่ ไม่พัง
+  try { const v = JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); return new Set(Array.isArray(v) ? v : []); }
+  catch { return new Set(); }
+}
+function markSeen(key) {
+  const s = seenSet(); s.add(key);
+  try { localStorage.setItem(SEEN_KEY, JSON.stringify([...s])); } catch {}
+}
 
 export function initNewsPopup() {
   if (_popupInited) return;
   _popupInited = true;
-
-  listen('announcements', list => {
-    if (_popupOpen) return;
-    const top = sortNews(list.filter(n => n.pinned && isActive(n)))[0];
-    if (!top) return;
-    const key = `${top.id}:${top.updatedAt || top.createdAt || ''}`;
-    if (localStorage.getItem(SEEN_KEY) === key) return;
-    showNewsPopup(top, key);
-  });
+  listen('announcements', list => { _popupList = list; maybeShowNextPopup(); });
 }
 
-function showNewsPopup(n, key) {
+// หยิบข่าวถัดไปที่ยังไม่เห็นมาเด้ง (ถ้าไม่มีป๊อปอัปเปิดค้างอยู่)
+function maybeShowNextPopup() {
+  if (_popupOpen) return;
+  const seen = seenSet();
+  const next = sortNews(_popupList.filter(n =>
+    isActive(n) && !seen.has(keyOf(n)) && (n.pinned || isRecent(n))))[0];
+  if (next) showNewsPopup(next);
+}
+
+function showNewsPopup(n) {
   _popupOpen = true;
   const okBtn = el('button', { class: 'btn primary block', text: 'รับทราบ' });
   const content = el('div', { class: 'news-popup' }, [
@@ -458,9 +479,14 @@ function showNewsPopup(n, key) {
     okBtn,
   ].filter(Boolean));
 
+  // ปิดด้วยวิธีใดก็ตาม = เห็นแล้ว (พี่เลี้ยงถือว่าอ่านแล้ว) → แล้วเช็คข่าวถัดไปที่ยังไม่เห็นต่อ
   const m = openModal(content, {
-    onClose: () => { _popupOpen = false; try { localStorage.setItem(SEEN_KEY, key); } catch {} },
+    onClose: () => {
+      _popupOpen = false;
+      markSeen(keyOf(n));
+      markRead(n.id);
+      maybeShowNextPopup();
+    },
   });
-  // กดรับทราบ = บันทึกว่าอ่านแล้ว (พี่เลี้ยง) แล้วปิด
-  okBtn.onclick = () => { markRead(n.id); m.close(); };
+  okBtn.onclick = () => m.close();
 }

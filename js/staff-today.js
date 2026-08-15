@@ -8,6 +8,7 @@ import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { resolvePetInfo, worstVaccine } from './pet-info.js';
 import { groomServiceOf, groomServiceLabel, petCountOf } from './config-shop.js';
 import { icons } from './icons.js';
+import { mountNewsCard } from './announcements.js';
 
 let _unsub = [];
 let _customers = [];
@@ -23,9 +24,12 @@ export function renderStaffToday(container) {
     el('h1', { text: 'งานวันนี้' }),
     el('span', { class: 'muted', text: formatDateTH(todayISO()) }),
   ]));
+  // การ์ด "ข่าวสารร้าน" บนสุด — ให้พี่เลี้ยงเห็นประกาศ/โปรฯ ก่อนเริ่มงาน (หน้าแรกของพี่เลี้ยง)
+  const newsMount = el('div', { style: 'margin-bottom:16px' });
   const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
   const body = el('div', {});
-  container.append(statGrid, body);
+  container.append(newsMount, statGrid, body);
+  _unsub.push(mountNewsCard(newsMount));
 
   let _bookings = [];
   const draw = () => {
