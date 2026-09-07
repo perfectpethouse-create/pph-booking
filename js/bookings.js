@@ -104,7 +104,10 @@ function buildTable(rows) {
   const body = rows.map(raw => {
     const b = computeBooking(raw);
     const s = getSettings();
-    const roomsDesc = b.lineItems.map(li => `${li.rooms || 1}×${(s?.roomPrices?.[li.roomType]?.label || li.roomType)}`).join(', ');
+    // ไม่มีห้อง = จองบริการรายวัน (เช่น Day Care) → โชว์ชื่อบริการแทน ไม่ให้ช่อง "ห้อง" ว่างเปล่า
+    const roomsDesc = b.lineItems.length
+      ? b.lineItems.map(li => `${li.rooms || 1}×${(s?.roomPrices?.[li.roomType]?.label || li.roomType)}`).join(', ')
+      : ((b.addOns || []).map(a => a.name).filter(Boolean).join(', ') || 'บริการรายวัน');
     const moneyCells = [
       el('td', { class: 'num', text: formatBaht(b.grandTotal) }),
       // ยังไม่โอน = ไม่มีวัน → ขีดจางๆ ไม่ใช่วันมั่ว
@@ -227,11 +230,15 @@ export function openBookingForm(existing) {
     const depDateField = field('วันที่โอนมัดจำ', draft.depositDate, v => draft.depositDate = v, { type: 'date' });
     const inDateField = field('วันที่ Check-in', draft.checkIn, v => {
       draft.checkIn = v;
-      // ฟังก์ชัน A: เลือกเช็คอินแล้วเด้งเช็คเอาท์เป็น +1 คืนอัตโนมัติ (ถ้ายังว่างหรือไม่หลังเช็คอิน)
-      if (v && (!draft.checkOut || draft.checkOut <= v)) {
+      const outInp = outDateField.querySelector('input');
+      // มีห้องพัก → เด้งเช็คเอาท์เป็น +1 คืนอัตโนมัติ (ถ้ายังว่างหรือไม่หลังเช็คอิน)
+      // ไม่มีห้อง (จองบริการรายวัน เช่น Day Care) → วันเดียว เช็คเอาท์ = วันเดียวกัน
+      if (v && draft.lineItems.length && (!draft.checkOut || draft.checkOut <= v)) {
         draft.checkOut = addDaysISO(v, 1);
-        const outInp = outDateField.querySelector('input');
         if (outInp) outInp.value = draft.checkOut;
+      } else if (v && !draft.lineItems.length && (!draft.checkOut || draft.checkOut < v)) {
+        draft.checkOut = v;
+        if (outInp) outInp.value = v;
       }
       syncNights(); refreshSummary();
     }, { type: 'date' });
@@ -243,7 +250,13 @@ export function openBookingForm(existing) {
 
     // ── รายการห้อง ──
     const itemsWrap = el('div', {});
-    draft.lineItems.forEach((li, idx) => itemsWrap.appendChild(lineItemRow(li, idx)));
+    if (draft.lineItems.length) {
+      draft.lineItems.forEach((li, idx) => itemsWrap.appendChild(lineItemRow(li, idx)));
+    } else {
+      // จองบริการรายวันล้วน (เช่น Day Care) — ไม่มีห้องพัก บอกวิธีใช้ให้ชัด
+      itemsWrap.appendChild(el('p', { class: 'muted', style: 'margin:2px 2px 12px',
+        text: 'ไม่มีห้องพัก — ลูกค้าจองแค่บริการรายวัน (เช่น Day Care) ได้ เพิ่มบริการที่หัวข้อ “บริการเสริม” ด้านล่าง' }));
+    }
     const addItemBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มห้อง/สัตว์' });
     addItemBtn.onclick = () => { draft.lineItems.push(blankLineItem(s)); rerender(); };
 
@@ -275,7 +288,8 @@ export function openBookingForm(existing) {
       const discVal = numInput(li.discountValue, v => { li.discountValue = v; refreshSummary(); });
 
       const rmBtn = el('button', { class: 'btn sm danger', html: icons.x, 'aria-label': 'ลบรายการ' });
-      rmBtn.onclick = () => { draft.lineItems.splice(idx, 1); if (!draft.lineItems.length) draft.lineItems.push(blankLineItem(s)); rerender(); };
+      // ลบได้จนหมด — ถ้าไม่เหลือห้องเลยจะกลายเป็น "จองบริการรายวัน" (เช่น Day Care) ล้วน
+      rmBtn.onclick = () => { draft.lineItems.splice(idx, 1); rerender(); };
 
       return el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [el('strong', { text: `รายการที่ ${idx + 1}` }), rmBtn]),
@@ -545,8 +559,20 @@ function selectEl(pairs, value, onChange) {
 // ────────── บันทึก ──────────
 async function doSave(draft, isNew, modal) {
   if (!draft.customerName?.trim()) return toast('กรุณากรอกชื่อลูกค้า');
-  if (!draft.checkIn || !draft.checkOut) return toast('กรุณาเลือกวันเข้า-ออก');
-  if (nightsBetween(draft.checkIn, draft.checkOut) <= 0) return toast('วัน Check-out ต้องหลัง Check-in');
+  if (!draft.checkIn) return toast('กรุณาเลือกวันที่');
+
+  const hasRooms = (draft.lineItems || []).length > 0;
+  const hasAddOns = (draft.addOns || []).length > 0;
+  if (!hasRooms && !hasAddOns) return toast('กรุณาเพิ่มห้องพัก หรือบริการอย่างน้อย 1 รายการ');
+
+  if (hasRooms) {
+    // จองห้องพัก (ค้างคืน) — ต้องมีวันออกที่หลังวันเข้า
+    if (!draft.checkOut) return toast('กรุณาเลือกวัน Check-out');
+    if (nightsBetween(draft.checkIn, draft.checkOut) <= 0) return toast('วัน Check-out ต้องหลัง Check-in');
+  } else {
+    // จองบริการรายวัน (เช่น Day Care) — วันเดียว ไม่ต้องมีคืน เช็คเอาท์ = วันเดียวกัน
+    if (!draft.checkOut || draft.checkOut < draft.checkIn) draft.checkOut = draft.checkIn;
+  }
 
   const b = computeBooking(draft);
   const rec = {

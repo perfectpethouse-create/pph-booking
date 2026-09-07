@@ -34,17 +34,21 @@ export function buildCustomerCard(bookingRaw) {
     el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v }),
   ]));
 
+  const hasRooms = b.lineItems.length > 0;
   push('ชื่อลูกค้า', b.customerName || '-');
   if (b.phone) push('เบอร์โทร', b.phone); // เบอร์ลูกค้า — ไว้ยืนยันว่าจองถูกคน
-  push('Check-in', `${formatDateTH(b.checkIn)}  ${inTime} น.`);
-  push('Check-out', `${formatDateTH(b.checkOut)}  ${outTime} น.`);
-  push('จำนวนคืน', `${nights} คืน`);
-
-  // รายการห้อง (อาจหลายบรรทัด)
-  b.lineItems.forEach(li => push('ห้องพัก', describeLine(li)));
-
-  const totalRooms = b.lineItems.reduce((n, li) => n + (Number(li.rooms) || 0), 0);
-  push('จำนวนห้อง', `${totalRooms} ห้อง`);
+  if (hasRooms) {
+    push('Check-in', `${formatDateTH(b.checkIn)}  ${inTime} น.`);
+    push('Check-out', `${formatDateTH(b.checkOut)}  ${outTime} น.`);
+    push('จำนวนคืน', `${nights} คืน`);
+    // รายการห้อง (อาจหลายบรรทัด)
+    b.lineItems.forEach(li => push('ห้องพัก', describeLine(li)));
+    const totalRooms = b.lineItems.reduce((n, li) => n + (Number(li.rooms) || 0), 0);
+    push('จำนวนห้อง', `${totalRooms} ห้อง`);
+  } else {
+    // จองบริการรายวัน (เช่น Day Care) — วันเดียว ไม่มีห้อง/จำนวนคืน
+    push('วันที่รับบริการ', `${formatDateTH(b.checkIn)}  ${inTime} น.`);
+  }
 
   if (b.addOns?.length) {
     b.addOns.forEach(a => {
@@ -66,7 +70,7 @@ export function buildCustomerCard(bookingRaw) {
   const card = el('div', { class: 'cust-card', id: 'customer-card-capture' }, [
     el('div', { class: 'cc-head' }, [
       el('div', { class: 'logo', html: brandLogo }),
-      el('div', { class: 'cc-title', text: 'สรุปการเข้าพัก' }),
+      el('div', { class: 'cc-title', text: hasRooms ? 'สรุปการเข้าพัก' : 'สรุปการจองบริการ' }),
       el('div', { class: 'cc-sub', text: s?.shopInfo?.name || 'Perfect Pet House' }),
     ]),
     ...rows,
@@ -77,7 +81,7 @@ export function buildCustomerCard(bookingRaw) {
       el('span', { text: `มัดจำ ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) }),
     ]),
     el('div', { class: 'cc-row', style: 'border:none' }, [
-      el('span', { class: 'k', text: 'จ่ายเพิ่มวัน Check-in' }),
+      el('span', { class: 'k', text: hasRooms ? 'จ่ายเพิ่มวัน Check-in' : 'จ่ายเพิ่มวันรับบริการ' }),
       el('span', { class: 'v', text: formatBaht(b.balanceDue) }),
     ]),
     // เบอร์ร้าน — ลูกค้าจะได้โทรกลับได้ทันทีจากการ์ด (ตั้งเบอร์ที่หน้า "ตั้งค่า")
@@ -94,16 +98,21 @@ export function buildCustomerCard(bookingRaw) {
 export function buildSummaryText(bookingRaw) {
   const b = computeBooking(bookingRaw);
   const s = getSettings();
+  const hasRooms = b.lineItems.length > 0;
   const nights = nightsBetween(b.checkIn, b.checkOut) || (b.lineItems[0]?.nights ?? 0);
   const totalRooms = b.lineItems.reduce((n, li) => n + (Number(li.rooms) || 0), 0);
   const L = [];
-  L.push(`🐾 สรุปการเข้าพัก — ${s?.shopInfo?.name || 'Perfect Pet House'}`);
+  L.push(`🐾 ${hasRooms ? 'สรุปการเข้าพัก' : 'สรุปการจองบริการ'} — ${s?.shopInfo?.name || 'Perfect Pet House'}`);
   L.push(`ชื่อลูกค้า: ${b.customerName || '-'}`);
   if (b.phone) L.push(`เบอร์โทร: ${b.phone}`);
-  L.push(`Check-in: ${formatDateTH(b.checkIn)} เวลา ${b.checkInTime || '09:00'} น.`);
-  L.push(`Check-out: ${formatDateTH(b.checkOut)} เวลา ${b.checkOutTime || '14:00'} น.`);
-  L.push(`จำนวนคืน: ${nights} คืน · จำนวนห้อง: ${totalRooms} ห้อง`);
-  b.lineItems.forEach(li => L.push(`ห้องพัก: ${describeLine(li)}`));
+  if (hasRooms) {
+    L.push(`Check-in: ${formatDateTH(b.checkIn)} เวลา ${b.checkInTime || '09:00'} น.`);
+    L.push(`Check-out: ${formatDateTH(b.checkOut)} เวลา ${b.checkOutTime || '14:00'} น.`);
+    L.push(`จำนวนคืน: ${nights} คืน · จำนวนห้อง: ${totalRooms} ห้อง`);
+    b.lineItems.forEach(li => L.push(`ห้องพัก: ${describeLine(li)}`));
+  } else {
+    L.push(`วันที่รับบริการ: ${formatDateTH(b.checkIn)} เวลา ${b.checkInTime || '09:00'} น.`);
+  }
   (b.addOns || []).forEach(a => {
     const c = computeAddOn(a);
     const label = c.qty > 1 ? `${a.name} ×${c.qty}` : a.name;
@@ -115,7 +124,7 @@ export function buildSummaryText(bookingRaw) {
   }
   L.push(`ยอดทั้งหมด: ${formatBaht(b.grandTotal)}`);
   L.push(`มัดจำ ${b.depositPct}%: ${formatBaht(b.depositAmount)}`);
-  L.push(`จ่ายเพิ่มวัน Check-in: ${formatBaht(b.balanceDue)}`);
+  L.push(`${hasRooms ? 'จ่ายเพิ่มวัน Check-in' : 'จ่ายเพิ่มวันรับบริการ'}: ${formatBaht(b.balanceDue)}`);
   if (s?.shopInfo?.phone) L.push(`📞 โทรสอบถาม ${s.shopInfo.phone}`);
   if (s?.shopInfo?.note) L.push(s.shopInfo.note);
   return L.join('\n');
