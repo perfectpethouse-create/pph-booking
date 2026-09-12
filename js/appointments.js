@@ -513,7 +513,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     addPetBtn.onclick = () => { draft.pets.push(blankPet(draft.type)); rerender(); };
 
     const petsIntro = draft.type === 'exercise'
-      ? 'โซนออกกำลังกายรับเฉพาะน้องหมา · รอบละ 60 นาที · พี่เลี้ยง 1 ต่อ 3 ตัว'
+      ? 'โซนออกกำลังกายรับเฉพาะน้องหมา · รอบละ 50 นาที · พี่เลี้ยง 1 ต่อ 3 ตัว'
       : `อาบน้ำ 1–2 ชม. · อาบน้ำ+ตัดขน 2–3 ชม. · อาบน้ำรับถึงรอบ ${GROOMING_SLOTS[GROOMING_SLOTS.length - 1]} · งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT}`;
     const petsSection = el('div', {}, [
       el('p', { class: 'muted', style: 'margin:0 0 10px;font-size:13px', text: petsIntro }),
