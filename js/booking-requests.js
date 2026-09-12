@@ -230,7 +230,8 @@ export function apptDraftFromRequest(r, type) {
     // เว็บส่งมาแค่ข้อความ แยกไม่ออกว่าตัดขนอย่างเดียวหรืออาบน้ำด้วย → ตั้งเป็นอาบน้ำ+ตัดขน
     // ให้พนักงานเปลี่ยนเป็น "ตัดขนอย่างเดียว" ตอนคุยกับลูกค้าถ้าจำเป็น
     groomService: /ตัดขน/.test(String(r.service || '')) ? 'bathCut' : 'bath',
-    exSize: 'S', level: '1',
+    // โซนออกกำลังกาย: เดาโซนจากข้อความบริการ (สระ/ว่ายน้ำ/splash/pool → โซนสระ) ค่าเริ่มต้น = โซนสนาม
+    exSize: 'S', zone: /สระ|ว่ายน้ำ|splash|pool/i.test(String(r.service || '')) ? 'pool' : 'field',
     price: 0, status: 'จองแล้ว', notes,
     source: 'web',
   };

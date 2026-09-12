@@ -390,10 +390,38 @@ export const APPOINTMENT_TYPES = [
 
 export const APPOINTMENT_STATUSES = ['จองแล้ว', 'มาแล้ว', 'เสร็จแล้ว', 'ยกเลิก'];
 
-// ราคา 1 รอบของโซนออกกำลังกาย — อ่านจากค่าที่เจ้าของร้านตั้งไว้ก่อน แล้วค่อย fallback
+// [LEGACY] ราคาแบบเดิม (ไซส์ × ระดับ) — คงไว้เพื่อ "อ่านใบเก่า" ที่บันทึกด้วย exSize+level
+// ก่อนเปลี่ยนมาเป็นราคาต่อโซน ราคาเดียวทุกไซส์ (ดู EXERCISE_ZONES ด้านล่าง)
 export function exercisePrice(size, level, settings) {
   const table = settings?.exercisePrices || EXERCISE_PRICES;
   return table?.[size]?.[level] ?? EXERCISE_PRICES?.[size]?.[level] ?? 0;
+}
+
+// ─── โซนออกกำลังกาย: 2 โซน ราคาเดียวทุกไซส์ (ตรงกับ public/exercise-zone.html) ───
+// ⚠️ ที่มาของราคา: เว็บจริง public/exercise-zone.html โค้ด `var ZP={field:690,pool:890}`
+//    เว็บ hardcode ราคาไว้ — ถ้าแก้ราคาโซนที่นี่/หน้าตั้งค่า ต้องแก้ตัวเลขบนเว็บให้ตรงด้วย
+export const EXERCISE_ZONES = [
+  { id: 'field', label: 'โซนสนาม (Dog Park)', price: 690 },
+  { id: 'pool',  label: 'โซนสระว่ายน้ำ (Paw Splash)', price: 890 },
+];
+export const EXERCISE_ZONE_PRICES = { field: 690, pool: 890 };
+
+export function exerciseZoneLabel(zone) {
+  return (EXERCISE_ZONES.find(z => z.id === zone) || {}).label || zone || '-';
+}
+
+// ราคา 1 รอบตามโซน — อ่านค่าที่เจ้าของร้านตั้งไว้ก่อน แล้ว fallback ค่าเริ่มต้น
+export function exerciseZonePrice(zone, settings) {
+  const table = settings?.exerciseZonePrices || EXERCISE_ZONE_PRICES;
+  return table?.[zone] ?? EXERCISE_ZONE_PRICES?.[zone] ?? 0;
+}
+
+// อ่าน "โซน" ของน้อง — ใบใหม่เก็บ pet.zone · ใบเก่าเก็บ level (1=สนาม · 2/3=สระ) จึงแมปให้
+export function exerciseZoneOf(pet) {
+  if (pet?.zone) return pet.zone;
+  const lvl = String(pet?.level ?? '');
+  if (lvl === '2' || lvl === '3') return 'pool';
+  return 'field';
 }
 
 // ── หลายน้องในคิวเดียว (appointment.pets[]) ──
@@ -415,7 +443,12 @@ export function petCountOf(a) {
 }
 // ราคาต่อน้อง 1 ตัว — reuse ตารางราคาเดิม (grooming/exercise)
 export function petPrice(pet, type, settings) {
-  if (type === 'exercise') return exercisePrice(pet.exSize, pet.level, settings);
+  if (type === 'exercise') {
+    // ใบใหม่: ราคาต่อโซน (ราคาเดียวทุกไซส์) · ใบเก่า (ไม่มี zone แต่มี level): ใช้ตารางเดิมคงราคาที่เคยคิด
+    if (pet?.zone) return exerciseZonePrice(pet.zone, settings);
+    if (pet?.level != null) return exercisePrice(pet.exSize, pet.level, settings);
+    return exerciseZonePrice(exerciseZoneOf(pet), settings);
+  }
   if (!pet.size) return 0;
   return groomingPrice(pet.petType, pet.size, pet.coatType, groomServiceOf(pet));
 }
@@ -514,7 +547,8 @@ export function defaultSettings() {
     shopInfo: structuredClone(SHOP_INFO),
     staffEmails: [], // อีเมลพนักงาน (พี่เลี้ยง) — เห็นเฉพาะเมนูที่ไม่เกี่ยวกับเงิน
     staffPerms: structuredClone(DEFAULT_STAFF_PERMS),
-    exercisePrices: structuredClone(EXERCISE_PRICES),
+    exerciseZonePrices: structuredClone(EXERCISE_ZONE_PRICES),
+    exercisePrices: structuredClone(EXERCISE_PRICES), // [LEGACY] อ่านใบเก่า
     groomingCapacity: DEFAULT_GROOMING_CAPACITY,
   };
 }

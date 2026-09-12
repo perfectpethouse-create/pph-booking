@@ -4,7 +4,7 @@
 import { el, toast, getSettings } from './ui.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import {
-  PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, GROOMING_SIZES, COAT_TYPES,
+  PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, exerciseZoneLabel, GROOMING_SIZES, COAT_TYPES,
   groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice,
   addonIsSet, addonHasBath, exerciseAddOnPrice, exerciseGroomTime,
 } from './config-shop.js';
@@ -209,7 +209,10 @@ export async function shareCard(cardEl, bookingRaw, opts = {}) {
 // บรรยายบริการของน้อง 1 ตัว เป็นข้อความเดียว ใช้ทั้งบนการ์ดและในข้อความคัดลอก
 function describePet(pet, type) {
   if (type === 'exercise') {
-    const size = (EXERCISE_SIZES.find(x => x.id === pet.exSize) || {}).label || pet.exSize;
+    const size = (EXERCISE_SIZES.find(x => x.id === pet.exSize) || {}).label || pet.exSize || '';
+    // ใบใหม่: ชื่อโซนเป็นหัวข้อ · ไซส์เป็นรายละเอียด (ราคาเดียวทุกไซส์)
+    if (pet.zone) return { title: exerciseZoneLabel(pet.zone), detail: size };
+    // ใบเก่า: ยังโชว์ "ระดับ" เดิมให้ตรงกับที่เคยคิดเงิน
     const lvl = (EXERCISE_LEVELS.find(x => x.id === String(pet.level)) || {}).label || `ระดับ ${pet.level}`;
     return { title: 'โซนออกกำลังกาย', detail: `${size} · ${lvl}` };
   }

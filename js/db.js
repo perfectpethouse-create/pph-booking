@@ -215,7 +215,9 @@ export async function savePublicPrices(settings) {
   if (MODE !== 'firestore') return; // โหมดทดลองไม่มีที่ให้เว็บอ่าน
   const { doc, setDoc } = fb.fsMod;
   await setDoc(doc(fb.store, 'publicInfo', 'prices'), {
-    exerciseJson: JSON.stringify(settings?.exercisePrices || {}),
+    // ราคาโซนใหม่ (ราคาเดียวทุกไซส์) — เว็บ hardcode ราคาไว้แล้ว เอกสารนี้ไว้เป็นค่าอ้างอิงกลาง
+    exerciseZoneJson: JSON.stringify(settings?.exerciseZonePrices || {}),
+    exerciseJson: JSON.stringify(settings?.exercisePrices || {}), // [LEGACY] คีย์เดิม
     updatedAt: new Date().toISOString(),
   }, { merge: true });
 }

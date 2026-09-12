@@ -6,7 +6,7 @@ import { getSettings, saveSettings, savePublicPrices } from './db.js';
 import { el, toast, getSettings as cachedSettings } from './ui.js';
 import {
   PET_TYPES, STAFF_PERM_ITEMS, DEFAULT_STAFF_PERMS,
-  EXERCISE_PRICES, EXERCISE_SIZES, EXERCISE_LEVELS, DEFAULT_GROOMING_CAPACITY,
+  EXERCISE_ZONES, EXERCISE_ZONE_PRICES, DEFAULT_GROOMING_CAPACITY,
 } from './config-shop.js';
 import { icons } from './icons.js';
 
@@ -56,25 +56,22 @@ export async function renderSettings(container) {
   container.appendChild(priceCard);
 
   // ── ราคาโซนออกกำลังกาย + ความจุ Grooming ──
-  // ⚠️ ราคาเริ่มต้นคัดมาจากตารางบน public/exercise-zone.html — ถ้าแก้ที่นี่ อย่าลืมแก้บนเว็บให้ตรงกัน
-  s.exercisePrices = s.exercisePrices || structuredClone(EXERCISE_PRICES);
+  // ⚠️ ราคาเดียวทุกไซส์ · เว็บ public/exercise-zone.html hardcode ราคาโซนไว้ (var ZP)
+  //    ถ้าแก้ราคาที่นี่ ต้องแก้ตัวเลขบนเว็บให้ตรงด้วย (ไม่ได้ sync อัตโนมัติแล้ว)
+  s.exerciseZonePrices = s.exerciseZonePrices || structuredClone(EXERCISE_ZONE_PRICES);
   const exCard = el('div', { class: 'card' }, [
     el('h2', { text: 'โซนออกกำลังกาย & Grooming' }),
     el('p', { class: 'muted', style: 'font-size:13px;margin-top:-6px', text:
-      'ราคาต่อรอบของโซนออกกำลังกาย (60 นาที · พี่เลี้ยง 1 ต่อ 3 ตัว) — ตรงกับตารางราคาบนหน้าเว็บ ถ้าแก้ที่นี่อย่าลืมแก้บนเว็บด้วย' }),
+      'ราคาต่อครั้งของโซนออกกำลังกาย — ราคาเดียวทุกไซส์ (พี่เลี้ยง 1 ต่อ 3 ตัว) · ตรงกับหน้าเว็บ ถ้าแก้ที่นี่อย่าลืมแก้ตัวเลขบนเว็บด้วย' }),
   ]);
   const exHead = el('tr', {}, [
-    el('th', { text: 'ขนาดน้อง' }),
-    ...EXERCISE_LEVELS.map(l => el('th', { class: 'num', text: l.label })),
+    el('th', { text: 'โซน' }),
+    el('th', { class: 'num', text: 'ราคา / ครั้ง (ทุกไซส์)' }),
   ]);
-  const exRows = EXERCISE_SIZES.map(sz => {
-    s.exercisePrices[sz.id] = s.exercisePrices[sz.id] || {};
-    const inputs = EXERCISE_LEVELS.map(l => {
-      const i = el('input', { type: 'number', min: 0, value: s.exercisePrices[sz.id][l.id] ?? 0, style: 'max-width:110px;text-align:right' });
-      i.oninput = () => { s.exercisePrices[sz.id][l.id] = Number(i.value) || 0; };
-      return el('td', { class: 'num' }, [i]);
-    });
-    return el('tr', {}, [el('td', {}, [el('strong', { text: sz.label })]), ...inputs]);
+  const exRows = EXERCISE_ZONES.map(z => {
+    const i = el('input', { type: 'number', min: 0, value: s.exerciseZonePrices[z.id] ?? z.price, style: 'max-width:130px;text-align:right' });
+    i.oninput = () => { s.exerciseZonePrices[z.id] = Number(i.value) || 0; };
+    return el('tr', {}, [el('td', {}, [el('strong', { text: z.label })]), el('td', { class: 'num' }, [i])]);
   });
   exCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('thead', {}, [exHead]), el('tbody', {}, exRows)])]));
   // ความจุ Grooming = จำนวนช่างที่รับพร้อมกันได้ต่อรอบ (ใช้เป็นเกณฑ์เตือน ไม่บล็อกการจอง)

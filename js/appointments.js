@@ -11,15 +11,15 @@ import { el, toast, openModal, confirmDialog, getSettings, currentUser, isStaff 
 import { formatBaht, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import {
   APPOINTMENT_TYPES, APPOINTMENT_STATUSES,
-  EXERCISE_SIZES, EXERCISE_LEVELS, EXERCISE_SLOTS, EXERCISE_CAPACITY, EXERCISE_DURATION_MIN, exercisePrice,
+  EXERCISE_SIZES, EXERCISE_ZONES, EXERCISE_SLOTS, EXERCISE_CAPACITY, EXERCISE_DURATION_MIN, exerciseZonePrice,
   GROOMING_SIZES, COAT_TYPES, GROOMING_SLOTS, GROOMING_CUT_LAST_SLOT,
   GROOMING_BATH_MAX, GROOMING_CUT_MAX, groomingDurationLabel,
   DEFAULT_GROOMING_CAPACITY, groomingPrice,
   PET_TYPES,
   GROOMING_SERVICES, groomServiceOf, groomServiceLabel, groomingDuration,
   petsOf, petCountOf, petPrice, petDuration,
-  EXERCISE_ADDON_NONE, addonIsSet, addonHasBath, addonHasCut,
-  addonOptionsForLevel, exerciseGroomTime, addonGroomIssue,
+  EXERCISE_ADDON_NONE, EXERCISE_ADDON_OPTIONS, addonIsSet, addonHasBath, addonHasCut,
+  exerciseGroomTime, addonGroomIssue,
   exerciseAddOnPrice, addonGroomPet,
 } from './config-shop.js';
 import {
@@ -62,7 +62,7 @@ export function countInSlot(list, { type, date, time, excludeId }) {
 // น้องเปล่า 1 ตัวตามประเภทโซน — ใช้ตอนเริ่มการ์ดใหม่/กด "เพิ่มน้อง"
 function blankPet(type) {
   return type === 'exercise'
-    ? { petName: '', exSize: 'S', level: '1', addOn: EXERCISE_ADDON_NONE, gSize: '', coatType: 'short' }
+    ? { petName: '', exSize: 'S', zone: 'field', addOn: EXERCISE_ADDON_NONE, gSize: '', coatType: 'short' }
     : { petName: '', petType: 'dog', size: '', coatType: 'short', groomService: 'bath' };
 }
 // รูปแบบบริการรวมของทั้งการ์ด (ใช้เลือกรอบเวลาที่ทำได้) — ถ้ามีตัวใดตัดขน
@@ -81,7 +81,7 @@ function mirrorRec(draft, settings) {
   const petName = pets.map(p => p.petName).filter(Boolean).join(', ');
   const rec = { ...draft, pets, price, durationMin, petCount: pets.length, petName };
   if (draft.type === 'exercise') {
-    rec.petType = 'dog'; rec.exSize = first.exSize; rec.level = first.level;
+    rec.petType = 'dog'; rec.exSize = first.exSize; rec.zone = first.zone;
     // ยอดค่าเสริม (อาบน้ำ/ตัดขน) — เก็บไว้โชว์บนการ์ด/ชิป ไม่รวมใน price (price = ค่าเล่นล้วน)
     // ราคางานกรูมจริงไปอยู่บน "คิว Grooming ที่ผูกกัน" เพื่อให้รายงานแยกยอดถูก
     rec.addOnTotal = pets.reduce((sum, p) => sum + exerciseAddOnPrice(p), 0);
@@ -433,15 +433,12 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
 
       let fields;
       if (draft.type === 'exercise') {
+        // ขนาดน้อง = เก็บไว้ดูแล/ประเมินหน้าร้าน ไม่มีผลกับราคา (ราคาเดียวทุกไซส์ตามโซน)
         const sizeSel = selectEl(EXERCISE_SIZES.map(x => [x.id, x.label]), pet.exSize, v => { pet.exSize = v; rerender(); });
-        const lvlSel = selectEl(EXERCISE_LEVELS.map(x => [x.id, x.label]), pet.level, v => {
-          pet.level = v;
-          // ระดับ 3 มีอาบน้ำอยู่แล้ว — ถ้า add-on เดิมมีอาบน้ำ ปรับเหลือ "ตัดขน" หรือ "ไม่เพิ่ม" กันคิดซ้ำ
-          if (String(v) === '3' && addonHasBath(pet.addOn)) pet.addOn = addonHasCut(pet.addOn) ? 'cut' : EXERCISE_ADDON_NONE;
-          rerender();
-        });
-        // ── บริการเสริม (add-on): อาบน้ำ/ตัดขน ต่อจากรอบเล่น 1 ชม. ──
-        const addonOpts = addonOptionsForLevel(pet.level);
+        // โซน = ตัวกำหนดราคา (โซนสนาม 690 / โซนสระว่ายน้ำ 890) ตรงกับหน้าเว็บ
+        const zoneSel = selectEl(EXERCISE_ZONES.map(z => [z.id, z.label]), pet.zone || 'field', v => { pet.zone = v; rerender(); });
+        // ── บริการเสริม (add-on): อาบน้ำ/ตัดขน ต่อจากรอบเล่น 1 ชม. (เลือกได้ทุกโซน) ──
+        const addonOpts = EXERCISE_ADDON_OPTIONS;
         if (!addonOpts.some(o => o.id === (pet.addOn || EXERCISE_ADDON_NONE))) pet.addOn = EXERCISE_ADDON_NONE;
         const addonSel = selectEl(addonOpts.map(o => [o.id, o.label]), pet.addOn || EXERCISE_ADDON_NONE, v => { pet.addOn = v; rerender(); });
         // เลือก add-on แล้วต้องกรอกไซส์ Grooming ทุกครั้ง + ลักษณะขน (เฉพาะบริการที่มีอาบน้ำ)
@@ -464,7 +461,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         }
         fields = el('div', {}, [
           el('div', { class: 'row' }, [labeled('ชื่อน้อง', nameI)]),
-          el('div', { class: 'row' }, [labeled('ขนาดน้อง', sizeSel), labeled('ระดับบริการ', lvlSel)]),
+          el('div', { class: 'row' }, [labeled('ขนาดน้อง (บันทึกไว้ดูแล)', sizeSel), labeled('โซน (ราคาเดียวทุกไซส์)', zoneSel)]),
           el('div', { class: 'row' }, [labeled('เพิ่มบริการ (อาบน้ำ/ตัดขน)', addonSel)]),
           addonDetail,
         ].filter(Boolean));

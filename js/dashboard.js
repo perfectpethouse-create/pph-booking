@@ -4,7 +4,7 @@
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
 import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO, nightsBetween } from './calc.js';
-import { groomServiceOf, groomServiceLabel, petCountOf } from './config-shop.js';
+import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel } from './config-shop.js';
 import { matchCustomer, vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './booking-actions.js';
@@ -181,7 +181,7 @@ export function renderDashboard(container) {
     }
     list.forEach(a => {
       const detail = a.type === 'exercise'
-        ? `ระดับ ${a.level || '-'}`
+        ? (a.zone ? exerciseZoneLabel(a.zone) : `ระดับ ${a.level || '-'}`)
         : groomServiceLabel(groomServiceOf(a));
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [

@@ -6,7 +6,7 @@ import { listen } from './db.js';
 import { el, getSettings, escapeHtml } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { resolvePetInfo, worstVaccine } from './pet-info.js';
-import { groomServiceOf, groomServiceLabel, petCountOf } from './config-shop.js';
+import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel } from './config-shop.js';
 import { icons } from './icons.js';
 import { mountNewsCard } from './announcements.js';
 
@@ -124,7 +124,7 @@ export function renderStaffToday(container) {
     }
     list.forEach(a => {
       const detail = a.type === 'exercise'
-        ? `ระดับ ${a.level || '-'}`
+        ? (a.zone ? exerciseZoneLabel(a.zone) : `ระดับ ${a.level || '-'}`)
         : groomServiceLabel(groomServiceOf(a));
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
