@@ -5,7 +5,7 @@ import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff } from './ui.js';
 import { computeBooking, computeAddOn, freeBathRights, formatBaht, formatDateTH, nightsBetween, todayISO, addDaysISO } from './calc.js';
 import {
-  PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE,
+  PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE, VIP_CAT_PROMO_PRICE,
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
   DAYCARE_SIZES, daycarePrice,
   FREE_BATH_MIN_NIGHTS, FREE_BATH_ADDON_NAME,
@@ -269,6 +269,11 @@ export function openBookingForm(existing) {
       const promo = s?.vipPromoPrice || VIP_PROMO_PRICE;
       if (roomType === 'vip' && promo && promo !== std) {
         opts.push([String(promo), `โปร VIP ${promo.toLocaleString('th-TH')}`]);
+      }
+      // โปรพิเศษเฉพาะห้อง VIP ของแมว — เพิ่มอีก 1 ตัวเลือกในดรอปดาวน์ (ห้อง VIP หมาไม่มี)
+      const catPromo = s?.vipCatPromoPrice || VIP_CAT_PROMO_PRICE;
+      if (roomType === 'vip' && petType === 'cat' && catPromo && !opts.some(([v]) => Number(v) === catPromo)) {
+        opts.push([String(catPromo), `โปร VIP แมว ${catPromo.toLocaleString('th-TH')}`]);
       }
       const cur = Number(current) || 0;
       if (cur && !opts.some(([v]) => Number(v) === cur)) {

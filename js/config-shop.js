@@ -19,6 +19,8 @@ export const DEFAULT_ROOM_PRICES = {
 
 // ราคาโปร VIP เฉพาะลูกค้าที่จองภายในวันที่สอบถาม (ปุ่มลัดในฟอร์ม)
 export const VIP_PROMO_PRICE = 1590;
+// ราคาโปร VIP สำหรับ "ห้องแมว" โดยเฉพาะ — โผล่เป็นตัวเลือกในดรอปดาวน์ราคาเมื่อเลือก VIP + แมว
+export const VIP_CAT_PROMO_PRICE = 1390;
 
 // จำนวนห้องที่ร้านมี (capacity) ต่อประเภท แยกห้องสุนัข/ห้องแมว
 // *** เจ้าของร้านต้องแก้ให้ตรงจำนวนจริงในหน้า "ตั้งค่า" ***
@@ -545,6 +547,7 @@ export function defaultSettings() {
     addOnServices: structuredClone(DEFAULT_ADDON_SERVICES),
     depositPctDefault: DEFAULT_DEPOSIT_PCT,
     vipPromoPrice: VIP_PROMO_PRICE,
+    vipCatPromoPrice: VIP_CAT_PROMO_PRICE, // โปร VIP เฉพาะห้องแมว
     shopInfo: structuredClone(SHOP_INFO),
     staffEmails: [], // อีเมลพนักงาน (พี่เลี้ยง) — เห็นเฉพาะเมนูที่ไม่เกี่ยวกับเงิน
     staffPerms: structuredClone(DEFAULT_STAFF_PERMS),

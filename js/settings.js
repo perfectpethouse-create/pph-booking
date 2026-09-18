@@ -44,13 +44,16 @@ export async function renderSettings(container) {
     return el('tr', {}, [el('td', {}, [el('strong', { text: r.label })]), ...priceInputs, ...capInputs]);
   });
   priceCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('thead', {}, [priceHead]), el('tbody', {}, priceRows)])]));
-  // ราคาโปร VIP + มัดจำ%
+  // ราคาโปร VIP + โปร VIP แมว + มัดจำ%
   const vipPromo = el('input', { type: 'number', min: 0, value: s.vipPromoPrice ?? 1590, style: 'max-width:120px' });
   vipPromo.oninput = () => s.vipPromoPrice = Number(vipPromo.value) || 0;
+  const vipCatPromo = el('input', { type: 'number', min: 0, value: s.vipCatPromoPrice ?? 1390, style: 'max-width:120px' });
+  vipCatPromo.oninput = () => s.vipCatPromoPrice = Number(vipCatPromo.value) || 0;
   const depPct = el('input', { type: 'number', min: 0, max: 100, value: s.depositPctDefault ?? 50, style: 'max-width:120px' });
   depPct.oninput = () => s.depositPctDefault = Number(depPct.value) || 0;
   priceCard.appendChild(el('div', { class: 'row', style: 'margin-top:12px' }, [
     el('div', { class: 'field' }, [el('label', { text: 'ราคาโปร VIP (จองภายในวันนี้)' }), vipPromo]),
+    el('div', { class: 'field' }, [el('label', { text: 'ราคาโปร VIP แมว' }), vipCatPromo]),
     el('div', { class: 'field' }, [el('label', { text: 'มัดจำเริ่มต้น (%)' }), depPct]),
   ]));
   container.appendChild(priceCard);
