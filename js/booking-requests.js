@@ -5,11 +5,14 @@
 // ทำไมเป็น "คำขอจอง" ไม่ใช่ "การจอง" ทันที:
 //   ฟอร์มบนเว็บไม่มีประเภทห้อง/จำนวนห้อง/ราคา และบางคำขอไม่ใช่ที่พักด้วยซ้ำ
 //   (อาบน้ำ, โซนออกกำลังกาย) → พนักงานต้องตรวจ+เติมข้อมูลก่อนจึงเป็นการจองจริง
+//
+// คำขอจาก "หน้าจองใหม่" (booking.html) มี payloadJson ครบ: ห้อง/ราคา/ส่วนลด/บริการเสริม/มัดจำ
+//   + กันห้องไว้ 2 ชม. (roomHolds) → พนักงานเห็นสลิปแล้วกดสร้างการจองได้เลย ไม่ต้องเติมเอง
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove, getAll } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings } from './ui.js';
-import { formatDateTH, todayISO, nightsBetween } from './calc.js';
-import { REQUEST_TYPES, classifyRequest, petIdFromWeb, DEFAULT_DEPOSIT_METHOD } from './config-shop.js';
+import { formatDateTH, todayISO, nightsBetween, computeBooking, formatBaht } from './calc.js';
+import { REQUEST_TYPES, classifyRequest, petIdFromWeb, DEFAULT_DEPOSIT_METHOD, FIXED_ADDONS } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { openAppointmentForm, slotsFor } from './appointments.js';
 import { icons } from './icons.js';
@@ -23,7 +26,37 @@ let _reqs = [];
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
 
+// ── คำขอจากหน้าจองใหม่ ──
+export function onlineOf(r) {
+  if (!r?.payloadJson) return null;
+  try { return JSON.parse(r.payloadJson); } catch { return null; }
+}
+// เวลาที่เหลือก่อนปล่อยห้อง → ข้อความสั้น (หมดแล้วคืน null)
+function holdLeft(o) {
+  const t = Date.parse(o?.holdUntil || '');
+  if (isNaN(t)) return null;
+  const ms = t - Date.now();
+  if (ms <= 0) return null;
+  const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000);
+  return `${h}:${String(m).padStart(2, '0')} ชม.`;
+}
+async function releaseHold(r) {
+  if (r.holdId) { try { await remove('roomHolds', r.holdId); } catch (e) { console.warn('ลบการกันห้องไม่สำเร็จ', e); } }
+}
+
 function typeOf(r) { return REQUEST_TYPES[classifyRequest(r.service)] || REQUEST_TYPES.other; }
+
+function onlineChips(r) {
+  const o = onlineOf(r);
+  if (!o) return [];
+  const left = holdLeft(o);
+  const isNew = (r.status || 'new') === 'new';
+  return [
+    el('span', { class: 'pill blue', text: `หน้าจองใหม่ · ${o.code || ''}` }),
+    el('span', { class: 'pill yellow', text: `มัดจำ ${formatBaht(o.totals?.deposit || 0)}` }),
+    isNew ? el('span', { class: 'pill ' + (left ? 'grey' : 'red'), text: left ? `กันห้องเหลือ ${left}` : 'หมดเวลากันห้อง' }) : null,
+  ];
+}
 
 export function renderBookingRequests(container) {
   _unsub.forEach(u => u()); _unsub = [];
@@ -78,6 +111,7 @@ export function renderBookingRequests(container) {
         el('div', { class: 'row', style: 'gap:6px;margin:8px 0 4px;flex-wrap:wrap' }, [
           el('span', { class: `pet-chip pet-${pet}`, html: `${PET_ICONS[pet]} ${r.petname || (pet === 'cat' ? 'แมว' : 'สุนัข')}` }),
           r.room ? el('span', { class: 'pill grey', text: r.room }) : null,
+          ...onlineChips(r),
         ].filter(Boolean)),
         el('div', { class: 'muted', style: 'font-size:13px', text:
           `${r.checkin ? formatDateTH(r.checkin) : '-'}${r.checkout ? ` → ${formatDateTH(r.checkout)}` : ''}${r.time ? ` · ${r.time} น.` : ''} · ส่งเมื่อ ${r.submittedAt ? new Date(r.submittedAt).toLocaleString('th-TH') : '-'}` }),
@@ -120,6 +154,34 @@ function openRequestDetail(r) {
   add('ส่งเมื่อ', r.submittedAt ? new Date(r.submittedAt).toLocaleString('th-TH') : '');
   wrap.appendChild(box);
 
+  const o = onlineOf(r);
+  if (o) {
+    const draft = draftFromRequest(r);
+    const calc = computeBooking(draft);
+    const ob = el('div', { class: 'lineitem' }, [el('div', { class: 'li-head' }, [
+      el('strong', { text: `จองผ่านหน้าจองใหม่ · ${o.code}` })])]);
+    const row = (k, v) => ob.appendChild(el('div', { class: 'cc-row' }, [el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v })]));
+    if (o.kind === 'daycare') {
+      row('Day Care', `${o.daycare?.count || 1} ตัว · ไซส์ ${String(o.daycare?.size || '').toUpperCase()} · ${formatBaht(o.daycare?.unitPrice || 0)}/ตัว`);
+    } else {
+      row('ห้อง', `${o.roomLabel || o.roomType} × ${o.rooms} ห้อง · ${formatBaht(o.pricePerNight)}/คืน${o.listPrice > o.pricePerNight ? ` (ราคาเต็ม ${formatBaht(o.listPrice)})` : ''}`);
+      row('จำนวนคืน', `${o.nights} คืน${o.longStayPct ? ` · ลดพักยาว ${o.longStayPct}%` : ''}`);
+    }
+    (o.addOns || []).forEach(a => row(a.name, `${a.qty} ${a.unit || ''} × ${formatBaht(a.unitPrice)}`));
+    row('ยอดรวม', formatBaht(calc.grandTotal));
+    row('มัดจำที่ต้องเห็นในสลิป', formatBaht(calc.depositAmount));
+    if (o.wantGroom) row('สนใจ', 'อาบน้ำ–ตัดขนก่อนกลับบ้าน');
+    const left = holdLeft(o);
+    row('กันห้อง', left ? `เหลือ ${left}` : 'หมดเวลาแล้ว — เช็คปฏิทินก่อนยืนยัน');
+    wrap.appendChild(ob);
+    // กันพลาด: ยอดที่ระบบคำนวณใหม่ต้องตรงกับที่ลูกค้าเห็นบนเว็บ
+    if (Math.round(calc.grandTotal) !== Math.round(o.totals?.grand || 0)) {
+      wrap.appendChild(el('div', { class: 'promo-banner warn', style: 'margin:10px 0' }, [
+        el('span', { class: 'promo-text', html: `${icons.alert} ยอดในระบบ (${formatBaht(calc.grandTotal)}) ไม่ตรงกับที่ลูกค้าเห็นบนเว็บ (${formatBaht(o.totals?.grand || 0)}) — ตรวจราคาก่อนบันทึก` }),
+      ]));
+    }
+  }
+
   const apptType = APPOINTMENT_FROM_REQUEST[classifyRequest(r.service)] || null;
 
   if (!t.isStay) {
@@ -135,8 +197,12 @@ function openRequestDetail(r) {
   const makeBtn = el('button', { class: apptType ? 'btn' : 'btn primary', html: icons.plus + ' สร้างการจอง' });
   const doneBtn = el('button', { class: 'btn', html: icons.check + ((r.status === 'done') ? ' กลับเป็นยังไม่จัดการ' : ' ทำเครื่องหมายว่าจัดการแล้ว') });
   const delBtn = el('button', { class: 'btn danger', html: icons.trash + ' ลบ' });
-  wrap.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:14px;gap:8px' },
-    [delBtn, doneBtn, makeBtn, apptBtn].filter(Boolean)));
+  // คำขอจากหน้าจองใหม่: ปุ่มหลัก = เห็นสลิปแล้ว → สร้างการจอง (มัดจำแล้ว) · ปล่อยห้อง = ลูกค้าไม่โอน
+  const slipBtn = o ? el('button', { class: 'btn primary', html: icons.check + ' เห็นสลิปแล้ว → สร้างการจอง' }) : null;
+  const releaseBtn = o && (r.status || 'new') === 'new' ? el('button', { class: 'btn', html: ' ปล่อยห้อง' }) : null;
+  if (o) makeBtn.className = 'btn';
+  wrap.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:14px;gap:8px;flex-wrap:wrap' },
+    [delBtn, doneBtn, releaseBtn, makeBtn, apptBtn, slipBtn].filter(Boolean)));
 
   if (apptBtn) apptBtn.onclick = async () => {
     try {
@@ -153,10 +219,31 @@ function openRequestDetail(r) {
 
   const m = openModal(wrap);
 
+  if (slipBtn) slipBtn.onclick = async () => {
+    try {
+      await save('bookingRequests', { ...r, status: 'done', handledAt: Date.now() });
+      await upsertPetFromRequest(r);
+      await releaseHold(r); // การจองจริงจะนับห้องแทนการกันห้อง
+      m.close();
+      openBookingForm({ ...draftFromRequest(r), depositStatus: 'มัดจำแล้ว', depositDate: todayISO() });
+      toast('เติมข้อมูลครบแล้ว — ตรวจยอดกับสลิป แล้วกดบันทึก');
+    } catch (e) {
+      console.error(e);
+      toast('สร้างการจองไม่สำเร็จ: ' + e.message);
+    }
+  };
+  if (releaseBtn) releaseBtn.onclick = async () => {
+    if (!await confirmDialog('ปล่อยห้องที่กันไว้ให้คำขอนี้? (ลูกค้าไม่โอน/ยกเลิก)', { okText: 'ปล่อยห้อง' })) return;
+    await releaseHold(r);
+    await save('bookingRequests', { ...r, status: 'done', released: true, handledAt: Date.now() });
+    m.close(); toast('ปล่อยห้องแล้ว');
+  };
+
   makeBtn.onclick = async () => {
     try {
       await save('bookingRequests', { ...r, status: 'done', handledAt: Date.now() });
       await upsertPetFromRequest(r); // เก็บชื่อน้อง/พันธุ์ไว้ในฐานลูกค้า ไม่ให้ข้อมูลหาย
+      await releaseHold(r);
       m.close();
       openBookingForm(draftFromRequest(r)); // เปิดฟอร์มจองที่เติมข้อมูลลูกค้าให้แล้ว
       toast('เติมข้อมูลลูกค้าให้แล้ว — เลือกห้อง/ราคา แล้วกดบันทึก');
@@ -172,6 +259,7 @@ function openRequestDetail(r) {
   };
   delBtn.onclick = async () => {
     if (!await confirmDialog('ลบคำขอนี้?', { danger: true, okText: 'ลบ' })) return;
+    await releaseHold(r);
     await remove('bookingRequests', r.id); m.close(); toast('ลบแล้ว');
   };
 }
@@ -237,8 +325,51 @@ export function apptDraftFromRequest(r, type) {
   };
 }
 
+// คำขอจากหน้าจองใหม่ → ร่างใบจองครบทุกช่อง (ราคา/ส่วนลด/บริการเสริมตามที่ลูกค้าเห็นบนเว็บ)
+function draftFromOnline(r, o, s) {
+  const notes = [
+    `[จองออนไลน์ ${o.code}]`,
+    o.longStayPct && `ส่วนลดพักยาว ${o.longStayPct}% (${o.longStayDisc || 0} บาท)`,
+    r.breed && `สายพันธุ์: ${r.breed}`,
+    o.weightKg && `น้ำหนัก: ${o.weightKg} กก.`,
+    o.arriveTime && `เวลามาถึง: ${o.arriveTime}`,
+    r.line && `LINE: ${r.line}`,
+    r.email && `อีเมล: ${r.email}`,
+    o.wantGroom && 'สนใจอาบน้ำ–ตัดขนก่อนกลับบ้าน',
+    r.note && `หมายเหตุลูกค้า: ${r.note}`,
+  ].filter(Boolean).join('\n');
+  const addOns = (o.addOns || []).map(a => ({
+    kind: FIXED_ADDONS.some(f => f.name === a.name) ? 'fixed' : 'svc',
+    name: a.name, unit: a.unit || 'ครั้ง', unitPrice: Number(a.unitPrice) || 0, qty: Number(a.qty) || 1,
+  }));
+  const base = {
+    customerName: r.owner || '', phone: r.phone || '',
+    depositDate: todayISO(),
+    checkInTime: (o.arriveTime || '09:00').slice(0, 5), checkOutTime: '14:00',
+    billDiscountType: 'percent', billDiscountValue: 0,
+    depositMethod: DEFAULT_DEPOSIT_METHOD,
+    depositPct: o.depositPct ?? s?.depositPctDefault ?? 50,
+    depositStatus: 'ยังไม่มัดจำ', recordStatus: 'ยังไม่ลงระบบ',
+    notes, fromWebRequest: r.id, onlineCode: o.code,
+  };
+  if (o.kind === 'daycare') {
+    const d = o.daycare || {};
+    return { ...base, checkIn: o.checkIn, checkOut: o.checkIn, lineItems: [],
+      addOns: [{ kind: 'daycare', name: 'Day Care เหมาวัน', pet: o.pet, size: d.size || 'm', unit: 'วัน',
+        unitPrice: Number(d.unitPrice) || 0, qty: Number(d.count) || 1, weightKg: o.weightKg || '' }, ...addOns] };
+  }
+  return { ...base, checkIn: o.checkIn, checkOut: o.checkOut,
+    lineItems: [{ petType: o.pet, roomType: o.roomType, pricePerNight: Number(o.pricePerNight) || 0,
+      rooms: Number(o.rooms) || 1, nights: Number(o.nights) || nightsBetween(o.checkIn, o.checkOut) || 1,
+      // ส่วนลดพักยาว: ลูกค้าเห็นยอดปัดเป็นบาทเต็มบนเว็บ → บันทึกเป็นจำนวนเงินให้ตรงกันเป๊ะ
+      discountType: 'amount', discountValue: Number(o.longStayDisc) || 0 }],
+    addOns };
+}
+
 export function draftFromRequest(r) {
   const s = getSettings();
+  const online = onlineOf(r);
+  if (online) return draftFromOnline(r, online, s);
   const pet = petIdFromWeb(r.pet);
   const type = classifyRequest(r.service);
   const isStay = REQUEST_TYPES[type]?.isStay;

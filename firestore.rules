@@ -56,6 +56,30 @@ service cloud.firestore {
       allow update, delete: if isOwner();
     }
 
+    // ── ห้องว่างสำหรับหน้าจองออนไลน์ perfectbkk.com/booking.html ──
+    // แอปนี้ (พนักงาน/เจ้าของที่ล็อกอิน) เขียนให้อัตโนมัติ · เว็บอ่านได้โดยไม่ล็อกอิน
+    // ข้างในมีแค่จำนวนห้องที่ใช้ต่อวัน + ราคา/ความจุ — ไม่มีชื่อ/เบอร์ลูกค้า
+    match /publicAvailability/{doc} {
+      allow read: if true;
+      allow write: if signedIn();
+    }
+
+    // ── การกันห้องชั่วคราวจากหน้าจองออนไลน์ (รอโอนมัดจำ 2 ชม.) ──
+    // ลูกค้า (ไม่ล็อกอิน) สร้างได้อย่างเดียว และต้องหมดอายุภายใน 3 ชม. (กันใครกันห้องยาวๆ)
+    // เว็บอ่านได้ทุกคนเพื่อหักห้องที่ถูกกันไว้ — ข้างในไม่มีข้อมูลลูกค้า มีแค่รหัสจอง/ห้อง/วันที่
+    // แก้/ลบได้เฉพาะพนักงาน (กด "ปล่อยห้อง" หรือสร้างการจองแล้ว)
+    match /roomHolds/{doc} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(
+            ['code', 'kind', 'roomType', 'pet', 'rooms', 'checkIn', 'checkOut', 'dcGroup', 'count', 'expiresAt', 'createdAt'])
+        && request.resource.data.code is string && request.resource.data.code.size() <= 24
+        && request.resource.data.expiresAt is timestamp
+        && request.resource.data.expiresAt <= request.time + duration.value(3, 'h')
+        && request.resource.data.get('rooms', 1) is int && request.resource.data.get('rooms', 1) <= 4
+        && request.resource.data.get('count', 1) is int && request.resource.data.get('count', 1) <= 10;
+      allow update, delete: if signedIn();
+    }
+
     // ── ราคากลางที่หน้าเว็บสาธารณะอ่านได้ ──
     // อ่านได้โดยไม่ต้องล็อกอิน (เว็บ exercise-zone.html ดึงไปแสดง) แต่แก้ได้เฉพาะเจ้าของร้าน
     // ข้างในมีแค่ตารางราคาที่ประกาศบนเว็บอยู่แล้ว ไม่มีข้อมูลลูกค้าหรือยอดขาย

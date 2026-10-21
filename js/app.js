@@ -18,6 +18,7 @@ import { renderBookingRequests } from './booking-requests.js';
 import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { renderBackup } from './backup.js';
+import { startAvailabilityPublisher } from './public-availability.js';
 
 const ROUTES = {
   dashboard: renderDashboard,
@@ -90,6 +91,8 @@ function showLogin() {
 function showApp(user) {
   setUser(user);
   document.getElementById('who-email').textContent = user.email || '';
+  // ส่งห้องว่าง (ไม่มีข้อมูลลูกค้า) ให้หน้าจองออนไลน์ perfectbkk.com/booking.html
+  startAvailabilityPublisher();
   loginScreen.classList.add('hidden');
   appEl.classList.remove('hidden');
 

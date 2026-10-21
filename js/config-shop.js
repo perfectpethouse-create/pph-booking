@@ -183,6 +183,36 @@ export function groomingPrice(pet, size, coat, service = 'bath') {
 export const FREE_BATH_MIN_NIGHTS = 5;
 export const FREE_BATH_ADDON_NAME = 'อาบน้ำฟรี (โปรพัก 5 คืนขึ้นไป)';
 
+// ═══ หน้าจองออนไลน์ (perfectbkk.com/booking.html) ═══
+// ยืนยันกับเจ้าของร้าน 21 ต.ค. 2026
+
+// ส่วนลดพักยาว (ลดเฉพาะค่าห้อง) — เรียงจากเงื่อนไขสูงไปต่ำ ใช้ขั้นแรกที่เข้าเงื่อนไข
+// ใช้ซ้อนกับราคาจองออนไลน์ของ VIP ได้ (เจ้าของร้านอนุมัติ)
+export const DEFAULT_LONG_STAY_DISCOUNTS = [
+  { minNights: 10, pct: 10 },
+  { minNights: 5, pct: 5 },
+];
+export function longStayPct(nights, tiers = DEFAULT_LONG_STAY_DISCOUNTS) {
+  const n = Number(nights) || 0;
+  const hit = [...(tiers || [])].sort((a, b) => b.minNights - a.minNights).find(t => n >= t.minNights);
+  return hit ? Number(hit.pct) || 0 : 0;
+}
+
+// Day Care รับได้สูงสุดต่อวัน — สุนัขเล็ก (<15 กก.) 5 · สุนัขกลาง-ใหญ่ (≥15 กก.) 5 · แมว 10
+export const DEFAULT_DAYCARE_CAPACITY = { dogSmall: 5, dogLarge: 5, cat: 10 };
+export const DAYCARE_LARGE_DOG_KG = 15;
+// ใบจองในระบบเก็บ Day Care เป็น "ไซส์" (ไม่มีน้ำหนัก) → นับไซส์ L/XL เป็นกลุ่มกลาง-ใหญ่
+// ⚠️ ไซส์ L คือ 10–20 กก. คร่อมเส้น 15 กก. → สุนัข 10–15 กก. ที่ลงในระบบเป็น L จะถูกนับเป็นกลุ่มใหญ่
+export function daycareGroupOf(pet, size, weightKg) {
+  if (pet === 'cat') return 'cat';
+  const w = Number(weightKg);
+  if (w > 0) return w >= DAYCARE_LARGE_DOG_KG ? 'dogLarge' : 'dogSmall';
+  return (size === 'l' || size === 'xl') ? 'dogLarge' : 'dogSmall';
+}
+
+// ลูกค้าจองออนไลน์แล้วยังไม่โอน → กันห้องไว้กี่ชั่วโมง (เกินแล้วปล่อยห้องอัตโนมัติ)
+export const ONLINE_HOLD_HOURS = 2;
+
 // มัดจำเริ่มต้น = 50% (นโยบายร้าน: จ่ายครึ่งตอนจอง เหลือครึ่งวันเข้าพัก)
 export const DEFAULT_DEPOSIT_PCT = 50;
 
@@ -554,5 +584,7 @@ export function defaultSettings() {
     exerciseZonePrices: structuredClone(EXERCISE_ZONE_PRICES),
     exercisePrices: structuredClone(EXERCISE_PRICES), // [LEGACY] อ่านใบเก่า
     groomingCapacity: DEFAULT_GROOMING_CAPACITY,
+    daycareCapacity: structuredClone(DEFAULT_DAYCARE_CAPACITY),
+    longStayDiscounts: structuredClone(DEFAULT_LONG_STAY_DISCOUNTS),
   };
 }

@@ -35,7 +35,8 @@ const LS = {
   bookings: 'pph_bookings',
   customers: 'pph_customers',
   checkinForms: 'pph_checkin_forms', // ใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
-  bookingRequests: 'pph_booking_requests', // คำขอจองจากฟอร์มจองบนเว็บ (index/app/exercise-zone)
+  bookingRequests: 'pph_booking_requests',
+  roomHolds: 'pph_room_holds', // การกันห้องชั่วคราว 2 ชม. จากหน้าจองออนไลน์ // คำขอจองจากฟอร์มจองบนเว็บ (index/app/exercise-zone)
   appointments: 'pph_appointments', // นัดหมายรายรอบ: Grooming / โซนออกกำลังกาย
   announcements: 'pph_announcements', // ข่าวสารร้าน (ประกาศ/โปรโมชั่นภายในสำหรับพนักงาน)
   announcementReads: 'pph_announcement_reads', // สถานะ "ใครอ่านข่าวแล้ว" (พี่เลี้ยงเขียนของตัวเอง)
@@ -222,6 +223,17 @@ export async function savePublicPrices(settings) {
   }, { merge: true });
 }
 
+// ─── ห้องว่างสำหรับหน้าจองออนไลน์ → publicAvailability/main ───
+// มีแค่ "จำนวนห้องที่ใช้ต่อวัน" + ราคา/ความจุ — ไม่มีชื่อ/เบอร์ลูกค้า (เอกสารนี้ใครก็อ่านได้)
+// เก็บเป็นสตริง JSON ก้อนเดียว ตามหลักเดียวกับ savePublicPrices
+export async function savePublicAvailability(json) {
+  if (MODE !== 'firestore') return;
+  const { doc, setDoc } = fb.fsMod;
+  await setDoc(doc(fb.store, 'publicAvailability', 'main'), {
+    json, updatedAt: new Date().toISOString(),
+  });
+}
+
 // ─── ข่าวที่ติดธง "แสดงบนเว็บลูกค้า" → publicInfo/announcements ───
 // หลักการเดียวกับ savePublicPrices: เก็บเป็นสตริง JSON ก้อนเดียว ฝั่งเว็บอ่านผ่าน REST ได้ง่าย
 // (เก็บแค่หัวข้อ/รายละเอียด/หมวด/วันที่ — ไม่รวมรูป เพื่อคุมขนาดเอกสารสาธารณะ)
@@ -235,6 +247,7 @@ export async function savePublicAnnouncements(items) {
 }
 
 // ⚠️ เพิ่ม collection ใหม่ในระบบเมื่อไหร่ ต้องเพิ่มที่นี่ทั้ง exportAll และ importAll ด้วย
+//    (ยกเว้น roomHolds / publicAvailability — เป็นข้อมูลชั่วคราว/คำนวณใหม่ได้ ไม่ต้องสำรอง)
 //    ไม่งั้นเจ้าของร้านสำรองแล้วกู้คืน ข้อมูลชุดนั้นจะหายเงียบๆ โดยไม่มีคำเตือน
 export async function exportAll() {
   const [bookings, customers, checkinForms, bookingRequests, appointments, announcements, announcementReads, settings] = await Promise.all([
