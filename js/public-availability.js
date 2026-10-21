@@ -12,13 +12,28 @@
 import { listen, listenSettings, savePublicAvailability, remove, MODE } from './db.js';
 import { eachDate, todayISO, addDaysISO } from './calc.js';
 import { capacityOf, daycareGroupOf, daycarePrice, DAYCARE_SIZES, DEFAULT_DAYCARE_CAPACITY,
-  DEFAULT_LONG_STAY_DISCOUNTS, ONLINE_HOLD_HOURS, FIXED_ADDONS } from './config-shop.js';
+  DEFAULT_LONG_STAY_DISCOUNTS, ONLINE_HOLD_HOURS, FIXED_ADDONS,
+  GROOMING_SIZES, COAT_TYPES, GROOMING_PRICES, GROOMING_SERVICES, GROOMING_SLOTS, GROOMING_CUT_LAST_SLOT,
+  DEFAULT_GROOMING_CAPACITY, petCountOf } from './config-shop.js';
 
 const HORIZON_DAYS = 240; // ส่งล่วงหน้า ~8 เดือน
 let _started = false;
 
 // นับการใช้งานต่อวัน — แยกออกมาเป็น pure function เพื่อทดสอบได้
-export function buildAvailability(bookings, s, today = todayISO()) {
+// คิว Grooming ที่ใช้ไปต่อรอบ (นับตัวน้อง เหมือน countInSlot ในหน้า Grooming)
+//   + คำขอ Grooming จากหน้าจองออนไลน์ที่ยังไม่จัดการ (กันคิวไว้จนพนักงานยืนยัน/ปล่อยคิว)
+export function buildGroomUsed(appointments, requests, today = todayISO()) {
+  const used = {};
+  const add = (d, t, n) => { if (!d || !t || d < today) return; (used[d] = used[d] || {})[t] = (used[d][t] || 0) + n; };
+  (appointments || []).filter(a => a.type === 'grooming' && a.status !== 'ยกเลิก')
+    .forEach(a => add(a.date, a.time, petCountOf(a)));
+  (requests || []).filter(r => (r.status || 'new') === 'new' && r.payloadJson).forEach(r => {
+    try { const o = JSON.parse(r.payloadJson); if (o.kind === 'groom') add(o.date, o.time, Number(o.pets) || 1); } catch {}
+  });
+  return used;
+}
+
+export function buildAvailability(bookings, s, today = todayISO(), groomUsed = {}) {
   const end = addDaysISO(today, HORIZON_DAYS);
   const used = {};   // iso -> { 'roomType|pet': rooms }
   const dcUsed = {}; // iso -> { dogSmall|dogLarge|cat: ตัว }
@@ -70,19 +85,29 @@ export function buildAvailability(bookings, s, today = todayISO()) {
     },
     used,
     dcUsed,
+    grooming: {
+      capacity: Number(s?.groomingCapacity) || DEFAULT_GROOMING_CAPACITY,
+      slots: GROOMING_SLOTS,
+      cutLastSlot: GROOMING_CUT_LAST_SLOT,
+      sizes: GROOMING_SIZES,
+      coats: COAT_TYPES,
+      prices: GROOMING_PRICES,
+      services: GROOMING_SERVICES,
+      used: groomUsed,
+    },
   };
 }
 
 export function startAvailabilityPublisher() {
   if (_started || MODE !== 'firestore') return;
   _started = true;
-  let bookings = null, settings = null, lastBody = '', timer = null;
+  let bookings = null, settings = null, appts = [], reqs = [], lastBody = '', timer = null;
 
   const publish = () => {
     clearTimeout(timer);
     timer = setTimeout(async () => {
       if (!bookings || !settings) return;
-      const data = buildAvailability(bookings, settings);
+      const data = buildAvailability(bookings, settings, todayISO(), buildGroomUsed(appts, reqs));
       const body = JSON.stringify(data);
       if (body === lastBody) return; // ไม่มีอะไรเปลี่ยน → ไม่เขียนซ้ำ
       try { await savePublicAvailability(body); lastBody = body; }
@@ -92,6 +117,8 @@ export function startAvailabilityPublisher() {
 
   listen('bookings', arr => { bookings = arr; publish(); });
   listenSettings(s => { settings = s; publish(); });
+  listen('appointments', arr => { appts = arr; publish(); });
+  listen('bookingRequests', arr => { reqs = arr; publish(); }, { orderBy: null });
 
   // เก็บกวาดการกันห้องที่หมดอายุเกิน 1 วัน (หน้าเว็บไม่นับอยู่แล้ว แค่ไม่ให้รก)
   listen('roomHolds', holds => {

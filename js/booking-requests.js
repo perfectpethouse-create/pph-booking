@@ -53,8 +53,10 @@ function onlineChips(r) {
   const isNew = (r.status || 'new') === 'new';
   return [
     el('span', { class: 'pill blue', text: `หน้าจองใหม่ · ${o.code || ''}` }),
-    el('span', { class: 'pill yellow', text: `มัดจำ ${formatBaht(o.totals?.deposit || 0)}` }),
-    isNew ? el('span', { class: 'pill ' + (left ? 'grey' : 'red'), text: left ? `กันห้องเหลือ ${left}` : 'หมดเวลากันห้อง' }) : null,
+    o.kind === 'groom'
+      ? el('span', { class: 'pill yellow', text: `คิว ${o.time} · ประมาณ ${formatBaht(o.totals?.grand || 0)}` })
+      : el('span', { class: 'pill yellow', text: `มัดจำ ${formatBaht(o.totals?.deposit || 0)}` }),
+    o.kind === 'groom' ? null : isNew ? el('span', { class: 'pill ' + (left ? 'grey' : 'red'), text: left ? `กันห้องเหลือ ${left}` : 'หมดเวลากันห้อง' }) : null,
   ];
 }
 
@@ -156,26 +158,35 @@ function openRequestDetail(r) {
 
   const o = onlineOf(r);
   if (o) {
-    const draft = draftFromRequest(r);
+    const draft = o.kind === 'groom' ? { lineItems: [], addOns: [] } : draftFromRequest(r);
     const calc = computeBooking(draft);
     const ob = el('div', { class: 'lineitem' }, [el('div', { class: 'li-head' }, [
       el('strong', { text: `จองผ่านหน้าจองใหม่ · ${o.code}` })])]);
     const row = (k, v) => ob.appendChild(el('div', { class: 'cc-row' }, [el('span', { class: 'k', text: k }), el('span', { class: 'v', text: v })]));
-    if (o.kind === 'daycare') {
+    if (o.kind === 'groom') {
+      row('บริการ', `${o.serviceLabel} · ${o.pet === 'cat' ? 'แมว' : 'สุนัข'} ไซส์ ${String(o.size).toUpperCase()} · ${o.coatLabel}`);
+      row('วัน/รอบ', `${formatDateTH(o.date)} · ${o.time} น. (${o.durationLabel || ''})`);
+      row('ราคาประมาณ', formatBaht(o.totals?.grand || 0));
+      if (o.weightKg) row('น้ำหนัก', `${o.weightKg} กก.`);
+    } else if (o.kind === 'daycare') {
       row('Day Care', `${o.daycare?.count || 1} ตัว · ไซส์ ${String(o.daycare?.size || '').toUpperCase()} · ${formatBaht(o.daycare?.unitPrice || 0)}/ตัว`);
     } else {
       row('ห้อง', `${o.roomLabel || o.roomType} × ${o.rooms} ห้อง · ${formatBaht(o.pricePerNight)}/คืน${o.listPrice > o.pricePerNight ? ` (ราคาเต็ม ${formatBaht(o.listPrice)})` : ''}`);
       row('จำนวนคืน', `${o.nights} คืน${o.longStayPct ? ` · ลดพักยาว ${o.longStayPct}%` : ''}`);
     }
-    (o.addOns || []).forEach(a => row(a.name, `${a.qty} ${a.unit || ''} × ${formatBaht(a.unitPrice)}`));
-    row('ยอดรวม', formatBaht(calc.grandTotal));
-    row('มัดจำที่ต้องเห็นในสลิป', formatBaht(calc.depositAmount));
-    if (o.wantGroom) row('สนใจ', 'อาบน้ำ–ตัดขนก่อนกลับบ้าน');
-    const left = holdLeft(o);
-    row('กันห้อง', left ? `เหลือ ${left}` : 'หมดเวลาแล้ว — เช็คปฏิทินก่อนยืนยัน');
+    if (o.kind !== 'groom') {
+      (o.addOns || []).forEach(a => row(a.name, `${a.qty} ${a.unit || ''} × ${formatBaht(a.unitPrice)}`));
+      row('ยอดรวม', formatBaht(calc.grandTotal));
+      row('มัดจำที่ต้องเห็นในสลิป', formatBaht(calc.depositAmount));
+      if (o.wantGroom) row('สนใจ', 'อาบน้ำ–ตัดขนก่อนกลับบ้าน');
+      const left = holdLeft(o);
+      row('กันห้อง', left ? `เหลือ ${left}` : 'หมดเวลาแล้ว — เช็คปฏิทินก่อนยืนยัน');
+    } else {
+      row('มัดจำ', 'ไม่เก็บ — ยืนยันคิวทาง LINE');
+    }
     wrap.appendChild(ob);
     // กันพลาด: ยอดที่ระบบคำนวณใหม่ต้องตรงกับที่ลูกค้าเห็นบนเว็บ
-    if (Math.round(calc.grandTotal) !== Math.round(o.totals?.grand || 0)) {
+    if (o.kind !== 'groom' && Math.round(calc.grandTotal) !== Math.round(o.totals?.grand || 0)) {
       wrap.appendChild(el('div', { class: 'promo-banner warn', style: 'margin:10px 0' }, [
         el('span', { class: 'promo-text', html: `${icons.alert} ยอดในระบบ (${formatBaht(calc.grandTotal)}) ไม่ตรงกับที่ลูกค้าเห็นบนเว็บ (${formatBaht(o.totals?.grand || 0)}) — ตรวจราคาก่อนบันทึก` }),
       ]));
@@ -184,7 +195,7 @@ function openRequestDetail(r) {
 
   const apptType = APPOINTMENT_FROM_REQUEST[classifyRequest(r.service)] || null;
 
-  if (!t.isStay) {
+  if (!t.isStay && !onlineOf(r)) {
     wrap.appendChild(el('div', { class: 'promo-banner warn', style: 'margin:10px 0' }, [
       el('span', { class: 'promo-text', html: apptType
         ? `${icons.alert} คำขอนี้เป็น <strong>${t.label}</strong> — ใช้ปุ่ม "สร้างนัดหมาย" เพื่อลงคิวรายรอบ`
@@ -198,11 +209,12 @@ function openRequestDetail(r) {
   const doneBtn = el('button', { class: 'btn', html: icons.check + ((r.status === 'done') ? ' กลับเป็นยังไม่จัดการ' : ' ทำเครื่องหมายว่าจัดการแล้ว') });
   const delBtn = el('button', { class: 'btn danger', html: icons.trash + ' ลบ' });
   // คำขอจากหน้าจองใหม่: ปุ่มหลัก = เห็นสลิปแล้ว → สร้างการจอง (มัดจำแล้ว) · ปล่อยห้อง = ลูกค้าไม่โอน
-  const slipBtn = o ? el('button', { class: 'btn primary', html: icons.check + ' เห็นสลิปแล้ว → สร้างการจอง' }) : null;
-  const releaseBtn = o && (r.status || 'new') === 'new' ? el('button', { class: 'btn', html: ' ปล่อยห้อง' }) : null;
+  const isGroom = o?.kind === 'groom';
+  const slipBtn = o ? el('button', { class: 'btn primary', html: icons.check + (isGroom ? ' ยืนยันคิว → สร้างนัดหมาย' : ' เห็นสลิปแล้ว → สร้างการจอง') }) : null;
+  const releaseBtn = o && (r.status || 'new') === 'new' ? el('button', { class: 'btn', html: isGroom ? ' ปล่อยคิว' : ' ปล่อยห้อง' }) : null;
   if (o) makeBtn.className = 'btn';
   wrap.appendChild(el('div', { class: 'row', style: 'justify-content:flex-end;margin-top:14px;gap:8px;flex-wrap:wrap' },
-    [delBtn, doneBtn, releaseBtn, makeBtn, apptBtn, slipBtn].filter(Boolean)));
+    (isGroom ? [delBtn, doneBtn, releaseBtn, slipBtn] : [delBtn, doneBtn, releaseBtn, makeBtn, apptBtn, slipBtn]).filter(Boolean)));
 
   if (apptBtn) apptBtn.onclick = async () => {
     try {
@@ -225,15 +237,20 @@ function openRequestDetail(r) {
       await upsertPetFromRequest(r);
       await releaseHold(r); // การจองจริงจะนับห้องแทนการกันห้อง
       m.close();
-      openBookingForm({ ...draftFromRequest(r), depositStatus: 'มัดจำแล้ว', depositDate: todayISO() });
-      toast('เติมข้อมูลครบแล้ว — ตรวจยอดกับสลิป แล้วกดบันทึก');
+      if (isGroom) {
+        openAppointmentForm(apptDraftFromOnline(r, o));
+        toast('เติมข้อมูลคิวครบแล้ว — ตรวจไซส์/ขนกับลูกค้า แล้วกดบันทึก');
+      } else {
+        openBookingForm({ ...draftFromRequest(r), depositStatus: 'มัดจำแล้ว', depositDate: todayISO() });
+        toast('เติมข้อมูลครบแล้ว — ตรวจยอดกับสลิป แล้วกดบันทึก');
+      }
     } catch (e) {
       console.error(e);
       toast('สร้างการจองไม่สำเร็จ: ' + e.message);
     }
   };
   if (releaseBtn) releaseBtn.onclick = async () => {
-    if (!await confirmDialog('ปล่อยห้องที่กันไว้ให้คำขอนี้? (ลูกค้าไม่โอน/ยกเลิก)', { okText: 'ปล่อยห้อง' })) return;
+    if (!await confirmDialog(isGroom ? 'ปล่อยคิวนี้? (ลูกค้ายกเลิก/ติดต่อไม่ได้)' : 'ปล่อยห้องที่กันไว้ให้คำขอนี้? (ลูกค้าไม่โอน/ยกเลิก)', { okText: isGroom ? 'ปล่อยคิว' : 'ปล่อยห้อง' })) return;
     await releaseHold(r);
     await save('bookingRequests', { ...r, status: 'done', released: true, handledAt: Date.now() });
     m.close(); toast('ปล่อยห้องแล้ว');
@@ -326,6 +343,25 @@ export function apptDraftFromRequest(r, type) {
 }
 
 // คำขอจากหน้าจองใหม่ → ร่างใบจองครบทุกช่อง (ราคา/ส่วนลด/บริการเสริมตามที่ลูกค้าเห็นบนเว็บ)
+// คำขอ Grooming จากหน้าจองออนไลน์ → ร่างนัดหมายครบ (ไซส์/ขน/บริการ/รอบ)
+export function apptDraftFromOnline(r, o) {
+  const notes = [
+    `[จองออนไลน์ ${o.code}]`,
+    r.breed && `สายพันธุ์: ${r.breed}`,
+    o.weightKg && `น้ำหนัก: ${o.weightKg} กก.`,
+    r.line && `LINE: ${r.line}`,
+    r.email && `อีเมล: ${r.email}`,
+    r.note && `หมายเหตุลูกค้า: ${r.note}`,
+  ].filter(Boolean).join('\n');
+  const pet = { petName: r.petname || '', petType: o.pet, size: o.size, coatType: o.coat || 'short', groomService: o.service };
+  return {
+    type: 'grooming', date: o.date, time: o.time,
+    customerName: r.owner || '', phone: r.phone || '',
+    pets: Array.from({ length: Math.max(1, Number(o.pets) || 1) }, (_, i) => ({ ...pet, petName: i ? '' : pet.petName })),
+    status: 'จองแล้ว', notes, source: 'web', onlineCode: o.code, fromWebRequest: r.id,
+  };
+}
+
 function draftFromOnline(r, o, s) {
   const notes = [
     `[จองออนไลน์ ${o.code}]`,
