@@ -111,7 +111,7 @@ export const COAT_TYPES = {
   dog: [
     { id: 'short',   label: 'ขนสั้น' },
     { id: 'long',    label: 'ขนยาว' },
-    { id: 'longSet', label: 'ขนยาวมีเซ็ต' },
+    { id: 'longSet', label: 'ขนยาวพิเศษ' },
   ],
   cat: [
     { id: 'short', label: 'ขนสั้น' },
@@ -128,7 +128,7 @@ export const GROOMING_PRICES = {
     xl:  { short: 900,  long: 1100, longSet: 1400, cut: 900 },
     '2xl': { short: 1200, long: 1450, longSet: 1600, cut: 1200 },
     '3xl': { short: 1650, long: 1850, longSet: 1900, cut: 1600 },
-    '4xl': { short: 2200, long: 2150, longSet: 2400, cut: 2200 },
+    '4xl': { short: 2150, long: 2200, longSet: 2400, cut: 2200 }, // แก้ราคาที่สลับกัน (เจ้าของร้านยืนยัน 21 ต.ค. 2569)
     '5xl': { short: 2850, long: 3100, longSet: 3300, cut: 2800 },
   },
   cat: {
