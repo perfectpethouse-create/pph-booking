@@ -19,6 +19,10 @@ import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { renderBackup } from './backup.js';
 import { startAvailabilityPublisher } from './public-availability.js';
+import { applyTheme, currentTheme, themePicker } from './theme.js';
+import { openBookingForm } from './bookings.js';
+import { openAppointmentForm } from './appointments.js';
+import { openCustomerForm } from './customers.js';
 
 const ROUTES = {
   dashboard: renderDashboard,
@@ -61,6 +65,10 @@ document.querySelectorAll('.navlink').forEach(b => {
 document.querySelector('#logout-btn .ico').innerHTML = icons.logout;
 document.querySelector('#nav-more-btn .ico').innerHTML = icons.more;
 document.getElementById('nav-more-btn').addEventListener('click', openNavSheet);
+document.querySelector('#nav-fab-btn .fab-in').innerHTML = icons.plus;
+document.getElementById('nav-fab-btn').addEventListener('click', openCreateSheet);
+applyTheme(currentTheme());
+document.getElementById('theme-slot').appendChild(themePicker(true));
 
 let settingsUnsub = null;
 
@@ -146,10 +154,20 @@ function applyRoleUI() {
 }
 
 // ── แถบเมนูล่างบนมือถือ ──
-// แถบล่างรับได้จำกัด ถ้ายัดครบ 11 เมนูจะเล็กจนกดพลาด จึงโชว์ 4 เมนูแรกที่มีสิทธิ์
+// แถบล่างรับได้จำกัด ถ้ายัดครบ 11 เมนูจะเล็กจนกดพลาด จึงโชว์แค่เมนูที่ใช้ทุกวัน
+// (เรียงตาม BOTTOM_PRIORITY เอาเฉพาะที่มีสิทธิ์) + ปุ่ม + ตรงกลาง
 // ที่เหลือย้ายไปแผ่นเลื่อน "เพิ่มเติม" (รูปแบบมาตรฐานของแอปมือถือ)
 const MOBILE_MQ = window.matchMedia('(max-width: 760px)');
-const MAX_BOTTOM_TABS = 4;
+const MAX_BOTTOM_TABS = 3;
+const BOTTOM_PRIORITY = ['dashboard', 'today', 'bookings', 'appointments', 'calendar', 'registrations', 'customers'];
+
+// ทางลัดในปุ่ม + — โชว์เฉพาะงานที่บัญชีนี้มีสิทธิ์เข้าหน้านั้นอยู่แล้ว
+const CREATE_ACTIONS = [
+  { route: 'bookings', icon: 'bookings', title: 'เพิ่มการจองห้องพัก', sub: 'เลือกห้อง วันที่ มัดจำ', run: () => openBookingForm() },
+  { route: 'appointments', icon: 'calendar', title: 'เพิ่มคิวบริการ', sub: 'Grooming หรือ ออกกำลังกาย', run: () => openAppointmentForm() },
+  { route: 'customers', icon: 'users', title: 'เพิ่มลูกค้าใหม่', sub: 'ข้อมูลเจ้าของ + สัตว์เลี้ยง', run: () => openCustomerForm() },
+];
+const createActions = () => CREATE_ACTIONS.filter(a => routeAllowed(a.route));
 // สลับแนวจอ/ปรับขนาดหน้าต่าง → คำนวณเมนูหลัก-เมนูเพิ่มเติมใหม่
 // ฟังทั้ง matchMedia และ resize เพราะบางเบราว์เซอร์/WebView ไม่ยิง change ของ matchMedia
 MOBILE_MQ.addEventListener('change', applyMobileNav);
@@ -158,15 +176,28 @@ window.addEventListener('resize', applyMobileNav);
 function applyMobileNav() {
   const links = [...document.querySelectorAll('.navlink')].filter(b => !b.classList.contains('hidden'));
   const moreBtn = document.getElementById('nav-more-btn');
+  const fabBtn = document.getElementById('nav-fab-btn');
   if (!moreBtn) return;
   if (!MOBILE_MQ.matches) {
-    links.forEach(b => b.classList.remove('nav-secondary'));
+    links.forEach(b => { b.classList.remove('nav-secondary'); b.style.order = ''; });
     moreBtn.classList.add('hidden');
+    fabBtn.classList.add('hidden');
     return;
   }
-  // เมนูพอดีแถบอยู่แล้ว (≤5) ก็ไม่ต้องมีปุ่มเพิ่มเติมให้เกะกะ
+  // เมนูหลักเรียงตามความถี่ที่ใช้ ไม่ใช่ตามลำดับในแถบข้าง
+  const rank = (b) => { const i = BOTTOM_PRIORITY.indexOf(b.dataset.route); return i < 0 ? 99 : i; };
+  const primary = [...links].sort((a, b) => rank(a) - rank(b)).slice(0, MAX_BOTTOM_TABS);
+  // เมนูพอดีแถบอยู่แล้ว ก็ไม่ต้องมีปุ่มเพิ่มเติมให้เกะกะ
   const fitsAll = links.length <= MAX_BOTTOM_TABS + 1;
-  links.forEach((b, i) => b.classList.toggle('nav-secondary', !fitsAll && i >= MAX_BOTTOM_TABS));
+  links.forEach(b => {
+    const p = primary.indexOf(b);
+    b.classList.toggle('nav-secondary', !fitsAll && p < 0);
+    // ลำดับบนแถบ: แท็บ1 แท็บ2 [+] แท็บ3 … เพิ่มเติม
+    b.style.order = p < 0 ? 50 : (p < 2 ? p + 1 : p + 2);
+  });
+  fabBtn.style.order = 3;
+  moreBtn.style.order = 90;
+  fabBtn.classList.toggle('hidden', createActions().length === 0);
   moreBtn.classList.toggle('hidden', fitsAll);
   syncMoreActive();
 }
@@ -180,16 +211,49 @@ function syncMoreActive() {
   moreBtn.classList.toggle('active', hidden);
 }
 
+// แผ่นเลื่อนจากล่างแบบใช้ร่วม (เพิ่มเติม / ปุ่ม +) — คืนฟังก์ชันปิด
+function openSheet(children) {
+  const bg = el('div', { class: 'sheet-bg' });
+  const sheet = el('div', { class: 'nav-sheet' }, [el('div', { class: 'sheet-grab' }), ...children]);
+  bg.appendChild(sheet);
+  function close() {
+    bg.classList.add('closing');
+    document.removeEventListener('keydown', onKey);
+    document.body.classList.remove('modal-open');
+    setTimeout(() => bg.remove(), 180);
+  }
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
+  document.body.appendChild(bg);
+  document.body.classList.add('modal-open');
+  return close;
+}
+
+function openCreateSheet() {
+  let close;
+  const rows = createActions().map(a => {
+    const row = el('button', { class: 'sheet-row' }, [
+      el('span', { class: 'sheet-ico sheet-ico--tile', html: icons[a.icon] }),
+      el('span', {}, [a.title, el('span', { class: 'sheet-sub', text: a.sub })]),
+    ]);
+    // ปิดแผ่นก่อนเปิดฟอร์ม ไม่ให้สองชั้นซ้อนกัน
+    row.onclick = () => { close(); setTimeout(a.run, 120); };
+    return row;
+  });
+  close = openSheet([el('div', { class: 'sheet-title', text: 'สร้างรายการใหม่' }), ...rows]);
+}
+
 function openNavSheet() {
   const secondary = [...document.querySelectorAll('.navlink.nav-secondary')];
-  const bg = el('div', { class: 'sheet-bg' });
-  const rows = secondary.map(b => {
-    const row = el('button', { class: 'sheet-row' + (b.classList.contains('active') ? ' active' : '') }, [
+  let close;
+  const tiles = secondary.map(b => {
+    const tile = el('button', { class: 'sheet-tile' + (b.classList.contains('active') ? ' active' : '') }, [
       el('span', { class: 'sheet-ico', html: b.querySelector('.ico')?.innerHTML || '' }),
       el('span', { text: b.querySelector('.txt')?.textContent || b.dataset.route }),
     ]);
-    row.onclick = () => { close(); navigate(b.dataset.route); };
-    return row;
+    tile.onclick = () => { close(); navigate(b.dataset.route); };
+    return tile;
   });
 
   const outBtn = el('button', { class: 'sheet-row sheet-row--danger' }, [
@@ -201,30 +265,16 @@ function openNavSheet() {
     if (await confirmDialog('ออกจากระบบใช่ไหม?', { okText: 'ออกจากระบบ' })) signOutUser();
   };
 
-  const sheet = el('div', { class: 'nav-sheet' }, [
-    el('div', { class: 'sheet-grab' }),
+  close = openSheet([
     el('div', { class: 'sheet-user' }, [
       el('span', { class: 'sheet-avatar', html: brandLogo }),
       el('span', { class: 'sheet-email', text: getSettings() ? (currentUser()?.email || '') : '' }),
     ]),
-    ...rows,
+    el('div', { class: 'sheet-tiles' }, tiles),
     el('div', { class: 'sheet-sep' }),
+    el('div', { class: 'sheet-theme' }, [el('span', { text: 'โทนสี' }), themePicker()]),
     outBtn,
   ]);
-  bg.appendChild(sheet);
-
-  function close() {
-    bg.classList.add('closing');
-    document.removeEventListener('keydown', onKey);
-    document.body.classList.remove('modal-open');
-    setTimeout(() => bg.remove(), 180);
-  }
-  const onKey = (e) => { if (e.key === 'Escape') close(); };
-  document.addEventListener('keydown', onKey);
-  bg.addEventListener('click', (e) => { if (e.target === bg) close(); });
-
-  document.body.appendChild(bg);
-  document.body.classList.add('modal-open');
 }
 
 function navigate(route) {

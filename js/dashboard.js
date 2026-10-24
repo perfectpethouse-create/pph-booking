@@ -10,6 +10,7 @@ import { icons } from './icons.js';
 import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './booking-actions.js';
 import { openBookingCockpit } from './booking-cockpit.js';
 import { mountNewsCard } from './announcements.js';
+import { createMobileHome } from './dashboard-mobile.js';
 
 let _unsub = [];
 let _appts = [];
@@ -17,6 +18,15 @@ let _customers = []; // สำหรับธงวัคซีนในกล�
 
 export function renderDashboard(container) {
   _unsub.forEach(u => u()); _unsub = [];
+
+  // มือถือ = หน้าหลักแบบแอป (dashboard-mobile.js) · คอม = แดชบอร์ดเต็มด้านล่าง
+  // สลับด้วย CSS (.mhome / .dash-full) — ข้อมูลชุดเดียวกัน ฟังฐานข้อมูลครั้งเดียว
+  const mobile = createMobileHome();
+  let _newReqs = 0, _newForms = 0;
+  let _bookings = []; // ประกาศก่อน listener ใดๆ — mock โหมดยิง callback ทันที
+  const full = el('div', { class: 'dash-full' });
+  container.append(mobile.node, full);
+  container = full;
 
   container.appendChild(el('div', { class: 'page-title' }, [
     el('h1', { text: 'แดชบอร์ดวันนี้' }),
@@ -31,6 +41,7 @@ export function renderDashboard(container) {
   reqBanner.onclick = () => window.__go && window.__go('requests');
   _unsub.push(listen('bookingRequests', reqs => {
     const n = reqs.filter(r => (r.status || 'new') === 'new').length;
+    _newReqs = n; pushMobile();
     reqBanner.innerHTML = '';
     if (!n) { reqBanner.classList.add('hidden'); return; }
     reqBanner.classList.remove('hidden');
@@ -53,6 +64,7 @@ export function renderDashboard(container) {
 
   _unsub.push(listen('checkinForms', forms => {
     const n = forms.filter(f => (f.status || 'new') === 'new').length;
+    _newForms = n; pushMobile();
     regBanner.innerHTML = '';
     if (!n) { regBanner.classList.add('hidden'); return; }
     regBanner.classList.remove('hidden');
@@ -62,12 +74,16 @@ export function renderDashboard(container) {
   }, { orderBy: null }));
 
   // เก็บ bookings ล่าสุดไว้ เพื่อให้ listener ของ appointments วาดใหม่ได้โดยไม่ต้องรอ bookings มาอีกรอบ
-  let _bookings = [];
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(_bookings); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(_bookings); }));
   _unsub.push(listen('customers', arr => { _customers = arr; draw(_bookings); }));
 
+  function pushMobile() {
+    mobile.update({ bookings: _bookings, appts: _appts, newRequests: _newReqs, newForms: _newForms });
+  }
+
   function draw(bookings) {
+    pushMobile();
     const today = todayISO();
     const tomorrow = addDaysISO(today, 1);
     const active = bookings.filter(b => b.depositStatus !== 'ยกเลิก');

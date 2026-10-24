@@ -15,6 +15,7 @@ import { buildCustomerCard, downloadCardPNG, copySummaryText, copyText, shareCar
 import { openIntakeForm } from './intake-form.js';
 import { vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
+import { rangeOf, roomsOf, isCat, dateWithYear } from './mobile-kit.js';
 
 let _bookings = [];
 let _customers = [];
@@ -33,14 +34,19 @@ export function renderBookings(container) {
 
   const tableWrap = el('div', { class: 'table-wrap' });
 
-  container.appendChild(el('div', { class: 'page-title' }, [
-    el('h1', { text: 'การจองทั้งหมด' }),
-    addBtn,
-  ]));
-  container.appendChild(el('div', { class: 'card' }, [
-    el('div', { class: 'toolbar' }, [searchInput, statusFilter]),
-    buildStatusLegend(),
-    tableWrap,
+  // มือถือ = ลิสต์การ์ดแบบแอป (.mbook) · คอม = ตารางเต็ม (.book-full) — สลับด้วย CSS
+  const mobile = buildMobileList();
+  container.appendChild(mobile.node);
+  container.appendChild(el('div', { class: 'book-full' }, [
+    el('div', { class: 'page-title' }, [
+      el('h1', { text: 'การจองทั้งหมด' }),
+      addBtn,
+    ]),
+    el('div', { class: 'card' }, [
+      el('div', { class: 'toolbar' }, [searchInput, statusFilter]),
+      buildStatusLegend(),
+      tableWrap,
+    ]),
   ]));
 
   const draw = () => {
@@ -52,12 +58,114 @@ export function renderBookings(container) {
     });
     tableWrap.innerHTML = '';
     tableWrap.appendChild(buildTable(rows));
+    mobile.draw();
   };
   searchInput.oninput = draw;
   statusFilter.onchange = draw;
 
   _unsub.push(listen('bookings', arr => { _bookings = sortByBookingDate(arr); draw(); }));
   _unsub.push(listen('customers', arr => { _customers = arr; }));
+}
+
+// ═══════════ มือถือ: ค้นหา + ชิปกรอง + การ์ดใบจอง ═══════════
+// ชิปเป็นคำถามที่หน้าเคาน์เตอร์ถามบ่อย ไม่ใช่สถานะดิบ ("ใครพักอยู่" / "ใครเข้าวันนี้" / "ใครยังไม่โอน")
+const MOBILE_FILTERS = [
+  { id: 'all', label: 'ทั้งหมด', test: () => true },
+  { id: 'staying', label: 'กำลังพัก', test: (b, t) => b.depositStatus !== 'ยกเลิก' && b.checkIn <= t && t < b.checkOut },
+  { id: 'in', label: 'เข้าวันนี้', test: (b, t) => b.depositStatus !== 'ยกเลิก' && b.checkIn === t },
+  { id: 'out', label: 'ออกวันนี้', test: (b, t) => b.depositStatus !== 'ยกเลิก' && b.checkOut === t },
+  { id: 'nodep', label: 'ยังไม่มัดจำ', test: (b) => b.depositStatus === 'ยังไม่มัดจำ' },
+  // รับเงินแล้วแต่ไม่มีวันที่โอน — ไว้ไล่เติมย้อนหลังก่อนปิดยอด (เกณฑ์เดียวกับแถวเตือนสีส้มบนการ์ด)
+  { id: 'nodate', label: 'ไม่ได้ระบุวันที่โอน', test: (b) => (b.depositStatus === 'มัดจำแล้ว' || b.depositStatus === 'จ่ายครบแล้ว') && !b.depositDate },
+  { id: 'cancel', label: 'ยกเลิก', test: (b) => b.depositStatus === 'ยกเลิก' },
+];
+const MOBILE_PAGE = 40; // วาดทีละ 40 ใบ — ร้านมีใบจองสะสมหลายร้อยใบ วาดหมดทีเดียวมือถือจะหน่วง
+
+function buildMobileList() {
+  let filter = 'all', query = '', limit = MOBILE_PAGE;
+  const node = el('div', { class: 'mbook' });
+  const search = el('input', { type: 'search', placeholder: 'ค้นหาชื่อ หรือเบอร์โทร', 'aria-label': 'ค้นหาการจอง' });
+  search.oninput = () => { query = search.value.trim().toLowerCase(); limit = MOBILE_PAGE; draw(); };
+  const chips = el('div', { class: 'm-chips', role: 'tablist' });
+  const listEl = el('div', {});
+  node.append(
+    el('div', { class: 'm-ptitle' }, [el('h1', { text: 'การจอง' })]),
+    el('label', { class: 'm-search' }, [el('span', { html: icons.search }), search]),
+    chips, listEl,
+  );
+
+  function draw() {
+    const t = todayISO();
+    const hit = (b) => !query || `${b.customerName || ''} ${b.phone || ''}`.toLowerCase().includes(query);
+    const base = _bookings.filter(hit);
+
+    chips.innerHTML = '';
+    MOBILE_FILTERS.forEach(f => {
+      const n = base.filter(b => f.test(b, t)).length;
+      const c = el('button', { class: 'm-chipf' + (f.id === filter ? ' on' : ''), role: 'tab', 'aria-selected': String(f.id === filter) },
+        [f.label, el('span', { text: String(n) })]);
+      c.onclick = () => { filter = f.id; limit = MOBILE_PAGE; draw(); };
+      chips.appendChild(c);
+    });
+    // วาดชิปใหม่ทำให้แถบเลื่อนกลับไปต้นแถว — เลื่อนให้ชิปที่เลือกยังอยู่ในจอ (ชิปท้ายแถวจะได้ไม่หลุดหาย)
+    const on = chips.querySelector('.on');
+    if (on) chips.scrollLeft = Math.max(0, on.offsetLeft - chips.clientWidth / 2 + on.offsetWidth / 2);
+
+    const f = MOBILE_FILTERS.find(x => x.id === filter);
+    const rows = base.filter(b => f.test(b, t));
+    listEl.innerHTML = '';
+    if (!rows.length) {
+      listEl.appendChild(el('div', { class: 'm-empty', text: query ? 'ไม่พบการจองที่ค้นหา' : 'ไม่มีการจองในกลุ่มนี้' }));
+      return;
+    }
+    rows.slice(0, limit).forEach(raw => listEl.appendChild(mobileCard(raw)));
+    if (rows.length > limit) {
+      const more = el('button', { class: 'm-more', text: `แสดงเพิ่ม (เหลืออีก ${rows.length - limit} ใบ)` });
+      more.onclick = () => { limit += MOBILE_PAGE; draw(); };
+      listEl.appendChild(more);
+    }
+  }
+
+  return { node, draw };
+}
+
+function mobileCard(raw) {
+  const b = computeBooking(raw);
+  const nights = nightsBetween(b.checkIn, b.checkOut);
+  const owe = b.depositStatus !== 'ยกเลิก' && b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
+  const card = el('div', { class: 'm-bk' + (b.depositStatus === 'ยกเลิก' ? ' cancel' : ''), role: 'button', tabindex: '0' }, [
+    el('div', { class: 'm-bk-top' }, [
+      el('span', { class: 'm-pet' + (isCat(b) ? ' cat' : ''), html: isCat(b) ? icons.cat : icons.dog }),
+      el('div', { class: 'm-tx' }, [el('b', { text: b.customerName || '-' }), el('small', { text: b.phone || '' })]),
+      statusPill(b.depositStatus),
+    ]),
+    el('div', { class: 'm-bk-meta' }, [
+      el('div', {}, [el('span', { text: 'ห้อง' }), el('b', { text: roomsOf(b) })]),
+      el('div', {}, [el('span', { text: 'วันที่' }), el('b', { text: rangeOf(b) })]),
+      el('div', {}, owe
+        ? [el('span', { text: 'คงเหลือ' }), el('b', { class: 'owe', text: formatBaht(b.balanceDue) })]
+        : [el('span', { text: 'จำนวน' }), el('b', { text: nights ? `${nights} คืน` : '-' })]),
+    ]),
+    depositRow(b),
+  ]);
+  card.onclick = () => openBookingForm(raw);
+  card.onkeydown = (e) => { if (e.key === 'Enter') openBookingForm(raw); };
+  return card;
+}
+
+// แถววันที่โอนมัดจำ — ไว้กระทบยอดกับสลิป/บัญชีธนาคาร
+// ⚠️ ฟอร์มใบใหม่ใส่ depositDate = วันนี้ไว้ล่วงหน้า แม้ลูกค้ายังไม่โอน
+//    จึงห้ามโชว์วันที่ตอนสถานะ "ยังไม่มัดจำ" (จะดูเหมือนเงินเข้าแล้ว)
+function depositRow(b) {
+  if (b.depositStatus === 'ยังไม่มัดจำ') {
+    return el('div', { class: 'm-dep wait' }, [el('span', { text: 'มัดจำ' }), el('b', { text: 'ยังไม่ได้รับมัดจำ' })]);
+  }
+  const when = b.depositDate ? dateWithYear(b.depositDate) : null;
+  return el('div', { class: 'm-dep' + (when ? '' : ' miss') }, [
+    el('span', { text: 'โอนมัดจำ' }),
+    el('b', { text: when ? [when, b.depositMethod].filter(Boolean).join(' · ') : 'ไม่ได้ระบุวันที่โอน' }),
+    el('em', { text: formatBaht(b.depositAmount) }),
+  ]);
 }
 
 // เรียงตาม "วันที่จอง/โอนมัดจำ" ล่าสุดก่อน — เห็นทันทีว่าจองเข้ามาล่าสุดวันไหน
@@ -161,8 +269,10 @@ export function openBookingForm(existing) {
 
   // พนักงานเห็นราคาได้ เพราะต้องแจ้งลูกค้าที่ยืนรออยู่หน้าเคาน์เตอร์
   // (สิ่งที่ยังกันไว้คือ แก้/ลบใบเดิม และเมนูรายงานรายได้ ซึ่งคุมด้วย staffPerms)
-  const form = el('div', {});
+  const form = el('div', { class: 'bk-form' });
   const m = openModal(form);
+  // มือถือ: ฟอร์มนี้ยาวมาก → เปิดเต็มจอแบบหน้าแอป (ดู .modal--full ใน styles.css) · คอมยังเป็นกล่องกลางจอเหมือนเดิม
+  m.el.classList.add('modal--full');
   build();
 
   function rerender() { form.innerHTML = ''; build(); }
@@ -195,7 +305,16 @@ export function openBookingForm(existing) {
       refreshVaccine();
     };
 
+    // ป้าย "N คืน" ระหว่างวันเข้า-ออก — เห็นทันทีว่านับคืนถูกไหมก่อนดูยอดเงิน
+    const nightsBadge = el('span', { class: 'nights-badge' });
+    const refreshNightsBadge = () => {
+      const n = nightsBetween(draft.checkIn, draft.checkOut);
+      nightsBadge.textContent = n > 0 ? `${n} คืน` : 'เลือกวันที่';
+      nightsBadge.classList.toggle('empty', !(n > 0));
+    };
+
     function syncNights() {
+      refreshNightsBadge();
       const n = nightsBetween(draft.checkIn, draft.checkOut);
       if (n > 0) {
         draft.lineItems.forEach(li => li.nights = n);
@@ -452,7 +571,20 @@ export function openBookingForm(existing) {
     const billDiscVal = numInput(draft.billDiscountValue, v => { draft.billDiscountValue = v; refreshSummary(); }, 'เช่น 5');
 
     // ── สถานะ + หมายเหตุ ──
-    const depStatus = labeled('สถานะมัดจำ', selectEl(DEPOSIT_STATUSES.map(x => [x, x]), draft.depositStatus, v => draft.depositStatus = v));
+    // สถานะมัดจำ: คอมใช้ดรอปดาวน์เดิม · มือถือใช้ปุ่มชิปแตะครั้งเดียว — ทั้งคู่เขียนค่าเดียวกันและซิงก์กัน
+    const depSel = selectEl(DEPOSIT_STATUSES.map(x => [x, x]), draft.depositStatus, v => { draft.depositStatus = v; syncDepChips(); });
+    const depChips = el('div', { class: 'dep-chips', role: 'radiogroup', 'aria-label': 'สถานะมัดจำ' });
+    const syncDepChips = () => depChips.querySelectorAll('button').forEach(b => {
+      const on = b.dataset.v === draft.depositStatus;
+      b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+    });
+    DEPOSIT_STATUSES.forEach(x => {
+      const b = el('button', { type: 'button', role: 'radio', 'data-v': x, text: x });
+      b.onclick = () => { draft.depositStatus = x; depSel.value = x; syncDepChips(); };
+      depChips.appendChild(b);
+    });
+    syncDepChips();
+    const depStatus = el('div', { class: 'field', style: 'margin:0' }, [el('label', { text: 'สถานะมัดจำ' }), depSel, depChips]);
     const recStatus = labeled('สถานะบันทึก', selectEl(RECORD_STATUSES.map(x => [x, x]), draft.recordStatus, v => draft.recordStatus = v));
     const notesInp = el('textarea', { placeholder: 'พันธุ์ / น้ำหนัก / อาการสุขภาพ / เงื่อนไขพิเศษ' });
     notesInp.value = draft.notes || '';
@@ -505,7 +637,7 @@ export function openBookingForm(existing) {
       formGroup(icons.users, 'ข้อมูลลูกค้า', 'blue',
         el('div', { class: 'row' }, [nameField, phoneField]), vaccineBanner),
       formGroup(icons.calendar, 'ช่วงเข้าพัก', 'green',
-        el('div', { class: 'row' }, [inDateField, outDateField]),
+        el('div', { class: 'row date-pair' }, [inDateField, nightsBadge, outDateField]),
         el('div', { class: 'row' }, [inTimeField, outTimeField])),
       formGroup(icons.home, 'ห้องพัก', 'orange',
         itemsWrap, addItemBtn, promoBanner),
@@ -527,6 +659,7 @@ export function openBookingForm(existing) {
       stickyBar,
     );
     refreshSummary();
+    refreshNightsBadge();
   }
 }
 

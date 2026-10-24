@@ -17,6 +17,13 @@
   <!-- ฟอนต์ไทย fallback สำหรับเครื่องที่ไม่ใช่ Apple (บน Mac/iPhone ใช้ SF Pro ของระบบ) -->
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/styles.css" />
+  <!-- ใส่โทนสีที่เลือกไว้ก่อนวาดหน้า กันจอกะพริบเป็นสีส้มแวบหนึ่ง (รายละเอียดใน js/theme.js) -->
+  <script>
+    try {
+      var t = localStorage.getItem('pph_theme');
+      if (t && t !== 'warm') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
 </head>
 <body>
   <!-- หน้าล็อกอิน -->
@@ -47,15 +54,18 @@
       <button class="navlink" data-route="calendar" aria-label="ปฏิทินห้องว่าง"><span class="ico"></span><span class="txt-short">ปฏิทิน</span><span class="txt">ปฏิทินห้องว่าง</span></button>
       <button class="navlink" data-route="customers" aria-label="ลูกค้าและสัตว์เลี้ยง"><span class="ico"></span><span class="txt-short">ลูกค้า</span><span class="txt">ลูกค้า &amp; สัตว์เลี้ยง</span></button>
       <button class="navlink" data-route="requests" aria-label="คำขอจองจากเว็บ"><span class="ico"></span><span class="txt-short">คำขอ</span><span class="txt">คำขอจองจากเว็บ</span></button>
-      <button class="navlink" data-route="registrations" aria-label="ลงทะเบียนเช็คอิน"><span class="ico"></span><span class="txt-short">เช็คอิน</span><span class="txt">ลงทะเบียนเช็คอิน</span></button>
+      <button class="navlink" data-route="registrations" aria-label="ลงทะเบียนเช็คอิน"><span class="ico"></span><span class="txt-short">เช็คอิน</span><span class="txt">ข้อมูลลงทะเบียนเช็คอิน</span></button>
       <button class="navlink" data-route="reports" aria-label="รายงานรายเดือน"><span class="ico"></span><span class="txt-short">รายงาน</span><span class="txt">รายงานรายเดือน</span></button>
       <button class="navlink" data-route="settings" aria-label="ตั้งค่า"><span class="ico"></span><span class="txt-short">ตั้งค่า</span><span class="txt">ตั้งค่า</span></button>
       <button class="navlink" data-route="backup" aria-label="สำรองข้อมูล"><span class="ico"></span><span class="txt-short">สำรอง</span><span class="txt">สำรองข้อมูล</span></button>
       <!-- ปุ่ม "เพิ่มเติม" ของแถบล่างบนมือถือ — จงใจไม่ใช้คลาส .navlink
            เพราะ app.js วน querySelectorAll('.navlink') อ่าน data-route อยู่หลายจุด -->
       <button class="navmore" id="nav-more-btn" aria-label="เพิ่มเติม"><span class="ico"></span><span class="txt-short">เพิ่มเติม</span><span class="txt">เพิ่มเติม</span></button>
+      <!-- ปุ่ม + กลางแถบล่าง (มือถือเท่านั้น) — ไม่ใช่ .navlink ด้วยเหตุผลเดียวกับปุ่มเพิ่มเติม -->
+      <button class="navfab hidden" id="nav-fab-btn" aria-label="สร้างรายการใหม่"><span class="fab-in"></span></button>
       <div class="spacer"></div>
       <div class="who">
+        <div id="theme-slot"></div>
         <span id="who-email"></span>
         <button class="btn ghost sm" id="logout-btn" aria-label="ออกจากระบบ"><span class="ico"></span><span class="txt">ออกจากระบบ</span></button>
       </div>

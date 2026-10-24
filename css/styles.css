@@ -1,25 +1,31 @@
 /* ═══════════════════════════════════════════════════════
    Perfect Pet House — Booking App
-   ธีม: Minimal / Apple-style
-   · พื้นหลัง #F5F5F7 · การ์ดขาว radius 18px · hairline borders
-   · ตัวอักษรระบบ (SF Pro บนอุปกรณ์ Apple) · accent ส้มแบรนด์เดียว
-   · สีสถานะ = Apple system colors (green/orange/red)
+   ธีม: การ์ดโค้งนุ่ม แบบแอป · 3 โทนสี (ส้มแบรนด์ = ค่าเริ่มต้น / เขียว / คราม)
+   · สลับโทนด้วย <html data-theme="..."> (เก็บในเครื่อง ดู js/theme.js)
+   · ทุกหน้าอ้างตัวแปรชุดเดียวกัน เปลี่ยนโทนแล้วทั้งแอปเปลี่ยนตาม
+   · สีสถานะ (เขียว/ส้ม/แดง) คงความหมายเดิมทุกโทน
    ═══════════════════════════════════════════════════════ */
 :root {
-  /* โทนหลัก */
-  --bg: #F5F5F7;               /* Apple signature gray */
+  /* โทนหลัก — ส้มแบรนด์ (ค่าเริ่มต้น) */
+  --bg: #F8F3EC;
   --card: #FFFFFF;
-  --ink: #1D1D1F;              /* Apple text */
-  --muted: #86868B;            /* Apple secondary text */
-  --hairline: rgba(0, 0, 0, 0.08);
-  --hairline-soft: rgba(0, 0, 0, 0.05);
-  --fill: #E8E8ED;             /* Apple fill gray (ปุ่มรอง) */
-  --fill-hover: #DEDEE3;
+  --ink: #2B2320;
+  --ink-2: #4E423B;
+  --muted: #756659;            /* ≥4.5:1 บนขาว/พื้นครีม/fill */
+  --hairline: rgba(70, 45, 25, 0.10);
+  --hairline-soft: rgba(70, 45, 25, 0.06);
+  --fill: #F2EAE0;             /* ปุ่มรอง/ช่องกรอก */
+  --fill-hover: #EADFD2;
 
-  /* accent เดียว = ส้มแบรนด์ */
+  /* accent = ส้มแบรนด์ */
   --accent: #F4650F;
-  --accent-dark: #D9560A;
-  --accent-tint: rgba(244, 101, 15, 0.10);
+  --accent-dark: #C24B05;
+  --accent-tint: rgba(244, 101, 15, 0.11);
+  --on-accent: #FFFFFF;
+  /* พื้นสีที่มีตัวอักษรขาวทับ (ปุ่มหลัก/เมนูที่เลือก) ต้องเข้มพอให้อ่านออก ≥4.5:1
+     ส้มสด #F4650F ใช้กับไอคอน/ปุ่ม +/เส้นเน้นเท่านั้น */
+  --accent-fill: #C94D07;
+  --accent-fill-hover: #B04305;
 
   /* สีสถานะ (Apple system) */
   --green: #34C759;
@@ -29,13 +35,34 @@
   --orange-tint: rgba(255, 149, 0, 0.14);
   --red-tint: rgba(255, 59, 48, 0.10);
 
-  --radius: 18px;
-  --radius-sm: 12px;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.04);
-  --shadow-modal: 0 24px 60px rgba(0, 0, 0, 0.18);
+  --radius: 20px;
+  --radius-sm: 13px;
+  --shadow: 0 1px 2px rgba(60, 35, 15, 0.05), 0 8px 24px rgba(60, 35, 15, 0.06);
+  --shadow-up: 0 -1px 0 rgba(60, 35, 15, 0.04), 0 -8px 24px rgba(60, 35, 15, 0.06);
+  --shadow-modal: 0 24px 60px rgba(40, 20, 5, 0.20);
   --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   --font: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue',
           'Noto Sans Thai', 'Sarabun', sans-serif;
+}
+/* โทนเขียวมิ้นต์ */
+:root[data-theme="teal"] {
+  --bg: #EEF5F3; --ink: #102A25; --ink-2: #33514B; --muted: #526B65;
+  --hairline: rgba(16, 60, 50, 0.10); --hairline-soft: rgba(16, 60, 50, 0.06);
+  --fill: #E3EFEB; --fill-hover: #D6E7E1;
+  --accent: #0FA08D; --accent-dark: #0A7C6D; --accent-tint: rgba(15, 160, 141, 0.12);
+  --accent-fill: #0A7C6D; --accent-fill-hover: #086A5D;
+  --shadow: 0 1px 2px rgba(16, 42, 37, 0.05), 0 8px 24px rgba(16, 42, 37, 0.07);
+  --shadow-up: 0 -1px 0 rgba(16, 42, 37, 0.04), 0 -8px 24px rgba(16, 42, 37, 0.06);
+}
+/* โทนคราม */
+:root[data-theme="indigo"] {
+  --bg: #F2F3FB; --ink: #1B2036; --ink-2: #434A66; --muted: #5F6580;
+  --hairline: rgba(30, 36, 80, 0.10); --hairline-soft: rgba(30, 36, 80, 0.06);
+  --fill: #E8EAF6; --fill-hover: #DDE0F1;
+  --accent: #4E5BF2; --accent-dark: #3A45C4; --accent-tint: rgba(78, 91, 242, 0.11);
+  --accent-fill: #4E5BF2; --accent-fill-hover: #3A45C4;
+  --shadow: 0 1px 2px rgba(22, 26, 54, 0.05), 0 8px 24px rgba(22, 26, 54, 0.07);
+  --shadow-up: 0 -1px 0 rgba(22, 26, 54, 0.04), 0 -8px 24px rgba(22, 26, 54, 0.06);
 }
 
 * { box-sizing: border-box; }
@@ -73,8 +100,8 @@ button { font-family: inherit; }
 }
 .btn:hover { background: var(--fill-hover); }
 .btn:active { transform: scale(0.97); }
-.btn.primary { background: var(--accent); color: #fff; }
-.btn.primary:hover { background: var(--accent-dark); }
+.btn.primary { background: var(--accent-fill); color: var(--on-accent); }
+.btn.primary:hover { background: var(--accent-fill-hover); }
 .btn.ghost { background: transparent; border: 1px solid var(--hairline); }
 .btn.ghost:hover { background: var(--fill); border-color: transparent; }
 .btn.danger { background: var(--red-tint); color: var(--red); }
@@ -172,7 +199,7 @@ textarea { resize: vertical; min-height: 64px; }
 .card {
   background: var(--card); border-radius: var(--radius);
   box-shadow: var(--shadow); padding: 22px; margin-bottom: 16px;
-  border: 1px solid var(--hairline-soft);
+  border: none;
 }
 .card h2 { font-size: 17px; margin-bottom: 14px; }
 .muted { color: var(--muted); }
@@ -191,11 +218,10 @@ textarea { resize: vertical; min-height: 64px; }
 /* ── โครง layout ── */
 #app { display: flex; min-height: 100vh; min-height: 100dvh; }
 #sidebar {
-  width: 232px; flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.72);
-  -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px);
+  width: 244px; flex-shrink: 0;
+  background: var(--card);
   border-right: 1px solid var(--hairline-soft);
-  padding: 20px 12px 14px; display: flex; flex-direction: column; gap: 3px;
+  padding: 20px 14px 14px; display: flex; flex-direction: column; gap: 2px;
   position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto;
 }
 #sidebar .brand {
@@ -212,14 +238,15 @@ textarea { resize: vertical; min-height: 64px; }
 /* โลโก้ทุกที่ใช้คลาสเดียวกัน — ห้ามบิดสัดส่วน */
 .brand-img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .navlink {
-  display: flex; align-items: center; gap: 11px; padding: 9px 12px;
-  border-radius: 10px; cursor: pointer; color: var(--ink);
+  display: flex; align-items: center; gap: 11px; padding: 10px 12px;
+  border-radius: 12px; cursor: pointer; color: var(--ink-2);
   font-weight: 500; font-size: 14px; border: none; background: none;
   text-align: left; width: 100%; letter-spacing: -0.01em;
-  transition: background .15s var(--ease);
+  transition: background .15s var(--ease), color .15s var(--ease);
 }
-.navlink:hover { background: rgba(0, 0, 0, 0.045); }
-.navlink.active { background: var(--accent-tint); color: var(--accent-dark); font-weight: 600; }
+.navlink:hover { background: var(--fill); color: var(--ink); }
+.navlink.active { background: var(--accent-fill); color: var(--on-accent); font-weight: 600; box-shadow: 0 4px 12px -4px var(--accent-fill); }
+.navlink.active .ico { color: var(--on-accent) !important; }
 .navlink .ico { display: grid; place-items: center; color: var(--muted); }
 .navlink.active .ico { color: var(--accent); }
 .navlink .ico svg { width: 19px; height: 19px; }
@@ -235,9 +262,18 @@ textarea { resize: vertical; min-height: 64px; }
 #logout-btn .ico svg { width: 15px; height: 15px; }
 #sidebar .who #logout-btn { display: inline-flex; align-items: center; gap: 6px; }
 
+/* ตัวเลือกโทนสี (แถบข้าง · แผ่นเลื่อน "เพิ่มเติม") */
+.theme-pick { display: flex; align-items: center; gap: 8px; }
+.theme-pick .tp-lbl { font-size: 12px; color: var(--muted); margin-right: 2px; }
+.theme-dot {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--card);
+  box-shadow: 0 0 0 1px var(--hairline); cursor: pointer; padding: 0;
+}
+.theme-dot[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--ink); }
+
 #main { flex: 1; min-width: 0; }
 #topbar { display: none; }
-#content { padding: 28px 32px; max-width: 1080px; }
+#content { padding: 28px 32px; max-width: 1180px; }
 .page-title {
   display: flex; align-items: center; justify-content: space-between;
   gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
@@ -263,7 +299,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .stat {
   background: var(--card); border-radius: var(--radius); padding: 16px 18px;
-  box-shadow: var(--shadow); border: 1px solid var(--hairline-soft);
+  box-shadow: var(--shadow); border: none;
   display: flex; align-items: center; gap: 12px;
   min-width: 0; /* ให้เนื้อในหดได้ ไม่ดันจนล้นกล่อง */
 }
@@ -608,7 +644,27 @@ body.modal-open { overflow: hidden; }
 }
 
 /* ═══ แผ่นเลื่อน "เพิ่มเติม" ของแถบเมนูล่าง (มือถือ) ═══ */
-.navmore { display: none; }
+.navmore, .navfab { display: none; }
+/* เมนูในแผ่นเลื่อนเป็นไทล์ 2 คอลัมน์ กดง่ายกว่ารายการยาว */
+.sheet-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 2px 2px 6px; }
+.sheet-tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+  min-height: 92px; padding: 13px; border-radius: 18px; border: none;
+  background: var(--bg); cursor: pointer; font-family: inherit; text-align: left;
+  font-size: 14px; font-weight: 600; color: var(--ink); line-height: 1.3;
+  -webkit-tap-highlight-color: transparent;
+}
+.sheet-tile:active { background: var(--fill); }
+.sheet-tile .sheet-ico {
+  width: 38px; height: 38px; border-radius: 12px; background: var(--card); color: var(--accent);
+}
+.sheet-tile .sheet-ico svg { width: 20px; height: 20px; }
+.sheet-tile.active { background: var(--accent-tint); color: var(--accent-dark); }
+.sheet-theme { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 4px; font-size: 15px; }
+.sheet-title { font-size: 18px; font-weight: 700; margin: 0 6px 12px; letter-spacing: -0.02em; }
+.sheet-sub { font-size: 12.5px; color: var(--muted); font-weight: 400; display: block; }
+.sheet-ico--tile { width: 46px; height: 46px; border-radius: 15px; background: var(--accent-tint); color: var(--accent-dark); }
+.nav-sheet .sheet-row { font-weight: 600; }
 .sheet-bg {
   position: fixed; inset: 0; z-index: 60;
   background: rgba(0, 0, 0, 0.35);
@@ -995,12 +1051,27 @@ body.modal-open { overflow: hidden; }
     gap: 0; align-items: stretch; justify-content: space-around;
     position: fixed; left: 0; right: 0; bottom: 0; top: auto; z-index: 40;
     /* เผื่อแถบ home indicator ของ iPhone ไม่ให้ทับปุ่ม */
-    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-    background: rgba(255, 255, 255, 0.88);
-    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
-    box-shadow: 0 -1px 12px rgba(0, 0, 0, 0.05);
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+    background: var(--card);
+    border-top: none; border-radius: 22px 22px 0 0;
+    box-shadow: var(--shadow-up);
     overflow: visible;
   }
+  /* ปุ่ม + กลางแถบ — ทางลัดสร้างรายการใหม่ (ลำดับจัดใน app.js ผ่าน style.order) */
+  .navfab {
+    display: grid; flex: 0 0 64px; place-items: center;
+    border: none; background: none; padding: 0; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .navfab .fab-in {
+    width: 56px; height: 56px; border-radius: 19px; margin-top: -24px;
+    background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center;
+    box-shadow: 0 8px 18px -6px var(--accent), 0 2px 4px rgba(0, 0, 0, 0.08);
+    transition: transform .12s var(--ease);
+  }
+  .navfab:active .fab-in { transform: scale(0.93); }
+  .navfab svg { width: 26px; height: 26px; stroke-width: 2.2; }
   /* โลโก้/อีเมล/ปุ่มออก ย้ายไปอยู่ในแผ่นเลื่อน "เพิ่มเติม" แทน */
   #sidebar .brand, #sidebar .spacer, #sidebar .who { display: none; }
 
@@ -1017,23 +1088,28 @@ body.modal-open { overflow: hidden; }
   .navlink span.txt, .navmore span.txt { display: none; }
   .navlink .txt-short, .navmore .txt-short {
     display: block;
-    font-size: 10px; line-height: 1.15; font-weight: 500;
+    font-size: 11px; line-height: 1.15; font-weight: 600;
     max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .navlink .ico, .navmore .ico { display: grid; place-items: center; color: inherit; }
   .navlink .ico svg, .navmore .ico svg { width: 22px; height: 22px; }
   /* แถบล่างใช้สีบอกหน้าที่เปิดอยู่แทนพื้นหลัง — สะอาดตากว่าและเป็นมาตรฐานแอป */
-  .navlink:hover { background: none; }
-  .navlink.active, .navmore.active { background: none; color: var(--accent); font-weight: 600; }
-  .navlink.active .ico, .navmore.active .ico { color: var(--accent); }
+  .navlink:hover { background: none; color: var(--muted); }
+  .navlink.active, .navmore.active { background: none; box-shadow: none; color: var(--accent-dark); font-weight: 600; }
+  .navlink.active .ico, .navmore.active .ico { color: var(--accent) !important; }
+  /* ขีดใต้แท็บที่เปิดอยู่ */
+  .navlink.active .txt-short::after, .navmore.active .txt-short::after {
+    content: ''; display: block; width: 18px; height: 3px; border-radius: 2px;
+    background: var(--accent); margin: 3px auto 0;
+  }
   .navlink:active, .navmore:active { transform: scale(0.94); }
   /* เมนูที่ล้นแถบ — ย้ายไปแผ่นเลื่อน ไม่ใช่ซ่อนทิ้ง */
   .navlink.nav-secondary { display: none; }
 
   /* เว้นที่ให้เนื้อหาไม่ถูกแถบล่างทับ */
-  #main { padding-bottom: calc(62px + env(safe-area-inset-bottom)); }
+  #main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
   /* ป้ายโหมดทดลองต้องลอยเหนือแถบเมนู ไม่ใช่ทับปุ่ม */
-  .mode-badge { bottom: calc(70px + env(safe-area-inset-bottom)); }
+  .mode-badge { bottom: calc(86px + env(safe-area-inset-bottom)); }
   /* ⚠️ ห้ามดัน .sticky-summary ขึ้นมาหลบแถบเมนูล่าง —
      modal (z-index 50) ทับแถบเมนู (z-index 40) อยู่แล้วตอนเปิดฟอร์ม
      ถ้าใส่ bottom offset จะทำให้แถบสรุปลอยค้างกลางฟอร์มแล้วบังเนื้อหา
@@ -1176,4 +1252,463 @@ body.modal-open { overflow: hidden; }
   .news-actions .btn { flex: 1; } /* ปุ่มแก้/เก็บ/ลบ เต็มความกว้าง กดง่ายบนมือถือ */
   .news-mini-thumb { width: 44px; height: 44px; }
   .news-img img { max-height: 240px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   หน้าหลักแบบแอปบนมือถือ (dashboard-mobile.js)
+   คอมเห็น .dash-full ตามเดิม · มือถือเห็น .mhome แทน
+   ═══════════════════════════════════════════════════════════════ */
+.mhome { display: none; }
+@media (max-width: 760px) {
+  .dash-full { display: none; }
+  .mhome { display: block; margin: -4px -2px 0; }
+
+  .m-head { display: flex; align-items: center; gap: 12px; padding: 4px 0 16px; }
+  .m-logo {
+    width: 46px; height: 46px; border-radius: 15px; background: var(--card);
+    box-shadow: var(--shadow); padding: 5px; flex-shrink: 0;
+  }
+  .m-hi { flex: 1; min-width: 0; }
+  .m-hi small { display: block; font-size: 13px; color: var(--muted); }
+  .m-hi b { display: block; font-size: 19px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.25; }
+  .m-icbtn {
+    position: relative; width: 46px; height: 46px; border-radius: 15px; border: none;
+    background: var(--card); box-shadow: var(--shadow); color: var(--ink);
+    display: grid; place-items: center; cursor: pointer; flex-shrink: 0;
+  }
+  .m-icbtn svg { width: 21px; height: 21px; }
+  .m-bdg {
+    position: absolute; top: 6px; right: 6px; min-width: 18px; height: 18px; padding: 0 5px;
+    border-radius: 9px; background: var(--red); color: #fff; border: 2px solid var(--card);
+    font-size: 10.5px; font-weight: 700; display: grid; place-items: center;
+  }
+
+  .m-week { display: flex; gap: 6px; padding-bottom: 16px; }
+  .m-day {
+    flex: 1 1 0; min-width: 0; min-height: 68px; border-radius: 16px; border: none;
+    background: var(--card); cursor: pointer; font-family: inherit; color: var(--muted);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-size: 11.5px; -webkit-tap-highlight-color: transparent;
+  }
+  .m-day b { font-size: 17px; color: var(--ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .m-dots { display: flex; gap: 3px; height: 5px; margin-top: 3px; }
+  .m-dots i { width: 5px; height: 5px; border-radius: 50%; }
+  .m-dots i.in { background: var(--green); }
+  .m-dots i.out { background: var(--accent); }
+  .m-day.on { background: var(--ink); color: rgba(255, 255, 255, 0.72); }
+  .m-day.on b { color: #fff; }
+
+  .m-hero {
+    border-radius: 26px; background: var(--accent-fill); color: #fff;
+    padding: 20px 20px 18px; box-shadow: 0 12px 26px -10px var(--accent-fill);
+  }
+  .m-hero-top { display: flex; justify-content: space-between; align-items: center; font-size: 13.5px; color: #fff; }
+  .m-hero-top b { color: #fff; font-weight: 600; }
+  .m-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 12px; }
+  .m-nums div + div { border-left: 1px solid rgba(255, 255, 255, 0.25); padding-left: 14px; }
+  .m-nums b { display: block; font-size: 36px; font-weight: 700; line-height: 1.1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .m-nums span { font-size: 13px; color: #fff; }
+  .m-occ { margin-top: 16px; }
+  .m-bar { height: 8px; border-radius: 5px; background: rgba(255, 255, 255, 0.25); overflow: hidden; }
+  .m-bar i { display: block; height: 100%; background: #fff; border-radius: 5px; }
+  .m-occ-lb { display: flex; justify-content: space-between; font-size: 12.5px; color: #fff; margin-top: 7px; font-variant-numeric: tabular-nums; }
+
+  .m-next {
+    margin-top: 10px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow);
+    padding: 13px 16px; display: flex; align-items: center; gap: 8px;
+  }
+  .m-next-l { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; }
+  .m-next-l small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+  .m-chip { font-size: 13px; font-weight: 700; padding: 6px 11px; border-radius: 11px; font-variant-numeric: tabular-nums; }
+  .m-chip.in { background: var(--green-tint); color: #1E7A37; }
+  .m-chip.out { background: var(--accent-tint); color: var(--accent-dark); }
+
+  .m-sec { display: flex; align-items: center; justify-content: space-between; padding: 24px 2px 10px; }
+  .m-sec h3 { margin: 0; font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .m-n {
+    font-size: 12px; font-weight: 700; min-width: 22px; height: 22px; padding: 0 7px; border-radius: 11px;
+    background: var(--fill); color: var(--ink-2); display: inline-grid; place-items: center;
+  }
+  .m-link { border: none; background: none; font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--accent-dark); cursor: pointer; min-height: 44px; min-width: 44px; padding: 0 4px 0 12px; margin: -10px -4px -10px 0; }
+  .m-empty { background: var(--card); border-radius: 18px; padding: 16px; font-size: 13.5px; color: var(--muted); box-shadow: var(--shadow); }
+
+  .m-list { background: var(--card); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
+  .m-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 68px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .m-row + .m-row { border-top: 1px solid var(--hairline-soft); }
+  .m-row:active { background: var(--bg); }
+  .m-pet { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex-shrink: 0; background: var(--accent-tint); color: var(--accent-dark); }
+  .m-pet.cat { background: var(--orange-tint); color: #A15C00; }
+  .m-pet svg { width: 22px; height: 22px; }
+  .m-tx { flex: 1; min-width: 0; }
+  .m-tx b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-tx small { display: block; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-act {
+    height: 44px; padding: 0 16px; border-radius: 14px; border: none; flex-shrink: 0;
+    background: var(--accent-fill); color: #fff; font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+  }
+  .m-act:active { transform: scale(0.96); }
+  .m-act.ghost { background: var(--accent-tint); color: var(--accent-dark); }
+  .m-act.warn { background: var(--red-tint); color: #C0281C; }
+  .m-done { display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; color: #1E7A37; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+  .m-done svg { width: 16px; height: 16px; }
+
+  .m-hscroll { display: flex; gap: 10px; overflow-x: auto; margin: 0 -14px; padding: 0 14px 6px; scrollbar-width: none; }
+  .m-hscroll::-webkit-scrollbar { display: none; }
+  .m-qcard { flex: 0 0 148px; background: var(--card); border-radius: 20px; padding: 14px; box-shadow: var(--shadow); }
+  .m-qt { font-size: 21px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .m-qz { font-size: 12px; font-weight: 600; margin: 1px 0 10px; }
+  .m-qz.gr { color: #6A48E6; }
+  .m-qz.ex { color: #0B7F8A; }
+  .m-qcard b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-qcard small { font-size: 12px; color: var(--muted); }
+}
+
+/* ═══ หน้าการจองแบบแอป (มือถือ) — bookings.js buildMobileList ═══ */
+.mbook { display: none; }
+@media (max-width: 760px) {
+  .book-full { display: none; }
+  .mbook { display: block; }
+  .m-ptitle { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 14px; }
+  .m-ptitle h1 { font-size: 26px; margin: 0; letter-spacing: -0.025em; }
+  .m-search {
+    display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 15px; margin: 0 0 12px;
+    background: var(--card); border-radius: 16px; box-shadow: var(--shadow); color: var(--muted); cursor: text;
+  }
+  .m-search span { display: grid; place-items: center; }
+  .m-search svg { width: 19px; height: 19px; }
+  .m-search input { border: none; padding: 0; height: 100%; background: none; font-size: 16px; box-shadow: none !important; }
+  .m-chips { display: flex; gap: 8px; overflow-x: auto; margin: 0 -14px 14px; padding: 0 14px 2px; scrollbar-width: none; }
+  .m-chips::-webkit-scrollbar { display: none; }
+  .m-chipf {
+    flex: none; height: 44px; padding: 0 15px; border-radius: 13px; border: none; cursor: pointer;
+    background: var(--card); font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-chipf span { font-weight: 500; opacity: .6; margin-left: 5px; font-variant-numeric: tabular-nums; }
+  .m-chipf.on { background: var(--ink); color: #fff; }
+  .m-bk {
+    display: block; width: 100%; margin-bottom: 10px; padding: 15px 16px; text-align: left;
+    background: var(--card); border-radius: 22px; box-shadow: var(--shadow); cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-bk:active { transform: scale(0.99); }
+  .m-bk.cancel { opacity: .6; }
+  .m-bk-top { display: flex; align-items: center; gap: 12px; }
+  .m-bk-top .pill { flex-shrink: 0; }
+  .m-bk-meta {
+    display: grid; grid-template-columns: 1.3fr 1fr .8fr; gap: 10px;
+    margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--hairline-soft);
+  }
+  .m-bk-meta > div { min-width: 0; }
+  .m-bk-meta span { display: block; font-size: 11.5px; color: var(--muted); }
+  .m-bk-meta b { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  .m-bk-meta b.owe { color: #C0281C; }
+  /* แถววันที่โอนมัดจำ (กระทบยอด) */
+  .m-dep {
+    display: flex; align-items: baseline; gap: 8px; margin-top: 10px; padding: 9px 12px;
+    border-radius: 13px; background: var(--bg); font-variant-numeric: tabular-nums;
+  }
+  .m-dep span { font-size: 12px; color: var(--muted); flex-shrink: 0; }
+  .m-dep b { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .m-dep em { font-style: normal; font-size: 13.5px; font-weight: 700; flex-shrink: 0; }
+  .m-dep.wait { background: var(--red-tint); } .m-dep.wait b { color: #C0281C; }
+  .m-dep.miss { background: var(--orange-tint); } .m-dep.miss b { color: #A15C00; }
+  .m-more {
+    display: block; width: 100%; height: 48px; border: none; border-radius: 16px; cursor: pointer;
+    background: var(--fill); font-family: inherit; font-size: 14px; font-weight: 600; color: var(--ink-2);
+  }
+}
+
+/* ═══ หน้าคิวบริการแบบแอป (มือถือ) — appointments.js buildMobileQueue ═══ */
+.mappt { display: none; }
+@media (max-width: 760px) {
+  .appt-full { display: none; }
+  .mappt { display: block; }
+  .m-seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--fill); border-radius: 15px; padding: 4px; margin-bottom: 14px; }
+  .m-seg button {
+    height: 44px; border: none; border-radius: 12px; background: none; cursor: pointer;
+    font-family: inherit; font-size: 14px; font-weight: 600; color: var(--ink-2);
+  }
+  .m-seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); }
+  .m-mhead { display: flex; align-items: center; justify-content: space-between; margin: 0 2px 10px; }
+  .m-mhead b { font-size: 16px; }
+  .m-arrs { display: flex; gap: 8px; }
+  .m-arr {
+    width: 44px; height: 44px; border-radius: 14px; border: none; background: var(--card);
+    box-shadow: var(--shadow); color: var(--ink); display: grid; place-items: center; cursor: pointer;
+  }
+  .m-arr svg { width: 18px; height: 18px; }
+  .m-dots i.q { background: var(--accent); }
+  .m-day.on .m-dots i.q { background: #fff; }
+  .m-day.today:not(.on) b { color: var(--accent-dark); }
+  .m-capnote { font-size: 12.5px; color: var(--muted); }
+
+  .m-slot { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; margin-bottom: 10px; }
+  .m-slot-t { font-size: 15px; font-weight: 700; padding-top: 14px; font-variant-numeric: tabular-nums; }
+  .m-slot-free {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    min-height: 54px; padding: 6px 8px 6px 14px; border-radius: 18px;
+    border: 1.5px dashed var(--hairline); color: var(--muted); font-size: 13.5px;
+  }
+  .m-slot-box { background: var(--card); border-radius: 20px; padding: 12px 14px 8px; box-shadow: var(--shadow); }
+  .m-slot-box.full { box-shadow: var(--shadow), inset 0 0 0 1.5px var(--red-tint); }
+  .m-capbar { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .m-slot-box.full .m-capbar span { color: #C0281C; font-weight: 600; }
+  .m-capbar i { display: flex; gap: 3px; }
+  .m-capbar em { width: 16px; height: 6px; border-radius: 3px; background: var(--fill); }
+  .m-capbar em.f { background: var(--accent); }
+  .m-slot-box.full .m-capbar em.f { background: #E0493D; }
+  .m-appt { display: flex; align-items: center; gap: 10px; padding: 7px 0; cursor: pointer; }
+  .m-appt + .m-appt { border-top: 1px solid var(--hairline-soft); }
+  .m-appt .m-pet { width: 38px; height: 38px; border-radius: 12px; }
+  .m-appt .m-pet svg { width: 19px; height: 19px; }
+  .m-addq {
+    display: inline-flex; align-items: center; gap: 4px; height: 44px; padding: 0 12px; border-radius: 12px;
+    border: none; background: none; cursor: pointer; font-family: inherit; font-size: 13.5px; font-weight: 600;
+    color: var(--accent-dark); flex-shrink: 0;
+  }
+  .m-slot-box .m-addq { margin-left: -12px; }
+  .m-addq svg { width: 17px; height: 17px; }
+}
+
+/* ═══ ปฏิทินห้องว่างแบบแอป (มือถือ) — calendar.js buildMobileCalendar ═══ */
+.mcal { display: none; }
+@media (max-width: 760px) {
+  .cal-full { display: none; }
+  .mcal { display: block; }
+  .m-calcard { background: var(--card); border-radius: 24px; padding: 12px 10px 14px; box-shadow: var(--shadow); }
+  .m-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .m-cal-wd { font-size: 11px; font-weight: 600; color: var(--muted); text-align: center; padding-bottom: 4px; }
+  .m-cc {
+    aspect-ratio: 1 / 1.12; min-width: 0; border: none; border-radius: 12px; cursor: pointer; padding: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    font-family: inherit; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .m-cc small { font-size: 9.5px; font-weight: 600; line-height: 1; white-space: nowrap; }
+  .m-cc.lo { background: var(--green-tint); } .m-cc.lo small { color: #1E7A37; }
+  .m-cc.mid { background: var(--orange-tint); } .m-cc.mid small { color: #A15C00; }
+  .m-cc.full { background: var(--red-tint); } .m-cc.full small { color: #C0281C; }
+  .m-cc.past { opacity: .45; }
+  .m-cc.today { box-shadow: inset 0 0 0 2px var(--accent); }
+  .m-cc.sel { background: var(--ink); color: #fff; box-shadow: none; opacity: 1; }
+  .m-cc.sel small { color: rgba(255, 255, 255, 0.78); }
+  .m-legend { display: flex; justify-content: center; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+  .m-legend span { display: flex; align-items: center; gap: 5px; }
+  .m-legend i { width: 11px; height: 11px; border-radius: 3px; }
+  .m-legend i.lo { background: var(--green-tint); box-shadow: inset 0 0 0 1px rgba(30, 122, 55, .25); }
+  .m-legend i.mid { background: var(--orange-tint); box-shadow: inset 0 0 0 1px rgba(161, 92, 0, .25); }
+  .m-legend i.full { background: var(--red-tint); box-shadow: inset 0 0 0 1px rgba(192, 40, 28, .25); }
+  .m-rt { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 60px; }
+  .m-rt + .m-rt { border-top: 1px solid var(--hairline-soft); }
+  .m-free { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .m-free small { font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 3px; }
+  .m-free.z { color: #C0281C; }
+  .m-free.z small { color: #C0281C; }
+}
+
+/* ═══ ฟอร์มการจองแบบเต็มจอ (มือถือ) — bookings.js openBookingForm (.modal--full) ═══
+   ปรับเฉพาะหน้าตา · ช่องกรอก/สูตรคำนวณ/ปุ่มบันทึกเป็นของเดิมทั้งหมด */
+.nights-badge, .dep-chips { display: none; }
+@media (max-width: 760px) {
+  .modal-bg:has(.modal--full) { padding: 0; align-items: stretch; }
+  .modal.modal--full {
+    --modal-pad-x: 16px; --modal-pad-b: 16px;
+    max-width: none; width: 100%; height: 100dvh; max-height: 100dvh; border-radius: 0;
+    background: var(--bg); padding: 0 16px 16px;
+    padding-top: env(safe-area-inset-top);
+    animation: sheetUp .25s var(--ease);
+  }
+  /* หัวฟอร์มติดบนสุดตอนเลื่อน: ปุ่มปิด + ชื่อฟอร์ม */
+  .modal--full .modal-close {
+    position: sticky; top: 0; float: none; margin: 0; z-index: 6;
+    width: 42px; height: 42px; border-radius: 14px; background: var(--card); box-shadow: var(--shadow);
+    transform: translateY(12px);
+  }
+  .modal--full > div:not(.modal-close) > h2:first-child {
+    position: sticky; top: 0; z-index: 5; margin: -42px -16px 12px; padding: 16px 16px 14px 70px;
+    background: var(--bg); font-size: 20px; line-height: 42px; letter-spacing: -0.02em;
+  }
+
+  /* กลุ่มในฟอร์ม = การ์ดขาวโค้ง ไม่มีแถบสีข้าง (ไอคอนสีบอกหมวดแทน) */
+  .modal--full .form-group {
+    border: none; border-radius: 22px; background: var(--card); box-shadow: var(--shadow);
+    margin-bottom: 12px; overflow: visible;
+  }
+  .modal--full .form-group-head {
+    background: none; border-bottom: none; padding: 15px 16px 4px; font-size: 15.5px; color: var(--ink);
+  }
+  .modal--full .form-group-head .fg-ico {
+    width: 30px; height: 30px; border-radius: 10px; background: var(--fg-tint); color: var(--fg-ink, var(--fg-color));
+  }
+  .modal--full .form-group-head .fg-ico svg { width: 17px; height: 17px; }
+  .modal--full .form-group-body { padding: 10px 16px 16px; }
+  .modal--full input, .modal--full select, .modal--full textarea {
+    background-color: var(--bg); border-color: transparent; border-radius: 14px; min-height: 48px; font-size: 16px;
+  }
+  .modal--full input:focus, .modal--full select:focus, .modal--full textarea:focus { background-color: var(--card); border-color: var(--accent); }
+  .modal--full label { font-size: 12.5px; font-weight: 600; }
+  .modal--full .lineitem { background: var(--bg); border: none; border-radius: 18px; }
+  .modal--full .lineitem input, .modal--full .lineitem select { background-color: var(--card); }
+
+  /* วันเข้า — [N คืน] — วันออก */
+  .modal--full .row.date-pair .nights-badge { grid-column: 1 / -1; order: 3; justify-self: start; }
+  .modal--full .nights-badge {
+    display: inline-block; margin: 2px 0 4px; padding: 5px 11px; border-radius: 10px;
+    background: var(--accent-tint); color: var(--accent-dark); font-size: 12.5px; font-weight: 700; white-space: nowrap;
+  }
+  .modal--full .nights-badge.empty { background: var(--fill); color: var(--muted); font-weight: 600; }
+  .modal--full input[type="date"], .modal--full input[type="time"] { padding-left: 12px; padding-right: 8px; }
+
+  /* สถานะมัดจำเป็นชิปแตะเลือก */
+  .modal--full .dep-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .modal--full .field:has(> .dep-chips) select { display: none; }
+  .modal--full .field:has(> .dep-chips) { grid-column: 1 / -1; }
+  .modal--full .dep-chips button {
+    height: 42px; padding: 0 15px; border-radius: 13px; border: none; cursor: pointer;
+    background: var(--bg); font-family: inherit; font-size: 14px; font-weight: 600; color: var(--ink-2);
+  }
+  .modal--full .dep-chips button.on { background: var(--accent-fill); color: #fff; }
+  .modal--full .dep-chips button[data-v="ยกเลิก"].on { background: #6E6E73; }
+
+  /* แถบยอดรวมติดล่าง: ตัวเลขใหญ่ + ปุ่มบันทึกใหญ่ */
+  .modal--full .sticky-summary {
+    background: var(--card); border-top: none; border-radius: 24px 24px 0 0;
+    box-shadow: var(--shadow-up); -webkit-backdrop-filter: none; backdrop-filter: none;
+    padding-top: 14px;
+  }
+  .modal--full .sticky-summary .ss-total { font-size: 12.5px; }
+  .modal--full .sticky-summary .ss-deposit { font-size: 21px; }
+  .modal--full .sticky-summary .btn { height: 50px; padding: 0 24px; border-radius: 16px; font-size: 16px; }
+}
+
+/* ═══ คำขอจองจากเว็บแบบแอป (มือถือ) — booking-requests.js drawMobile ═══ */
+.mreq { display: none; }
+@media (max-width: 760px) {
+  .req-full { display: none; }
+  .mreq { display: block; }
+  .m-req.done { opacity: .65; }
+  .m-req-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .m-tag { font-size: 12px; font-weight: 600; padding: 4px 9px; border-radius: 9px; background: var(--bg); color: var(--ink-2); }
+  .m-tag.blue { background: rgba(0, 122, 255, 0.1); color: #0A63C9; }
+  .m-req-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--hairline-soft);
+    font-size: 13px; font-weight: 600; color: var(--ink-2); font-variant-numeric: tabular-nums;
+  }
+  .m-hold { font-size: 12px; padding: 4px 9px; border-radius: 9px; background: var(--orange-tint); color: #A15C00; }
+  .m-hold.over { background: var(--red-tint); color: #C0281C; }
+}
+
+/* ═══ ข้อมูลลงทะเบียนเช็คอิน (มือถือ) — registrations.js .reg-page ═══
+   โครงหน้าเดิมครบ (สถิติ · แท็บ · กลุ่มตามสถานะ · ผูกใบจอง) ปรับแค่หน้าตาให้เป็นแอป */
+.reg-search-ico { display: none; }
+@media (max-width: 760px) {
+  .reg-page .page-title h1 { font-size: 24px; }
+  .reg-page .reg-src { display: none; }
+  .reg-page .stat { border-radius: 20px; }
+  .reg-page .reg-tools {
+    display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 15px; border: none;
+    background: var(--card); border-radius: 16px; box-shadow: var(--shadow); color: var(--muted);
+  }
+  .reg-page .reg-search-ico { display: grid; place-items: center; }
+  .reg-page .reg-search-ico svg { width: 19px; height: 19px; }
+  .reg-page .reg-tools input { border: none; padding: 0; height: 100%; background: none; font-size: 16px; box-shadow: none !important; }
+  /* แท็บสถานะ → แถบชิปเลื่อนแนวนอน (6 แท็บ ไม่ต้องตกบรรทัด) */
+  .reg-page .reg-seg { margin: 0 -14px 6px; }
+  .reg-page .reg-seg .seg {
+    display: flex; flex-wrap: nowrap !important; gap: 8px; overflow-x: auto; scrollbar-width: none;
+    background: none; padding: 0 14px 2px; border-radius: 0;
+  }
+  .reg-page .reg-seg .seg::-webkit-scrollbar { display: none; }
+  .reg-page .reg-seg .seg-btn {
+    flex: none; height: 44px; padding: 0 15px; border-radius: 13px; background: var(--card);
+    font-size: 13.5px; font-weight: 600; color: var(--ink-2);
+  }
+  .reg-page .reg-seg .seg-btn.active { background: var(--ink); color: #fff; box-shadow: none; }
+  .reg-page .reg-ghead { font-size: 15px; color: var(--ink); margin: 22px 2px 10px; }
+  .reg-page .reg-ghead .ic { color: var(--accent); }
+  .reg-page .card.day-guest { border-radius: 22px; padding: 15px 16px !important; }
+  .reg-page .card.reg-dupe { box-shadow: var(--shadow), inset 0 0 0 1.5px rgba(201, 52, 0, 0.35); }
+  /* ปุ่มเช็คอิน/เช็คเอาท์บนการ์ด: เต็มความกว้าง กดง่ายหน้าเคาน์เตอร์ */
+  .reg-page .reg-acts { display: grid !important; grid-template-columns: 2fr 1fr; gap: 8px; margin-top: 12px !important; }
+  .reg-page .reg-acts .btn { height: 44px; border-radius: 13px; font-size: 14.5px; }
+  .reg-page .reg-acts .btn:only-child { grid-column: 1 / -1; }
+}
+
+/* ═══ ลูกค้า & สัตว์เลี้ยงแบบแอป (มือถือ) — customers.js buildMobileCustomers ═══ */
+.mcust { display: none; }
+@media (max-width: 760px) {
+  .cust-full { display: none; }
+  .mcust { display: block; }
+  .m-addbtn {
+    display: inline-flex; align-items: center; gap: 4px; height: 44px; padding: 0 15px 0 11px; border: none; cursor: pointer;
+    border-radius: 13px; background: var(--accent-fill); color: #fff; font-family: inherit; font-size: 14px; font-weight: 600;
+  }
+  .m-addbtn svg { width: 18px; height: 18px; }
+  .m-ava {
+    width: 44px; height: 44px; border-radius: 15px; flex-shrink: 0; display: grid; place-items: center;
+    background: var(--accent-tint); color: var(--accent-dark); font-size: 18px; font-weight: 700;
+  }
+  .m-pettag { display: inline-flex; align-items: center; gap: 5px; }
+  .m-pettag svg { width: 15px; height: 15px; color: #0A63C9; }
+  .m-pettag.cat svg { color: #8A38B8; }
+}
+
+/* ═══ รายงานรายเดือน (มือถือ) — reports.js .rep-page ═══ */
+.rep-hero { display: none; }
+@media (max-width: 760px) {
+  .rep-page .page-title { flex-direction: column; align-items: stretch; gap: 10px; }
+  .rep-page .page-title h1 { font-size: 24px; }
+  .rep-page .page-title select {
+    max-width: none !important; height: 48px; border: none; border-radius: 15px;
+    background-color: var(--card); box-shadow: var(--shadow); font-size: 16px; font-weight: 600;
+  }
+  .rep-hero {
+    display: block; margin-bottom: 14px; border-radius: 26px; padding: 18px 20px;
+    background: var(--accent-fill); color: #fff; box-shadow: 0 12px 26px -10px var(--accent-fill);
+  }
+  .rep-hero-top { font-size: 13.5px; color: #fff; }
+  .rep-hero-n { font-size: 34px; font-weight: 700; letter-spacing: -0.03em; margin: 2px 0 12px; font-variant-numeric: tabular-nums; }
+  .rep-hero-split { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rep-hero-split div + div { border-left: 1px solid rgba(255, 255, 255, 0.25); padding-left: 12px; }
+  .rep-hero-split span { display: block; font-size: 12.5px; color: #fff; }
+  .rep-hero-split b { font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rep-page .stat { border-radius: 20px; }
+  .rep-page .card { border-radius: 22px; }
+  .rep-page .card h2 { font-size: 16px; }
+  .rep-page table { font-size: 13.5px; }
+  .rep-page th, .rep-page td { padding: 10px 6px; }
+}
+
+/* ═══ งานวันนี้ของพี่เลี้ยงแบบแอป (มือถือ) — staff-today.js drawMobile ═══ */
+.mtoday { display: none; }
+@media (max-width: 760px) {
+  .today-full { display: none; }
+  .mtoday { display: block; }
+  .mtoday.m-head { display: flex; }
+  .m-seg--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 14px 0 0; }
+  .m-seg--3 button { font-size: 13.5px; padding: 0 4px; white-space: nowrap; }
+  .m-segn { font-size: 12px; font-weight: 600; opacity: .6; margin-left: 5px; font-variant-numeric: tabular-nums; }
+
+  .m-care { background: var(--card); border-radius: 22px; box-shadow: var(--shadow); padding: 14px 14px 12px; margin-bottom: 10px; }
+  .m-care-top { display: flex; align-items: center; gap: 12px; }
+  .m-care-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .m-call {
+    width: 44px; height: 44px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center;
+    background: var(--green-tint); color: #1E7A37;
+  }
+  .m-call svg { width: 19px; height: 19px; }
+  .m-care-pet { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--hairline-soft); }
+  .m-care-pn { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .m-care-pn b { font-size: 15px; font-weight: 600; }
+  .m-care-pn small { font-size: 12.5px; color: var(--muted); }
+  .m-care .care-note { margin-top: 7px; font-size: 13px; border-radius: 11px; padding: 8px 11px; }
+  .m-care-foot { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+  .m-qrow { cursor: default; }
+  .m-qrow-t { width: 52px; flex-shrink: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .m-qrow .m-tx b { display: flex; align-items: center; gap: 5px; }
+  .m-qrow .m-tx b svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+  .m-qrow .pill { flex-shrink: 0; }
 }

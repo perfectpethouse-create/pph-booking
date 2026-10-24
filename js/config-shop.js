@@ -551,7 +551,7 @@ export const STAFF_PERM_ITEMS = [
   { route: 'today', label: 'งานวันนี้', hint: 'รายการรับ-ส่งของวันนี้' },
   { route: 'calendar', label: 'ปฏิทินห้องว่าง', hint: 'ดูห้องว่างเพื่อรับจองหน้าร้าน' },
   { route: 'customers', label: 'ลูกค้า & สัตว์เลี้ยง', hint: 'แก้โน้ตสุขภาพ/วัคซีนได้' },
-  { route: 'registrations', label: 'ลงทะเบียนเช็คอิน', hint: 'รับใบลงทะเบียน พิมพ์ใบยืนยัน' },
+  { route: 'registrations', label: 'ข้อมูลลงทะเบียนเช็คอิน', hint: 'รับใบลงทะเบียน พิมพ์ใบยืนยัน' },
   { route: 'bookings', label: 'การจองทั้งหมด', hint: 'สร้างการจองและแจ้งราคาลูกค้าได้ · แก้/ลบใบเดิมไม่ได้' },
   { route: 'appointments', label: 'Grooming & โซนออกกำลังกาย', hint: 'จองคิวรายรอบหน้าเคาน์เตอร์' },
   { route: 'requests', label: 'คำขอจองจากเว็บ', hint: 'รับคำขอที่ลูกค้าส่งมาจากหน้าเว็บ' },

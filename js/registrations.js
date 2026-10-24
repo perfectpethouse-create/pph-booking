@@ -189,7 +189,7 @@ function stayActions(f) {
   } else if (stay === 'cancelled') {
     btns = [mk('คืนสถานะ', 'ghost', () => setStay(f, 'waiting'))];
   }
-  return btns.length ? el('div', { style: 'margin-top:10px;display:flex;gap:8px;flex-wrap:wrap' }, btns) : null;
+  return btns.length ? el('div', { class: 'reg-acts', style: 'margin-top:10px;display:flex;gap:8px;flex-wrap:wrap' }, btns) : null;
 }
 
 // ── จับคู่ใบเช็คอิน ↔ ใบจอง (bookings) ด้วย เบอร์โทร + วันเข้าพัก ──
@@ -252,18 +252,23 @@ export function renderRegistrations(container) {
   _unsub.forEach(u => u()); _unsub = [];
   let filter = 'all';
 
-  const searchInput = el('input', { placeholder: 'ค้นหารหัสจอง / ชื่อ / เบอร์', style: 'max-width:260px' });
+  const searchInput = el('input', { type: 'search', placeholder: 'ค้นหารหัสจอง / ชื่อ / เบอร์', style: 'max-width:260px' });
   const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:14px' });
-  const segWrap = el('div', { style: 'margin-bottom:14px' });
+  const segWrap = el('div', { class: 'reg-seg', style: 'margin-bottom:14px' });
   const listWrap = el('div', {});
-  container.appendChild(el('div', { class: 'page-title' }, [
-    el('h1', { text: 'ลงทะเบียนเช็คอิน' }),
-    el('span', { class: 'muted', style: 'font-size:13px', text: 'จากฟอร์ม perfectbkk.com/checkin.html' }),
+  // .reg-page = ตัวจับของ CSS มือถือ (แท็บเลื่อนได้ · การ์ดแบบแอป · ปุ่มใหญ่) — คอมหน้าตาเดิม
+  const page = el('div', { class: 'reg-page' });
+  container.appendChild(page);
+  page.appendChild(el('div', { class: 'page-title' }, [
+    el('h1', { text: 'ข้อมูลลงทะเบียนเช็คอิน' }),
+    el('span', { class: 'muted reg-src', style: 'font-size:13px', text: 'จากฟอร์ม perfectbkk.com/checkin.html' }),
   ]));
-  container.appendChild(statGrid);
-  container.appendChild(el('div', { class: 'toolbar', style: 'margin-bottom:10px' }, [searchInput]));
-  container.appendChild(segWrap);
-  container.appendChild(listWrap);
+  page.appendChild(statGrid);
+  page.appendChild(el('div', { class: 'toolbar reg-tools', style: 'margin-bottom:10px' }, [
+    el('span', { class: 'reg-search-ico', html: icons.search }), searchInput,
+  ]));
+  page.appendChild(segWrap);
+  page.appendChild(listWrap);
 
   // นับใบซ้ำ: เบอร์เดียวกัน + วันเข้าพักเดียวกัน (เฉพาะที่กรอกเบอร์)
   const dupeKeyOf = (f) => (regNorm(f.phone) && f.checkIn) ? regNorm(f.phone) + '|' + f.checkIn : null;

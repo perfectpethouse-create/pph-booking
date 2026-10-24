@@ -21,10 +21,14 @@ export function renderReports(container) {
   const summary = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
   const detail = el('div', {});
 
-  container.appendChild(el('div', { class: 'page-title' }, [
+  // มือถือ: การ์ดสรุปใหญ่ด้านบน (.rep-hero แสดงเฉพาะจอแคบ) · ตาราง/ตัวเลขชุดเดิมทั้งหมดอยู่ใต้การ์ด
+  const hero = el('div', { class: 'rep-hero' });
+  const page = el('div', { class: 'rep-page' });
+  container.appendChild(page);
+  page.appendChild(el('div', { class: 'page-title' }, [
     el('h1', { text: 'รายงานรายเดือน' }), monthSel,
   ]));
-  container.append(summary, detail);
+  page.append(hero, summary, detail);
 
   let _bookings = [];
   let _appts = []; // คิว Grooming/ออกกำลังกาย (รายได้บริการ)
@@ -99,6 +103,26 @@ export function renderReports(container) {
     const totalCapacity = roomTypes.reduce((sum, rt) => sum + capacityOf(capacity, rt), 0);
     const capacityNights = totalCapacity * daysInMonth; // ห้อง-คืนที่ขายได้ทั้งเดือน
     const occupancy = capacityNights > 0 ? (totalRoomNights / capacityNights) * 100 : 0;
+
+    // การ์ดสรุปบนมือถือ — ใช้ตัวเลขชุดเดียวกับกล่องสถิติด้านล่าง ไม่มีการคำนวณใหม่
+    const recvPct = revenue > 0 ? Math.min(100, Math.round(received / revenue * 100)) : 0;
+    hero.innerHTML = '';
+    hero.append(
+      el('div', { class: 'rep-hero-top' }, [el('span', { text: `ยอดขายทั้งร้าน · ${thMonth(cur)}` })]),
+      el('div', { class: 'rep-hero-n', text: formatBaht(revenue + serviceRevenue) }),
+      el('div', { class: 'rep-hero-split' }, [
+        el('div', {}, [el('span', { text: 'ห้องพัก' }), el('b', { text: formatBaht(revenue) })]),
+        el('div', {}, [el('span', { text: 'บริการ' }), el('b', { text: formatBaht(serviceRevenue) })]),
+        el('div', {}, [el('span', { text: 'เข้าพัก' }), el('b', { text: `${occupancy.toFixed(1)}%` })]),
+      ]),
+      el('div', { class: 'm-occ' }, [
+        el('div', { class: 'm-bar' }, [el('i', { style: `width:${recvPct}%` })]),
+        el('div', { class: 'm-occ-lb' }, [
+          el('span', { text: `รับแล้ว ${formatBaht(received)}` }),
+          el('span', { text: `ค้าง ${formatBaht(balance)}` }),
+        ]),
+      ]),
+    );
 
     summary.innerHTML = '';
     [

@@ -30,13 +30,19 @@ export function renderCustomers(container) {
   addBtn.onclick = () => openCustomerForm(null);
   const listWrap = el('div', {});
 
-  container.appendChild(el('div', { class: 'page-title' }, [
-    el('h1', { text: 'ลูกค้า & สัตว์เลี้ยง' }),
-    el('div', { class: 'row', style: 'gap:8px' }, [searchInput, addBtn]),
+  // มือถือ = การ์ดลูกค้าแบบแอป (.mcust) · คอม = ตารางเดิม (.cust-full)
+  const mobile = buildMobileCustomers();
+  container.appendChild(mobile.node);
+  container.appendChild(el('div', { class: 'cust-full' }, [
+    el('div', { class: 'page-title' }, [
+      el('h1', { text: 'ลูกค้า & สัตว์เลี้ยง' }),
+      el('div', { class: 'row', style: 'gap:8px' }, [searchInput, addBtn]),
+    ]),
+    el('div', { class: 'card' }, [listWrap]),
   ]));
-  container.appendChild(el('div', { class: 'card' }, [listWrap]));
 
   const draw = () => {
+    mobile.draw();
     const q = searchInput.value.trim().toLowerCase();
     const rows = _customers.filter(c => `${c.name || ''} ${c.phone || ''}`.toLowerCase().includes(q));
     listWrap.innerHTML = '';
@@ -71,6 +77,78 @@ export function renderCustomers(container) {
   _unsub.push(listen('customers', arr => { _customers = arr; draw(); }));
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); }));
 }
+
+// ═══════════ มือถือ: ค้นหา + ชิป + การ์ดลูกค้า ═══════════
+// ชิป "วัคซีน" ช่วยตามลูกค้าก่อนวันเข้าพัก · "ลูกค้าประจำ" ใช้เกณฑ์เดียวกับป้ายบนคอม
+const MOBILE_PAGE = 40;
+function buildMobileCustomers() {
+  let filter = 'all', query = '', limit = MOBILE_PAGE;
+  const node = el('div', { class: 'mcust' });
+  const search = el('input', { type: 'search', placeholder: 'ค้นหาชื่อ หรือเบอร์โทร', 'aria-label': 'ค้นหาลูกค้า' });
+  search.oninput = () => { query = search.value.trim().toLowerCase(); limit = MOBILE_PAGE; draw(); };
+  const chips = el('div', { class: 'm-chips' });
+  const listEl = el('div', {});
+  const addBtn = el('button', { class: 'm-addbtn', html: icons.plus + '<span>เพิ่ม</span>' });
+  addBtn.onclick = () => openCustomerForm(null);
+  node.append(
+    el('div', { class: 'm-ptitle' }, [el('h1', { text: 'ลูกค้า & สัตว์เลี้ยง' }), addBtn]),
+    el('label', { class: 'm-search' }, [el('span', { html: icons.search }), search]),
+    chips, listEl,
+  );
+
+  const vacc = (c) => {
+    const st = (c.pets || []).map(p => vaccineStatus(p));
+    return st.includes('expired') ? 'expired' : st.includes('soon') ? 'soon' : null;
+  };
+  const FILTERS = [
+    ['all', 'ทั้งหมด', () => true],
+    ['loyal', 'ลูกค้าประจำ', (c) => isLoyal(c, _bookings)],
+    ['vacc', 'วัคซีนต้องตาม', (c) => !!vacc(c)],
+  ];
+
+  function draw() {
+    const base = _customers.filter(c => !query || `${c.name || ''} ${c.phone || ''}`.toLowerCase().includes(query));
+    chips.innerHTML = '';
+    FILTERS.forEach(([id, label, test]) => {
+      const b = el('button', { class: 'm-chipf' + (id === filter ? ' on' : '') }, [label, el('span', { text: String(base.filter(test).length) })]);
+      b.onclick = () => { filter = id; limit = MOBILE_PAGE; draw(); };
+      chips.appendChild(b);
+    });
+    const rows = base.filter(FILTERS.find(f => f[0] === filter)[2])
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'th'));
+    listEl.innerHTML = '';
+    if (!rows.length) { listEl.appendChild(el('div', { class: 'm-empty', text: query ? 'ไม่พบลูกค้าที่ค้นหา' : 'ยังไม่มีลูกค้าในกลุ่มนี้' })); return; }
+    rows.slice(0, limit).forEach(c => {
+      const stays = stayCountOf(c, _bookings);
+      const v = vacc(c);
+      const card = el('div', { class: 'm-bk m-cust', role: 'button', tabindex: '0' }, [
+        el('div', { class: 'm-bk-top' }, [
+          el('span', { class: 'm-ava', text: (c.name || '?').trim().charAt(0) }),
+          el('div', { class: 'm-tx' }, [el('b', { text: c.name || '-' }), el('small', { text: c.phone || 'ไม่มีเบอร์' })]),
+          stays >= LOYAL_CUSTOMER_MIN_STAYS ? el('span', { class: 'pill gold', text: 'ลูกค้าประจำ' }) : null,
+        ]),
+        (c.pets || []).length ? el('div', { class: 'm-req-tags' }, c.pets.map(p => el('span', {
+          class: 'm-tag m-pettag' + (p.species === 'cat' ? ' cat' : ''),
+          html: (p.species === 'cat' ? icons.cat : icons.dog) + `<span>${escapeText(p.name || petLabel(p.species))}</span>`,
+        }))) : null,
+        el('div', { class: 'm-req-foot' }, [
+          el('span', { text: `เคยพัก ${stays} ครั้ง` }),
+          v ? el('span', { class: 'm-hold' + (v === 'expired' ? ' over' : ''), text: v === 'expired' ? 'วัคซีนหมดอายุ' : 'วัคซีนใกล้หมด' }) : null,
+        ]),
+      ]);
+      card.onclick = () => openCustomerForm(c);
+      card.onkeydown = (e) => { if (e.key === 'Enter') openCustomerForm(c); };
+      listEl.appendChild(card);
+    });
+    if (rows.length > limit) {
+      const more = el('button', { class: 'm-more', text: `แสดงเพิ่ม (เหลืออีก ${rows.length - limit} ราย)` });
+      more.onclick = () => { limit += MOBILE_PAGE; draw(); };
+      listEl.appendChild(more);
+    }
+  }
+  return { node, draw };
+}
+const escapeText = (t) => String(t).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id || ''; }
 

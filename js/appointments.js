@@ -26,6 +26,7 @@ import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
 } from './summary-card.js';
 import { icons } from './icons.js';
+import { DOW, dateOf, longDate, MONTHS } from './mobile-kit.js';
 
 let _appts = [];
 let _unsub = [];
@@ -161,13 +162,18 @@ export function renderAppointments(container) {
 
   const board = el('div', {});
 
-  container.appendChild(el('div', { class: 'page-title' }, [
-    el('h1', { text: 'Grooming & โซนออกกำลังกาย' }),
-    addBtn,
-  ]));
-  container.appendChild(el('div', { class: 'card' }, [
-    el('div', { class: 'toolbar' }, [seg, prevBtn, dateInput, nextBtn, todayBtn, typeFilter]),
-    board,
+  // มือถือ = ไทม์ไลน์แบบแอป (.mappt) · คอม = บอร์ดเต็ม (.appt-full) — สลับด้วย CSS
+  const mobile = buildMobileQueue();
+  container.appendChild(mobile.node);
+  container.appendChild(el('div', { class: 'appt-full' }, [
+    el('div', { class: 'page-title' }, [
+      el('h1', { text: 'Grooming & โซนออกกำลังกาย' }),
+      addBtn,
+    ]),
+    el('div', { class: 'card' }, [
+      el('div', { class: 'toolbar' }, [seg, prevBtn, dateInput, nextBtn, todayBtn, typeFilter]),
+      board,
+    ]),
   ]));
 
   const draw = () => {
@@ -183,7 +189,117 @@ export function renderAppointments(container) {
   dateInput.onchange = draw;
   typeFilter.onchange = draw;
 
-  _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
+  _unsub.push(listen('appointments', arr => { _appts = arr; draw(); mobile.draw(); }));
+}
+
+// ═══════════ มือถือ: สลับโซน + แถบ 7 วัน + ไทม์ไลน์รอบเวลา ═══════════
+// รอบว่างแสดงเป็นกรอบเส้นประพร้อมปุ่ม "เพิ่มคิว" — แตะแล้วเปิดฟอร์มเดิมพร้อมเวลานั้น
+function buildMobileQueue() {
+  let type = APPOINTMENT_TYPES[0].id;
+  let date = todayISO();
+  let weekStart = todayISO();
+  const node = el('div', { class: 'mappt' });
+
+  function draw() {
+    const s = getSettings();
+    const cap = capacityFor(type, s);
+    const today = todayISO();
+    node.innerHTML = '';
+
+    node.appendChild(el('div', { class: 'm-ptitle' }, [el('h1', { text: 'คิวบริการ' })]));
+
+    const seg = el('div', { class: 'm-seg', role: 'tablist' }, APPOINTMENT_TYPES.map(t => {
+      const b = el('button', { class: t.id === type ? 'on' : '', role: 'tab', 'aria-selected': String(t.id === type),
+        text: t.id === 'exercise' ? 'ออกกำลังกาย' : 'Grooming' });
+      b.onclick = () => { type = t.id; draw(); };
+      return b;
+    }));
+    node.appendChild(seg);
+
+    // หัวเดือน + ลูกศรเลื่อนทีละสัปดาห์ (ตอบลูกค้าที่ถามคิวล่วงหน้าหลายวัน)
+    const ws = dateOf(weekStart);
+    const prev = el('button', { class: 'm-arr', html: icons.chevronLeft, 'aria-label': 'สัปดาห์ก่อน' });
+    const next = el('button', { class: 'm-arr', html: icons.chevronRight, 'aria-label': 'สัปดาห์ถัดไป' });
+    prev.onclick = () => { weekStart = addDaysISO(weekStart, -7); date = weekStart; draw(); };
+    next.onclick = () => { weekStart = addDaysISO(weekStart, 7); date = weekStart; draw(); };
+    node.appendChild(el('div', { class: 'm-mhead' }, [
+      el('b', { text: `${MONTHS[ws.getMonth()]} ${ws.getFullYear() + 543}` }),
+      el('span', { class: 'm-arrs' }, [prev, next]),
+    ]));
+
+    const week = el('div', { class: 'm-week', role: 'tablist' });
+    for (let i = 0; i < 7; i++) {
+      const iso = addDaysISO(weekStart, i);
+      const d = dateOf(iso);
+      const n = _appts.filter(a => a.type === type && a.date === iso && a.status !== 'ยกเลิก').length;
+      const btn = el('button', { class: 'm-day' + (iso === date ? ' on' : '') + (iso === today ? ' today' : ''), role: 'tab', 'aria-selected': String(iso === date) }, [
+        el('span', { text: DOW[d.getDay()] }), el('b', { text: String(d.getDate()) }),
+        el('span', { class: 'm-dots' }, Array.from({ length: Math.min(n, 3) }, () => el('i', { class: 'q' }))),
+      ]);
+      btn.onclick = () => { date = iso; draw(); };
+      week.appendChild(btn);
+    }
+    node.appendChild(week);
+
+    const dayList = _appts.filter(a => a.type === type && a.date === date && a.status !== 'ยกเลิก');
+    node.appendChild(el('div', { class: 'm-sec' }, [
+      el('h3', {}, [(date === today ? 'วันนี้ · ' : '') + longDate(date), el('span', { class: 'm-n', text: String(dayList.length) })]),
+      el('span', { class: 'm-capnote', text: `รับได้รอบละ ${cap} ตัว` }),
+    ]));
+
+    slotsFor(type).forEach(time => {
+      const inSlot = dayList.filter(a => a.time === time);
+      const n = inSlot.reduce((sum, a) => sum + petCountOf(a), 0);
+      const bathOnly = type === 'grooming' && !slotsFor('grooming', true).includes(time);
+      const addBtn = el('button', { class: 'm-addq', html: icons.plus + '<span>เพิ่มคิว</span>' });
+      addBtn.onclick = () => openAppointmentForm(null, date, { type, time });
+
+      let box;
+      if (!inSlot.length) {
+        box = el('div', { class: 'm-slot-free' }, [
+          el('span', { text: `ว่าง ${cap} ที่${bathOnly ? ' · อาบน้ำเท่านั้น' : ''}` }), addBtn,
+        ]);
+      } else {
+        const full = n >= cap;
+        box = el('div', { class: 'm-slot-box' + (full ? ' full' : '') }, [
+          el('div', { class: 'm-capbar' }, [
+            el('span', { text: full ? `เต็ม ${n}/${cap}` : `จองแล้ว ${n}/${cap}` }),
+            el('i', {}, Array.from({ length: cap }, (_, k) => el('em', { class: k < n ? 'f' : '' }))),
+          ]),
+          ...inSlot.map(a => {
+            const pets = petsOf(a);
+            const first = pets[0]?.petName || a.customerName || '-';
+            const detail = a.type === 'exercise'
+              ? (a.zone ? exerciseZoneLabelSafe(a) : 'ออกกำลังกาย')
+              : groomServiceLabel(groomServiceOf(a));
+            const row = el('div', { class: 'm-appt', role: 'button', tabindex: '0' }, [
+              el('span', { class: 'm-pet' + (a.petType === 'cat' ? ' cat' : ''), html: a.petType === 'cat' ? icons.cat : icons.dog }),
+              el('div', { class: 'm-tx' }, [
+                el('b', { text: pets.length > 1 ? `${first} ×${pets.length}` : first }),
+                el('small', { text: `${detail} · ${a.customerName || ''}` }),
+              ]),
+              a.status === 'เสร็จแล้ว' ? el('span', { class: 'pill green', text: 'เสร็จ' }) : null,
+            ]);
+            row.onclick = () => openAppointmentForm(a);
+            return row;
+          }),
+          full ? null : addBtn,
+        ]);
+      }
+      node.appendChild(el('div', { class: 'm-slot' }, [
+        el('div', { class: 'm-slot-t', text: time }),
+        box,
+      ]));
+    });
+  }
+
+  return { node, draw };
+}
+
+// ชื่อโซนออกกำลังกายของใบนั้น (สนาม/สระ) — ใบเก่าที่ไม่มี zone แสดงระดับแทน
+function exerciseZoneLabelSafe(a) {
+  const z = EXERCISE_ZONES.find(x => x.id === a.zone);
+  return z ? z.label : `ระดับ ${a.level || '-'}`;
 }
 
 const THAI_DAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
@@ -340,6 +456,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
   const unsubAppts = listen('appointments', arr => { _appts = arr; notifyCapacity(); });
 
   const m = openModal(form, { onClose: () => unsubAppts() });
+  m.el.classList.add('modal--full'); // มือถือเปิดเต็มจอแบบฟอร์มจอง (ดู styles.css)
   build();
 
   function rerender() { form.innerHTML = ''; build(); }

@@ -16,6 +16,7 @@ import { REQUEST_TYPES, classifyRequest, petIdFromWeb, DEFAULT_DEPOSIT_METHOD, F
 import { openBookingForm } from './bookings.js';
 import { openAppointmentForm, slotsFor } from './appointments.js';
 import { icons } from './icons.js';
+import { shortDate, rangeOf } from './mobile-kit.js';
 
 // คำขอจากเว็บที่เป็น "งานรายรอบ" ไม่ใช่การพักค้างคืน → เปิดเป็นนัดหมายแทนใบจองห้อง
 // (อาบน้ำ/ตัดขน ใช้ฟอร์ม Grooming เหมือนกัน ต่างแค่ติ๊ก "ตัดขนด้วย" หรือไม่)
@@ -70,13 +71,18 @@ export function renderBookingRequests(container) {
     el('option', { value: 'done', text: 'จัดการแล้ว' }),
   ]);
 
-  container.appendChild(el('div', { class: 'page-title' }, [
-    el('h1', { text: 'คำขอจองจากเว็บ' }),
-    filterSel,
+  // มือถือ = ชิปกรอง + การ์ดแบบแอป (.mreq) · คอม = แบบเดิม (.req-full) — ข้อมูลและตัวกรองชุดเดียวกัน
+  const mobileWrap = el('div', { class: 'mreq' });
+  container.appendChild(mobileWrap);
+  container.appendChild(el('div', { class: 'req-full' }, [
+    el('div', { class: 'page-title' }, [
+      el('h1', { text: 'คำขอจองจากเว็บ' }),
+      filterSel,
+    ]),
+    el('p', { class: 'muted', style: 'font-size:13px;margin-top:-8px', text:
+      'ลูกค้ากรอกฟอร์มจองที่ perfectbkk.com → คำขอเด้งมาที่นี่ → ตรวจแล้วกด "สร้างการจอง" เพื่อเติมห้อง/ราคา/มัดจำ' }),
+    listWrap,
   ]));
-  container.appendChild(el('p', { class: 'muted', style: 'font-size:13px;margin-top:-8px', text:
-    'ลูกค้ากรอกฟอร์มจองที่ perfectbkk.com → คำขอเด้งมาที่นี่ → ตรวจแล้วกด "สร้างการจอง" เพื่อเติมห้อง/ราคา/มัดจำ' }));
-  container.appendChild(listWrap);
 
   const draw = () => {
     const f = filterSel.value;
@@ -87,6 +93,7 @@ export function renderBookingRequests(container) {
       // แล้วหน้า "คำขอจอง" ล่มทั้งหน้า เพราะคำขอผิดรูปแบบแค่รายการเดียว
       .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
 
+    drawMobile(mobileWrap, rows, f, (v) => { filterSel.value = v; draw(); });
     listWrap.innerHTML = '';
     if (!rows.length) {
       listWrap.appendChild(el('div', { class: 'card' }, [
@@ -125,6 +132,59 @@ export function renderBookingRequests(container) {
 
   filterSel.onchange = draw;
   _unsub.push(listen('bookingRequests', arr => { _reqs = arr; draw(); }, { orderBy: null }));
+}
+
+// ── มือถือ: ชิปกรอง + การ์ดคำขอ ── (แตะการ์ด = เปิดรายละเอียดเดิมที่มีปุ่มสร้างการจอง)
+function drawMobile(wrap, rows, f, setFilter) {
+  const newN = _reqs.filter(r => (r.status || 'new') === 'new').length;
+  wrap.innerHTML = '';
+  wrap.appendChild(el('div', { class: 'm-ptitle' }, [el('h1', { text: 'คำขอจองจากเว็บ' })]));
+  wrap.appendChild(el('div', { class: 'm-chips' }, [['new', 'รอจัดการ', newN], ['done', 'จัดการแล้ว'], ['all', 'ทั้งหมด']].map(([v, label, n]) => {
+    const c = el('button', { class: 'm-chipf' + (v === f ? ' on' : '') }, [label, n != null ? el('span', { text: String(n) }) : null]);
+    c.onclick = () => setFilter(v);
+    return c;
+  })));
+  if (!rows.length) {
+    wrap.appendChild(el('div', { class: 'm-empty', text: f === 'new' ? 'ไม่มีคำขอค้างอยู่ — เคลียร์หมดแล้ว' : 'ยังไม่มีคำขอจองเข้ามา' }));
+    return;
+  }
+  rows.forEach(r => {
+    const t = typeOf(r);
+    const isNew = (r.status || 'new') === 'new';
+    const pet = petIdFromWeb(r.pet);
+    const o = onlineOf(r);
+    const left = o && o.kind !== 'groom' && isNew ? holdLeft(o) : null;
+    const when = [
+      r.checkin ? (r.checkout ? rangeOf({ checkIn: r.checkin, checkOut: r.checkout }) : shortDate(r.checkin)) : '',
+      r.time ? `${r.time} น.` : '',
+    ].filter(Boolean).join(' · ') || 'ไม่ระบุวัน';
+    const card = el('div', { class: 'm-bk m-req' + (isNew ? '' : ' done'), role: 'button', tabindex: '0' }, [
+      el('div', { class: 'm-bk-top' }, [
+        el('span', { class: 'm-pet' + (pet === 'cat' ? ' cat' : ''), html: PET_ICONS[pet] || icons.paw }),
+        el('div', { class: 'm-tx' }, [
+          el('b', { text: r.owner || '-' }),
+          el('small', { text: `${r.petname || (pet === 'cat' ? 'แมว' : 'สุนัข')} · ${r.phone || ''}` }),
+        ]),
+        el('span', { class: 'pill ' + (isNew ? 'red' : 'green'), text: isNew ? 'ใหม่' : 'จัดการแล้ว' }),
+      ]),
+      el('div', { class: 'm-req-tags' }, [
+        el('span', { class: 'm-tag', text: t.label }),
+        r.room ? el('span', { class: 'm-tag', text: r.room }) : null,
+        o ? el('span', { class: 'm-tag blue', text: `จองออนไลน์ ${o.code || ''}`.trim() }) : null,
+        o && o.kind !== 'groom' ? el('span', { class: 'm-tag', text: `มัดจำ ${formatBaht(o.totals?.deposit || 0)}` }) : null,
+      ]),
+      el('div', { class: 'm-req-foot' }, [
+        el('span', { text: when }),
+        // กันห้อง 2 ชม. — เวลาเหลือต้องเห็นชัด เพราะหมดแล้วห้องจะถูกปล่อยให้คนอื่น
+        o && o.kind !== 'groom' && isNew
+          ? el('span', { class: 'm-hold' + (left ? '' : ' over'), text: left ? `กันห้องเหลือ ${left}` : 'หมดเวลากันห้อง' })
+          : null,
+      ]),
+    ]);
+    card.onclick = () => openRequestDetail(r);
+    card.onkeydown = (e) => { if (e.key === 'Enter') openRequestDetail(r); };
+    wrap.appendChild(card);
+  });
 }
 
 // ── รายละเอียดคำขอ + ปุ่มสร้างการจอง ──

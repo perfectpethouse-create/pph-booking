@@ -8,6 +8,7 @@ import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween, each
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { icons } from './icons.js';
+import { MONTHS, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
 
@@ -29,12 +30,17 @@ export function renderCalendar(container) {
   const grid = el('div', {});
   const legend = el('div', { class: 'muted', style: 'font-size:12px;margin-top:8px' });
 
-  container.appendChild(el('div', { class: 'page-title' }, [
-    title, el('div', { class: 'row', style: 'gap:8px;align-items:center' }, [roomSel, petSel, prev, next]),
-  ]));
-  container.appendChild(el('div', { class: 'card' }, [grid, legend]));
-
+  // มือถือ = ปฏิทินกะทัดรัด + รายละเอียดวันที่เลือกใต้ปฏิทิน (.mcal) · คอม = แบบเดิม (.cal-full)
   let _bookings = [];
+  const mobile = buildMobileCalendar(() => _bookings);
+  container.appendChild(mobile.node);
+  container.appendChild(el('div', { class: 'cal-full' }, [
+    el('div', { class: 'page-title' }, [
+      title, el('div', { class: 'row', style: 'gap:8px;align-items:center' }, [roomSel, petSel, prev, next]),
+    ]),
+    el('div', { class: 'card' }, [grid, legend]),
+  ]));
+
   const refreshRoomOptions = () => {
     const s = getSettings();
     const cur = roomSel.value; // คงค่าที่เลือกไว้เมื่อ options ถูกสร้างใหม่
@@ -196,5 +202,134 @@ export function renderCalendar(container) {
     });
   }
 
-  _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); }));
+  _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); mobile.draw(); }));
+}
+
+// ═══════════ มือถือ: ปฏิทินห้องว่าง ═══════════
+// ตัวเลขในช่อง = "ห้องที่ยังว่าง" (คำถามหน้าเคาน์เตอร์คือ "ว่างไหม" ไม่ใช่ "จองไปกี่ห้อง")
+// แตะวัน → ใต้ปฏิทินแสดงห้องว่างแยกประเภท + รายชื่อแขกวันนั้น (ไม่ต้องเปิดหน้าต่างซ้อน)
+function buildMobileCalendar(getBookings) {
+  const node = el('div', { class: 'mcal' });
+  const now = new Date();
+  let y = now.getFullYear(), mth = now.getMonth();
+  let selected = todayISO();
+  let pet = '';
+
+  function occupancy() {
+    const occ = {};
+    getBookings().filter(b => b.depositStatus !== 'ยกเลิก' && b.checkIn && b.checkOut).forEach(b => {
+      b.lineItems.forEach(li => {
+        const key = `${li.roomType}|${li.petType || 'dog'}`;
+        eachDate(b.checkIn, b.checkOut, iso => {
+          occ[iso] = occ[iso] || {};
+          occ[iso][key] = (occ[iso][key] || 0) + (Number(li.rooms) || 0);
+        });
+      });
+    });
+    return occ;
+  }
+
+  function draw() {
+    const s = getSettings();
+    const cap = s?.roomCapacity || {};
+    const roomTypes = Object.keys(s?.roomPrices || {});
+    const occ = occupancy();
+    const today = todayISO();
+    const capOf = (rt) => capacityOf(cap, rt, pet || undefined);
+    const usedOf = (iso, rt) => Object.entries(occ[iso] || {}).reduce((sum, [k, n]) => {
+      const [r, p] = k.split('|');
+      return (r === rt && (!pet || p === pet)) ? sum + n : sum;
+    }, 0);
+    const freeOf = (iso) => roomTypes.reduce((sum, rt) => sum + (capOf(rt) - usedOf(iso, rt)), 0);
+    const totalCap = roomTypes.reduce((sum, rt) => sum + capOf(rt), 0);
+
+    node.innerHTML = '';
+    node.appendChild(el('div', { class: 'm-ptitle' }, [el('h1', { text: 'ปฏิทินห้องว่าง' })]));
+
+    // ชิปเลือกชนิดสัตว์ — ห้องสุนัข/แมวนับความจุแยกกัน
+    const chips = el('div', { class: 'm-chips' }, [['', 'ทุกห้อง'], ...PET_TYPES.map(p => [p.id, `ห้อง${p.label}`])].map(([id, label]) => {
+      const c = el('button', { class: 'm-chipf' + (id === pet ? ' on' : ''), text: label });
+      c.onclick = () => { pet = id; draw(); };
+      return c;
+    }));
+    node.appendChild(chips);
+
+    const prev = el('button', { class: 'm-arr', html: icons.chevronLeft, 'aria-label': 'เดือนก่อนหน้า' });
+    const next = el('button', { class: 'm-arr', html: icons.chevronRight, 'aria-label': 'เดือนถัดไป' });
+    prev.onclick = () => { mth--; if (mth < 0) { mth = 11; y--; } draw(); };
+    next.onclick = () => { mth++; if (mth > 11) { mth = 0; y++; } draw(); };
+    node.appendChild(el('div', { class: 'm-mhead' }, [
+      el('b', { text: `${MONTHS[mth]} ${y + 543}` }),
+      el('span', { class: 'm-arrs' }, [prev, next]),
+    ]));
+
+    const grid = el('div', { class: 'm-cal' }, ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map(d => el('div', { class: 'm-cal-wd', text: d })));
+    const pad = new Date(y, mth, 1).getDay();
+    for (let i = 0; i < pad; i++) grid.appendChild(el('div', {}));
+    const days = new Date(y, mth + 1, 0).getDate();
+    for (let d = 1; d <= days; d++) {
+      const iso = isoOf(y, mth, d);
+      const free = freeOf(iso);
+      // เกณฑ์สี: เต็ม = ไม่เหลือ · ใกล้เต็ม = เหลือไม่ถึง 1 ใน 4 ของความจุ
+      const level = !totalCap ? 'lo' : free <= 0 ? 'full' : free <= totalCap / 4 ? 'mid' : 'lo';
+      const cell = el('button', {
+        class: `m-cc ${level}` + (iso < today ? ' past' : '') + (iso === selected ? ' sel' : '') + (iso === today ? ' today' : ''),
+        'aria-label': `${d} ${MONTHS[mth]} ${free <= 0 ? 'เต็ม' : 'ว่าง ' + free + ' ห้อง'}`,
+      }, [el('span', { text: String(d) }), el('small', { text: free <= 0 ? (free < 0 ? `เกิน ${-free}` : 'เต็ม') : `ว่าง ${free}` })]);
+      cell.onclick = () => { selected = iso; draw(); };
+      grid.appendChild(cell);
+    }
+    node.appendChild(el('div', { class: 'm-calcard' }, [
+      grid,
+      el('div', { class: 'm-legend' }, [
+        el('span', {}, [el('i', { class: 'lo' }), 'ว่างมาก']),
+        el('span', {}, [el('i', { class: 'mid' }), 'ใกล้เต็ม']),
+        el('span', {}, [el('i', { class: 'full' }), 'เต็ม']),
+      ]),
+    ]));
+
+    // ── รายละเอียดวันที่เลือก ──
+    const free = freeOf(selected);
+    node.appendChild(el('div', { class: 'm-sec' }, [
+      el('h3', { text: `${longDate(selected)} · ${free <= 0 ? 'เต็ม' : `ว่าง ${free} ห้อง`}` }),
+    ]));
+    const guests = getBookings().filter(b => b.depositStatus !== 'ยกเลิก' && b.checkIn && b.checkOut)
+      .filter(b => (b.checkIn <= selected && selected < b.checkOut) || b.checkOut === selected)
+      .filter(b => !pet || b.lineItems.some(li => (li.petType || 'dog') === pet));
+    node.appendChild(el('div', { class: 'm-list' }, roomTypes.map(rt => {
+      const c = capOf(rt);
+      const f = c - usedOf(selected, rt);
+      const ins = guests.filter(b => b.checkIn === selected && b.lineItems.some(li => li.roomType === rt)).length;
+      const outs = guests.filter(b => b.checkOut === selected && b.lineItems.some(li => li.roomType === rt)).length;
+      return el('div', { class: 'm-rt' }, [
+        el('div', { class: 'm-tx' }, [
+          el('b', { text: s?.roomPrices?.[rt]?.label || rt }),
+          el('small', { text: [ins ? `เข้า ${ins}` : '', outs ? `ออก ${outs}` : ''].filter(Boolean).join(' · ') || `ความจุ ${c} ห้อง` }),
+        ]),
+        el('span', { class: 'm-free' + (f <= 0 ? ' z' : '') }, [String(Math.max(f, 0)), el('small', { text: f <= 0 ? 'เต็ม' : 'ว่าง' })]),
+      ]);
+    })));
+
+    node.appendChild(el('div', { class: 'm-sec' }, [el('h3', {}, [selected === today ? 'แขกวันนี้' : 'แขกที่พัก', el('span', { class: 'm-n', text: String(guests.length) })])]));
+    if (!guests.length) { node.appendChild(el('div', { class: 'm-empty', text: 'ไม่มีลูกค้าเข้าพักวันนั้น' })); return; }
+    node.appendChild(el('div', { class: 'm-list' }, guests.map(b => {
+      const tag = b.checkIn === selected ? el('span', { class: 'pill green', text: 'เข้า' })
+        : b.checkOut === selected ? el('span', { class: 'pill yellow', text: 'ออก' }) : null;
+      const row = el('div', { class: 'm-row' }, [
+        el('span', { class: 'm-pet' + (isCat(b) ? ' cat' : ''), html: isCat(b) ? icons.cat : icons.dog }),
+        el('div', { class: 'm-tx' }, [el('b', { text: b.customerName || '-' }), el('small', { text: `${roomsOf(b)} · ${rangeOf(b)}` })]),
+        tag,
+      ]);
+      // พี่เลี้ยงดูอย่างเดียว — ฟอร์มจองมีราคา/ส่วนลด (กติกาเดียวกับหน้าคอม)
+      if (!isStaff()) {
+        row.setAttribute('role', 'button'); row.setAttribute('tabindex', '0');
+        row.onclick = () => openBookingForm(b);
+        row.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBookingForm(b); } };
+      }
+      else row.style.cursor = 'default';
+      return row;
+    })));
+  }
+
+  return { node, draw };
 }
