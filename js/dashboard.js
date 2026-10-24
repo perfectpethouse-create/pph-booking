@@ -3,8 +3,9 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
-import { computeBooking, formatBaht, formatDateTH, todayISO, addDaysISO, nightsBetween } from './calc.js';
-import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel } from './config-shop.js';
+import { computeBooking, formatBaht, todayISO, addDaysISO, nightsBetween } from './calc.js';
+import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel, capacityOf } from './config-shop.js';
+import { shortDate, rangeOf } from './mobile-kit.js';
 import { matchCustomer, vaccineStatus } from './customers.js';
 import { icons } from './icons.js';
 import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './booking-actions.js';
@@ -28,9 +29,9 @@ export function renderDashboard(container) {
   container.append(mobile.node, full);
   container = full;
 
-  container.appendChild(el('div', { class: 'page-title' }, [
+  container.appendChild(el('div', { class: 'd-top' }, [
     el('h1', { text: 'แดชบอร์ดวันนี้' }),
-    el('span', { class: 'muted', text: formatDateTH(todayISO()) }),
+    el('div', { class: 'd-date', text: new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }),
   ]));
   // แจ้งเตือนใบลงทะเบียนใหม่จากเว็บ (perfectbkk.com/checkin.html)
   const regBanner = el('div', { class: 'promo-banner hidden', style: 'margin-bottom:14px;cursor:pointer' });
@@ -54,12 +55,16 @@ export function renderDashboard(container) {
   // กดแล้วเลื่อนไปที่การ์ด "จองใหม่วันนี้" ในโซนโรงแรม (อยู่หน้าเดียวกัน)
   const depositBanner = el('div', { class: 'promo-banner warn hidden', style: 'margin-bottom:14px;cursor:pointer' });
 
-  const statGrid = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
-  // การ์ด "ข่าวสารร้าน" — วางบนสุดของเนื้อหา ให้พนักงานเห็นประกาศ/โปรฯ ก่อนเริ่มงาน
+  const statGrid = el('div', { class: 'd-stats' });
+  // 2 คอลัมน์แบบ mockup: ซ้าย = ตารางงานลูกค้า · ขวา = สรุป/ห้องว่าง/คิว/ข่าว
+  // การ์ด "ข่าวสารร้าน" อยู่บนสุดของคอลัมน์ขวา (mount ครั้งเดียว ไม่วาดใหม่ตามข้อมูลจอง)
   // จัดการ subscription เอง คืน unsub มาให้เก็บใน _unsub (เคลียร์ตอนกลับเข้าหน้านี้)
-  const newsMount = el('div', { style: 'margin-bottom:16px' });
-  const body = el('div', {});
-  container.append(regBanner, reqBanner, depositBanner, newsMount, statGrid, body);
+  const newsMount = el('div', {});
+  const body = el('div', { class: 'd-col' });
+  const side = el('div', { class: 'd-col' });
+  const sideBody = el('div', { class: 'd-col' });
+  side.append(newsMount, sideBody);
+  container.append(regBanner, reqBanner, depositBanner, statGrid, el('div', { class: 'd-grid' }, [body, side]));
   _unsub.push(mountNewsCard(newsMount));
 
   _unsub.push(listen('checkinForms', forms => {
@@ -101,17 +106,23 @@ export function renderDashboard(container) {
     const owedOf = b => b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal;
     const balanceSum = unpaid.reduce((s, b) => s + owedOf(b), 0);
 
-    // สีสื่อความหมาย: เขียว=เข้าพัก · ส้ม=ออกวันนี้ · ฟ้า=กำลังพัก · แดง=ยอดค้าง
+    // การ์ดสถิติ 4 ใบ — ใบแรกเป็นสีหลัก (งานสำคัญสุดของวัน) · สีที่เหลือสื่อความหมายเดิม
+    // เขียว=เข้าพัก · ส้ม=ออกวันนี้ · ฟ้า=กำลังพัก · แดง=ยอดค้าง
+    const inOwed = checkinToday.filter(b => b.depositStatus !== 'จ่ายครบแล้ว').reduce((s, b) => s + owedOf(b), 0);
     statGrid.innerHTML = '';
     [
-      ['เข้าพักวันนี้', checkinToday.length, icons.login, 'green'],
-      ['ออกวันนี้', checkoutToday.length, icons.logout, 'orange'],
-      ['กำลังพักอยู่', staying.length, icons.home, 'blue'],
-      ['ยอดค้างรับรวม', formatBaht(balanceSum), icons.banknote, 'red'],
-    ].forEach(([l, n, ico, color]) => statGrid.appendChild(
-      el('div', { class: `stat stat--${color}` }, [
-        el('div', { class: 'stat-ico', html: ico }),
-        el('div', {}, [el('div', { class: 'n', text: String(n) }), el('div', { class: 'l', text: l })]),
+      ['hero', icons.login, 'วันนี้', checkinToday.length, inOwed ? `เข้าพักวันนี้ · ต้องเก็บยอด ${formatBaht(inOwed)}` : 'เข้าพักวันนี้'],
+      ['orange', icons.logout, null, checkoutToday.length, 'เช็คเอาท์วันนี้'],
+      ['blue', icons.home, null, staying.length, 'กำลังพักอยู่'],
+      ['red', icons.banknote, unpaid.length ? 'ค้าง' : null, formatBaht(balanceSum), `ยอดค้างรับรวม · ${unpaid.length} ราย`],
+    ].forEach(([tone, ico, tag, n, l]) => statGrid.appendChild(
+      el('div', { class: `d-stat ${tone}` }, [
+        el('div', { class: 'd-stat-h' }, [
+          el('span', { class: 'd-stat-i', html: ico }),
+          tag ? el('span', { class: 'd-stat-tag', text: tag }) : null,
+        ].filter(Boolean)),
+        el('div', { class: 'd-stat-n', text: String(n) }),
+        el('div', { class: 'd-stat-l', text: l }),
       ])
     ));
 
@@ -126,9 +137,6 @@ export function renderDashboard(container) {
       depositBanner.classList.add('hidden');
     }
 
-    // จัดเป็นโซนเหมือนหน้า "งานวันนี้" — สีเดียวกันทั้งแอป
-    // (เดิมการ์ดทุกใบหน้าตาเหมือนกัน แยกไม่ออกว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ)
-    // แสดงคิวพรุ่งนี้ด้วย เพื่อให้เตรียมของ/จัดคนล่วงหน้าได้ (โซนโรงแรมมีส่วนพรุ่งนี้อยู่แล้ว)
     const groomToday = apptsOfDay(today, 'grooming');
     const groomTomorrow = apptsOfDay(tomorrow, 'grooming');
     const exToday = apptsOfDay(today, 'exercise');
@@ -138,43 +146,27 @@ export function renderDashboard(container) {
     const newCard = newBookingsSection(newToday);
     depositBanner.onclick = () => newCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
+    const tmr = shortDate(tomorrow);
     body.innerHTML = '';
-    body.append(
-      zoneGroup('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)',
-        `${newToday.length + checkinToday.length + checkoutToday.length + staying.length} รายการ`, [
-        newCard,
-        stayingSection(staying),
-        section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', true, icons.login, 'checkin'),
-        section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', true, icons.logout, 'checkout'),
-        section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', true, icons.banknote, 'pay'),
-        // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
-        section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', true, icons.calendar),
-        section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', true, icons.calendar),
-        section('ยังไม่ลงระบบ', notRecorded, 'ลงระบบครบแล้ว', false, icons.alert),
-      ]),
-      zoneGroup('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)',
-        `วันนี้ ${groomToday.length} · พรุ่งนี้ ${groomTomorrow.length}`, [
-        apptCard('คิววันนี้', groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
-        apptCard(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, groomTomorrow, 'พรุ่งนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.calendar),
-      ]),
-      zoneGroup('exercise', icons.paw, 'โซนออกกำลังกาย',
-        `วันนี้ ${exToday.length} · พรุ่งนี้ ${exTomorrow.length}`, [
-        apptCard('คิววันนี้', exToday, 'วันนี้ยังไม่มีคิวออกกำลังกาย', icons.paw),
-        apptCard(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, exTomorrow, 'พรุ่งนี้ยังไม่มีคิวออกกำลังกาย', icons.calendar),
-      ]),
-    );
-  }
+    body.append(...[
+      newCard,
+      section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', 'เก็บเพิ่ม', b => b.balanceDue, icons.login, 'checkin'),
+      section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', 'ยอดค้าง', b => b.balanceDue, icons.logout, 'checkout'),
+      stayingSection(staying),
+      section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', 'ค้าง', owedOf, icons.banknote, 'pay'),
+      // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
+      section(`พรุ่งนี้เข้าพัก · ${tmr} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', 'เก็บเพิ่ม', b => b.balanceDue, icons.calendar),
+      section(`พรุ่งนี้เช็คเอาท์ · ${tmr} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', 'ยอดค้าง', b => b.balanceDue, icons.calendar),
+      notRecorded.length ? section('ยังไม่ลงระบบ', notRecorded, '', 'ยอดรวม', b => b.grandTotal, icons.alert) : null,
+    ].filter(Boolean));
 
-  // กล่องครอบ 1 โซน — หัวแถบสี + ไอคอน + จำนวนงาน
-  function zoneGroup(id, ico, title, countText, children) {
-    return el('div', { class: `zone-group zone--${id}` }, [
-      el('div', { class: 'zone-head' }, [
-        el('span', { class: 'zone-ico', html: ico }),
-        el('div', { class: 'zone-title', text: title }),
-        el('span', { class: 'zone-count', text: countText }),
-      ]),
-      el('div', { class: 'zone-body' }, children),
-    ]);
+    sideBody.innerHTML = '';
+    sideBody.append(...[
+      ioCard(checkinToday.length, checkoutToday.length, checkinTomorrow.length, checkoutTomorrow.length),
+      roomsCard(staying),
+      apptCard('คิวอาบน้ำ-ตัดขน', groomToday, groomTomorrow, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
+      apptCard('คิวออกกำลังกาย', exToday, exTomorrow, 'วันนี้ยังไม่มีคิวออกกำลังกาย', icons.paw),
+    ].filter(Boolean));
   }
 
   function apptsOfDay(today, type) {
@@ -183,38 +175,78 @@ export function renderDashboard(container) {
       .sort((a, b) => String(a.time).localeCompare(String(b.time)));
   }
 
-  // คิวของโซนหนึ่ง เรียงตามรอบเวลา — เจ้าของร้านเห็นยอดด้วย
-  function apptCard(title, list, emptyText, ico) {
-    const card = el('div', { class: 'card section-card' }, [
-      el('h2', { class: 'sec-title' }, [
-        el('span', { class: 'sec-ico', html: ico || '' }),
-        el('span', { text: `${title} (${list.length})` }),
+  // สรุปจำนวนเข้า–ออก วันนี้เทียบพรุ่งนี้ (ตัวเลขจากรายการเดียวกับตารางฝั่งซ้าย)
+  function ioCard(inT, outT, inN, outN) {
+    const row = (dot, label, a, b) => el('div', { class: 'd-io-row' }, [
+      el('span', { class: 'd-io-l' }, [el('i', { class: `d-dot ${dot}` }), label]),
+      el('b', { text: String(a) }), el('b', { text: String(b) }),
+    ]);
+    return dCard(icons.calendar, 'สรุปเข้า–ออก', 'วันนี้ · พรุ่งนี้', [
+      el('div', { class: 'd-io' }, [
+        el('div', { class: 'd-io-row d-io-head' }, [el('span', { text: 'รายการ' }), el('span', { text: 'วันนี้' }), el('span', { text: 'พรุ่งนี้' })]),
+        row('in', 'เข้าพัก (เช็คอิน)', inT, inN),
+        row('out', 'เช็คเอาท์', outT, outN),
+      ]),
+      el('div', { class: 'd-io-foot' }, [
+        el('span', { text: 'รวมงานเข้า–ออก' }),
+        el('span', { html: `วันนี้ <b>${inT + outT}</b> · พรุ่งนี้ <b>${inN + outN}</b>` }),
       ]),
     ]);
-    if (!list.length) {
-      card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: emptyText }));
-      return card;
-    }
-    list.forEach(a => {
+  }
+
+  // ห้องที่ใช้คืนนี้เทียบความจุใน "ตั้งค่า" — แยกตามประเภทห้อง (ไม่มีความจุ = ไม่แสดงการ์ด)
+  function roomsCard(staying) {
+    const s = getSettings();
+    const types = Object.keys(s?.roomPrices || {});
+    const cap = types.reduce((sum, rt) => sum + capacityOf(s?.roomCapacity, rt), 0);
+    if (!cap) return null;
+    const usedOf = (rt) => staying.reduce((sum, b) =>
+      sum + (b.lineItems || []).filter(li => li.roomType === rt).reduce((n, li) => n + (Number(li.rooms) || 1), 0), 0);
+    const used = types.reduce((sum, rt) => sum + usedOf(rt), 0);
+    const pct = Math.min(100, Math.round(used / cap * 100));
+    const donut = el('div', { class: 'd-donut', html:
+      `<svg viewBox="0 0 42 42" width="118" height="118" aria-hidden="true">
+        <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--fill)" stroke-width="5"></circle>
+        <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--accent)" stroke-width="5"
+          stroke-dasharray="${pct} ${100 - pct}" stroke-dashoffset="25" stroke-linecap="${pct ? 'round' : 'butt'}"></circle>
+      </svg>` });
+    donut.appendChild(el('div', { class: 'd-donut-c' }, [
+      el('b', { html: `${used}<span>/${cap}</span>` }), el('small', { text: 'ห้องที่ใช้' }),
+    ]));
+    const legend = el('div', { class: 'd-occ-leg' }, [
+      el('div', { class: 'r' }, [el('i', { class: 'sw on' }), el('span', { text: 'ใช้อยู่' }), el('b', { text: `${used} ห้อง` })]),
+      el('div', { class: 'r' }, [el('i', { class: 'sw' }), el('span', { text: used > cap ? 'เกิน' : 'ว่าง' }), el('b', { text: `${Math.abs(cap - used)} ห้อง` })]),
+      el('hr'),
+      ...types.filter(rt => capacityOf(s?.roomCapacity, rt)).map(rt => el('div', { class: 'r sub' }, [
+        el('span', { text: s.roomPrices[rt]?.label || rt }),
+        el('b', { html: `${usedOf(rt)}<span>/${capacityOf(s?.roomCapacity, rt)}</span>` }),
+      ])),
+    ]);
+    return dCard(icons.home, 'ห้องพักคืนนี้', `ใช้ ${pct}%`, [el('div', { class: 'd-occ' }, [donut, legend])]);
+  }
+
+  // คิวของโซนหนึ่ง เรียงตามรอบเวลา — เจ้าของร้านเห็นยอดด้วย · บรรทัดท้ายบอกจำนวนคิวพรุ่งนี้
+  function apptCard(title, list, tomorrowList, emptyText, ico) {
+    const rows = list.length ? list.map(a => {
       const detail = a.type === 'exercise'
         ? (a.zone ? exerciseZoneLabel(a.zone) : `ระดับ ${a.level || '-'}`)
         : groomServiceLabel(groomServiceOf(a));
-      card.appendChild(el('div', { class: 'lineitem' }, [
-        el('div', { class: 'li-head' }, [
-          el('div', {}, [
-            el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}${petCountOf(a) > 1 ? ` (${petCountOf(a)} ตัว)` : ''}` }),
-            el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: a.customerName || '' }),
-          ]),
-          el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
+      const n = petCountOf(a);
+      return el('div', { class: 'd-q' }, [
+        el('span', { class: 'd-q-t', text: a.time || '—' }),
+        el('div', { class: 'd-q-i' }, [
+          el('b', { text: `${a.petName || a.customerName || '-'}${n > 1 ? ` (${n} ตัว)` : ''}` }),
+          el('small', { text: [detail, a.customerName].filter(Boolean).join(' · ') }),
         ]),
-        el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap;margin-top:4px;align-items:center' }, [
-          el('span', { class: 'pet-chip pet-' + (a.petType || 'dog'), text: detail }),
-          el('span', { class: 'muted', style: 'font-size:12px', text: `ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.` }),
-          el('strong', { style: 'margin-left:auto', text: formatBaht(a.price) }),
-        ]),
-      ]));
-    });
-    return card;
+        a.status === 'เสร็จแล้ว'
+          ? el('span', { class: 'pill green', text: 'เสร็จแล้ว' })
+          : Number(a.price) > 0 ? el('span', { class: 'd-q-p', text: formatBaht(a.price) }) : null,
+      ].filter(Boolean));
+    }) : [el('p', { class: 'd-empty', text: emptyText })];
+    const tm = tomorrowList.length
+      ? `พรุ่งนี้ ${tomorrowList.length} คิว · ${tomorrowList.map(a => a.time).filter(Boolean).join(', ')}`
+      : 'พรุ่งนี้ยังไม่มีคิว';
+    return dCard(ico, title, `วันนี้ ${list.length}`, [el('div', { class: 'd-qs' }, rows), el('div', { class: 'd-q-foot', text: tm })]);
   }
 
   // ปุ่มลัดเปลี่ยนสถานะเข้าพักจริง — บันทึกเวลาไว้ด้วย (มุมมองแดชบอร์ดอัปเดตเอง)
@@ -249,37 +281,66 @@ export function renderDashboard(container) {
     return td;
   }
 
-  // ปุ่ม "รับเงิน" สำหรับคนที่เช็คอินไปแล้วแต่ยังไม่จ่ายครบ
+  // ปุ่มรับเงิน — ยังไม่มัดจำ = "รับมัดจำแล้ว" (balanceDue ตอนนั้นคือแค่ครึ่งหลัง ไม่ใช่ยอดค้างจริง)
+  // มัดจำแล้ว = "รับเงิน ฿ยอดที่เหลือ" · ตรงกับหน้าหลักมือถือ
   function payNowBtn(b) {
+    if (b.depositStatus === 'ยังไม่มัดจำ') {
+      const dep = el('button', { class: 'btn sm danger', text: 'รับมัดจำแล้ว' });
+      dep.onclick = (e) => { e.stopPropagation(); runMarkDeposit(b); };
+      return dep;
+    }
     const btn = el('button', { class: 'btn sm danger', text: `รับเงิน ${formatBaht(b.balanceDue)}` });
     btn.onclick = (e) => { e.stopPropagation(); runCollectBalance(b); };
     return btn;
   }
 
-  // สีมาจากโซนที่ครอบอยู่ · ไอคอนบอกประเภทงาน (เดิมใช้สีบอกประเภท ทำให้ชนกับสีโซน)
-  function section(title, list, emptyText, showBalance, ico = null, mode = null) {
-    const card = el('div', { class: 'card section-card' }, [
-      el('h2', { class: 'sec-title' }, [
-        el('span', { class: 'sec-ico', html: ico || '' }),
-        el('span', { text: `${title} (${list.length})` }),
-      ]),
-    ]);
-    if (!list.length) { card.appendChild(el('p', { class: 'muted', text: emptyText })); return card; }
+  // ตารางงานลูกค้า 1 การ์ด — amountOf บอกว่าคอลัมน์เงินแสดงยอดไหน (เก็บเพิ่ม/ค้าง/ยอดรวม)
+  function section(title, list, emptyText, amountLabel, amountOf, ico, mode = null) {
+    if (!list.length) return dCard(ico, title, '0 รายการ', [el('p', { class: 'd-empty', text: emptyText })]);
     // คลิกทั้งแถว → เปิดการ์ดรับลูกค้า (จบงานในจอเดียว) · ปุ่มในแถวมี stopPropagation กันเปิดซ้อน
     const rows = list.map(b => {
       const tr = el('tr', { style: 'cursor:pointer' }, [
-        el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
-        el('td', { text: `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)}` }),
+        nameCell(b),
         el('td', { text: roomsDesc(b) }),
-        el('td', { class: 'num', text: showBalance ? formatBaht(b.balanceDue) : formatBaht(b.grandTotal) }),
+        el('td', { text: rangeOf(b) }),
+        el('td', { class: 'num', text: formatBaht(amountOf(b)) }),
         ...(mode ? [actionCell(b, mode)] : []),
       ]);
       tr.onclick = () => openBookingCockpit(b);
       return tr;
     });
-    card.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('tbody', {}, rows)])]));
-    return card;
+    return dCard(ico, title, `${list.length} รายการ`, [table(['ลูกค้า', 'ห้อง', 'เข้า–ออก', `#${amountLabel}`, ...(mode ? ['#'] : [])], rows)]);
   }
+}
+
+// การ์ดแบบ mockup: หัว (ชิปไอคอน + ชื่อ + จำนวน) แล้วตามด้วยเนื้อหา
+function dCard(ico, title, countText, children) {
+  return el('div', { class: 'd-card' }, [
+    el('div', { class: 'd-card-h' }, [
+      el('span', { class: 'd-ci', html: ico || '' }),
+      el('h2', { text: title }),
+      countText ? el('span', { class: 'd-cnt', text: countText }) : null,
+    ].filter(Boolean)),
+    ...children.filter(Boolean),
+  ]);
+}
+
+// หัวคอลัมน์ที่ขึ้นต้นด้วย # = ชิดขวา (ตัวเลข/ปุ่ม)
+function table(heads, rows) {
+  return el('div', { class: 'table-wrap d-tw' }, [
+    el('table', {}, [
+      el('thead', {}, [el('tr', {}, heads.map(h => h.startsWith('#')
+        ? el('th', { class: 'num', text: h.slice(1) }) : el('th', { text: h })))]),
+      el('tbody', {}, rows),
+    ]),
+  ]);
+}
+
+function nameCell(b, extra) {
+  return el('td', {}, [
+    el('div', { class: 'd-nm' }, [el('strong', { text: b.customerName || '-' }), extra].filter(Boolean)),
+    el('div', { class: 'd-sub', text: b.phone || '' }),
+  ]);
 }
 
 function roomsDesc(b) {
@@ -301,13 +362,7 @@ function localDateISO(ts) {
 // จุดสำคัญ: บอกให้รู้ทันทีว่ารายไหน "รอโอนมัดจำ 50%" อยู่ (แดง) กันหลุดตอนมีหลายห้อง
 // แดง=รอโอนมัดจำ (+ปุ่มลัดรับมัดจำ) · เขียว=มัดจำแล้ว/จ่ายครบ · คลิกแถวเปิดการ์ดรับลูกค้า
 function newBookingsSection(list) {
-  const card = el('div', { class: 'card section-card' }, [
-    el('h2', { class: 'sec-title' }, [
-      el('span', { class: 'sec-ico', html: icons.bookings }),
-      el('span', { text: `จองใหม่วันนี้ (${list.length})` }),
-    ]),
-  ]);
-  if (!list.length) { card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: 'วันนี้ยังไม่มีจองใหม่' })); return card; }
+  if (!list.length) return dCard(icons.bookings, 'จองใหม่วันนี้', '0 รายการ', [el('p', { class: 'd-empty', text: 'วันนี้ยังไม่มีจองใหม่' })]);
 
   // ใหม่สุดอยู่บน
   const sorted = [...list].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
@@ -324,25 +379,17 @@ function newBookingsSection(list) {
       statusCell.appendChild(el('span', { class: 'pill green', text: 'มัดจำแล้ว' }));
     }
     const tr = el('tr', { style: 'cursor:pointer' }, [
-      el('td', {}, [el('strong', { text: b.customerName || '-' }), el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' })]),
+      nameCell(b),
       el('td', { text: roomsDesc(b) }),
-      el('td', { text: `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)}` }),
+      el('td', { text: rangeOf(b) }),
       el('td', { class: 'num', text: formatBaht(b.depositAmount) }),
       statusCell,
     ]);
     tr.onclick = () => openBookingCockpit(b);
     return tr;
   });
-  card.appendChild(el('div', { class: 'table-wrap' }, [
-    el('table', {}, [
-      el('thead', {}, [el('tr', {}, [
-        el('th', { text: 'ลูกค้า' }), el('th', { text: 'ห้อง' }), el('th', { text: 'เข้า–ออก' }),
-        el('th', { class: 'num', text: 'มัดจำ 50%' }), el('th', { class: 'num', text: 'สถานะ' }),
-      ])]),
-      el('tbody', {}, rows),
-    ]),
-  ]));
-  return card;
+  return dCard(icons.bookings, 'จองใหม่วันนี้', `${list.length} รายการ`,
+    [table(['ลูกค้า', 'ห้อง', 'เข้า–ออก', '#มัดจำ 50%', '#สถานะ'], rows)]);
 }
 
 // ธงวัคซีนของลูกค้ารายนี้ (แดง=หมดอายุ · เหลือง=ใกล้หมด) — จับคู่ด้วยเบอร์/ชื่อ
@@ -361,13 +408,7 @@ function vaccineFlag(b) {
 function stayingSection(list) {
   const today = todayISO();
   const tomorrow = addDaysISO(today, 1);
-  const card = el('div', { class: 'card section-card' }, [
-    el('h2', { class: 'sec-title' }, [
-      el('span', { class: 'sec-ico', html: icons.home }),
-      el('span', { text: `กำลังพักอยู่ตอนนี้ (${list.length})` }),
-    ]),
-  ]);
-  if (!list.length) { card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: 'ตอนนี้ไม่มีแขกพักอยู่' })); return card; }
+  if (!list.length) return dCard(icons.home, 'กำลังพักอยู่ตอนนี้', '0 ห้อง', [el('p', { class: 'd-empty', text: 'ตอนนี้ไม่มีแขกพักอยู่' })]);
 
   const sorted = [...list].sort((a, b) => String(a.checkOut).localeCompare(String(b.checkOut)));
   const rows = sorted.map(b => {
@@ -375,20 +416,17 @@ function stayingSection(list) {
     const nightNo = Math.min(total, Math.max(1, nightsBetween(b.checkIn, today) + 1));
     const paid = b.depositStatus === 'จ่ายครบแล้ว' || b.balanceDue <= 0;
 
-    const nameCell = el('td', {}, [
-      el('div', {}, [el('strong', { text: b.customerName || '-' }), vaccineFlag(b)].filter(Boolean)),
-      el('div', { class: 'muted', style: 'font-size:12px', text: b.phone || '' }),
-    ]);
     const outCell = el('td', {}, [
-      el('span', { text: formatDateTH(b.checkOut) }),
+      el('span', { text: shortDate(b.checkOut) }),
       b.checkOut === tomorrow ? el('span', { class: 'pill yellow', style: 'margin-left:6px', text: 'ออกพรุ่งนี้' }) : null,
     ].filter(Boolean));
     const statusCell = el('td', { class: 'num' }, [
       paid ? el('span', { class: 'pill green', text: 'จ่ายครบ' })
-        : el('span', { class: 'pill red', text: `ค้าง ${formatBaht(b.balanceDue)}` }),
+        // ยังไม่มัดจำ = ค้างทั้งก้อน (balanceDue คือแค่ครึ่งหลัง) — สูตรเดียวกับยอดค้างรับรวม
+        : el('span', { class: 'pill red', text: `ค้าง ${formatBaht(b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal)}` }),
     ]);
     const tr = el('tr', { style: 'cursor:pointer' }, [
-      nameCell,
+      nameCell(b, vaccineFlag(b)),
       el('td', { text: roomsDesc(b) }),
       outCell,
       el('td', { text: `คืนที่ ${nightNo}/${total}` }),
@@ -397,6 +435,7 @@ function stayingSection(list) {
     tr.onclick = () => openBookingCockpit(b);
     return tr;
   });
-  card.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('tbody', {}, rows)])]));
-  return card;
+  const rooms = list.reduce((n, b) => n + (b.lineItems || []).reduce((m, li) => m + (Number(li.rooms) || 1), 0), 0);
+  return dCard(icons.home, 'กำลังพักอยู่ตอนนี้', `${rooms} ห้อง`,
+    [table(['ลูกค้า', 'ห้อง', 'ออก', 'คืนที่', '#สถานะ'], rows)]);
 }

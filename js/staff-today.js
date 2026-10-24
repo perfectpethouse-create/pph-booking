@@ -21,9 +21,9 @@ const PET_ICONS = { dog: icons.dog, cat: icons.cat };
 export function renderStaffToday(container) {
   _unsub.forEach(u => u()); _unsub = [];
 
-  container.appendChild(el('div', { class: 'page-title today-full' }, [
+  container.appendChild(el('div', { class: 'd-top today-full' }, [
     el('h1', { text: 'งานวันนี้' }),
-    el('span', { class: 'muted', text: formatDateTH(todayISO()) }),
+    el('div', { class: 'd-date', text: new Date().toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) }),
   ]));
   // หัวแบบแอป (มือถือ) — โลโก้ร้าน + ชื่อหน้า + วันที่
   container.appendChild(el('div', { class: 'mtoday m-head' }, [
@@ -33,8 +33,9 @@ export function renderStaffToday(container) {
   // การ์ด "ข่าวสารร้าน" บนสุด — ให้พี่เลี้ยงเห็นประกาศ/โปรฯ ก่อนเริ่มงาน (หน้าแรกของพี่เลี้ยง)
   // ใช้ร่วมกันทั้งคอมและมือถือ จึงอยู่นอกกล่องของทั้งสองแบบ
   const newsMount = el('div', { style: 'margin-bottom:16px' });
-  const statGrid = el('div', { class: 'stat-grid today-full', style: 'margin-bottom:16px' });
-  const body = el('div', { class: 'today-full' });
+  const statGrid = el('div', { class: 'd-stats today-full' });
+  // คอม: 2 คอลัมน์แบบแดชบอร์ด — ซ้าย = ห้องพัก (การ์ดน้อง) · ขวา = คิว Grooming / ออกกำลังกาย
+  const body = el('div', { class: 'd-grid today-full' });
   const mbody = el('div', { class: 'mtoday' });
   container.append(newsMount, statGrid, body, mbody);
   _unsub.push(mountNewsCard(newsMount));
@@ -59,20 +60,23 @@ export function renderStaffToday(container) {
 
     statGrid.innerHTML = '';
     [
-      ['เข้าพักวันนี้', checkinToday.length, icons.login, 'green'],
-      ['ออกวันนี้', checkoutToday.length, icons.logout, 'orange'],
-      ['สุนัขที่ดูแล', `${perPet.dog} ห้อง`, icons.dog, 'blue'],
-      ['แมวที่ดูแล', `${perPet.cat} ห้อง`, icons.cat, 'purple'],
-    ].forEach(([l, n, ico, color]) => statGrid.appendChild(
-      el('div', { class: `stat stat--${color}` }, [
-        el('div', { class: 'stat-ico', html: ico }),
-        el('div', {}, [el('div', { class: 'n', text: String(n) }), el('div', { class: 'l', text: l })]),
+      ['hero', icons.login, 'วันนี้', checkinToday.length, 'เข้าพักวันนี้ · เตรียมรับน้อง'],
+      ['orange', icons.logout, null, checkoutToday.length, 'ออกวันนี้'],
+      ['blue', icons.dog, null, `${perPet.dog} ห้อง`, 'สุนัขที่ดูแล'],
+      ['purple', icons.cat, null, `${perPet.cat} ห้อง`, 'แมวที่ดูแล'],
+    ].forEach(([tone, ico, tag, n, l]) => statGrid.appendChild(
+      el('div', { class: `d-stat ${tone}` }, [
+        el('div', { class: 'd-stat-h' }, [
+          el('span', { class: 'd-stat-i', html: ico }),
+          tag ? el('span', { class: 'd-stat-tag', text: tag }) : null,
+        ].filter(Boolean)),
+        el('div', { class: 'd-stat-n', text: String(n) }),
+        el('div', { class: 'd-stat-l', text: l }),
       ])
     ));
 
     // จัดเป็น 3 โซนตามงานจริงของร้าน — พี่เลี้ยงจะได้ไม่ต้องไล่อ่านทีละการ์ด
     // ว่าอันไหนงานโรงแรม อันไหนงานอาบน้ำ สีประจำโซนตรงกับหน้า "คิวบริการ"
-    const hotelCount = checkinToday.length + checkoutToday.length + staying.length;
     // แสดงคิวพรุ่งนี้ด้วย เพื่อให้เตรียมของ/จัดคนล่วงหน้าได้ (โซนโรงแรมมีส่วนพรุ่งนี้อยู่แล้ว)
     const groomToday = apptsOfDay(today, 'grooming');
     const groomTomorrow = apptsOfDay(tomorrow, 'grooming');
@@ -81,22 +85,18 @@ export function renderStaffToday(container) {
 
     body.innerHTML = '';
     body.append(
-      zone('hotel', icons.home, 'โซนโรงแรม (ห้องพัก)', `${hotelCount} รายการ`, [
+      el('div', { class: 'd-col' }, [
         section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', icons.login),
         section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', icons.logout),
         section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', icons.home, { sortByCheckout: true, leaveTag: true }),
         section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', icons.calendar),
         section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar),
       ]),
-      zone('grooming', icons.star, 'โซน Grooming (อาบน้ำ-ตัดขน)',
-        `วันนี้ ${groomToday.length} · พรุ่งนี้ ${groomTomorrow.length}`, [
-        apptSection('คิววันนี้', groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
-        apptSection(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, groomTomorrow, 'พรุ่งนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.calendar),
-      ]),
-      zone('exercise', icons.paw, 'โซนออกกำลังกาย',
-        `วันนี้ ${exToday.length} · พรุ่งนี้ ${exTomorrow.length}`, [
-        apptSection('คิววันนี้', exToday, 'วันนี้ยังไม่มีคิวออกกำลังกาย', icons.paw),
-        apptSection(`คิวพรุ่งนี้ · ${formatDateTH(tomorrow)}`, exTomorrow, 'พรุ่งนี้ยังไม่มีคิวออกกำลังกาย', icons.calendar),
+      el('div', { class: 'd-col' }, [
+        apptSection('คิว Grooming วันนี้', groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
+        apptSection(`คิว Grooming พรุ่งนี้ · ${formatDateTH(tomorrow)}`, groomTomorrow, 'พรุ่งนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.calendar),
+        apptSection('คิวออกกำลังกายวันนี้', exToday, 'วันนี้ยังไม่มีคิวออกกำลังกาย', icons.paw),
+        apptSection(`คิวออกกำลังกายพรุ่งนี้ · ${formatDateTH(tomorrow)}`, exTomorrow, 'พรุ่งนี้ยังไม่มีคิวออกกำลังกาย', icons.calendar),
       ]),
     );
 
@@ -230,18 +230,6 @@ export function renderStaffToday(container) {
     })));
   }
 
-  // กล่องครอบ 1 โซน — หัวแถบสี + ไอคอน + จำนวนงาน แล้วตามด้วยการ์ดย่อยข้างใน
-  function zone(id, ico, title, countText, children) {
-    return el('div', { class: `zone-group zone--${id}` }, [
-      el('div', { class: 'zone-head' }, [
-        el('span', { class: 'zone-ico', html: ico }),
-        el('div', { class: 'zone-title', text: title }),
-        el('span', { class: 'zone-count', text: countText }),
-      ]),
-      el('div', { class: 'zone-body' }, children),
-    ]);
-  }
-
   function apptsOfDay(today, type) {
     return _appts
       .filter(a => a.date === today && a.type === type && a.status !== 'ยกเลิก')
@@ -250,14 +238,9 @@ export function renderStaffToday(container) {
 
   // คิวของโซนหนึ่ง เรียงตามรอบเวลาเพื่อใช้เป็นลำดับงานจริง
   function apptSection(title, list, emptyText, ico) {
-    const card = el('div', { class: 'card section-card' }, [
-      el('h2', { class: 'sec-title' }, [
-        el('span', { class: 'sec-ico', html: ico || '' }),
-        el('span', { text: `${title} (${list.length})` }),
-      ]),
-    ]);
+    const card = stCard(ico, title, list.length);
     if (!list.length) {
-      card.appendChild(el('p', { class: 'muted', style: 'margin:0', text: emptyText }));
+      card.appendChild(el('p', { class: 'muted st-empty', text: emptyText }));
       return card;
     }
     list.forEach(a => {
@@ -285,13 +268,8 @@ export function renderStaffToday(container) {
   // สีของการ์ดมาจากโซนที่ครอบอยู่ ส่วนไอคอนบอกว่าเป็นงานประเภทไหน
   // opts.sortByCheckout = เรียงตามใกล้ออกก่อน · opts.leaveTag = โชว์ป้าย "ออกพรุ่งนี้" (ใช้ในกล่องกำลังพัก)
   function section(title, list, emptyText, ico, opts = {}) {
-    const card = el('div', { class: 'card section-card' }, [
-      el('h2', { class: 'sec-title' }, [
-        el('span', { class: 'sec-ico', html: ico || '' }),
-        el('span', { text: `${title} (${list.length})` }),
-      ]),
-    ]);
-    if (!list.length) { card.appendChild(el('p', { class: 'muted', text: emptyText })); return card; }
+    const card = stCard(ico, title, list.length);
+    if (!list.length) { card.appendChild(el('p', { class: 'muted st-empty', text: emptyText })); return card; }
     const s = getSettings();
     const tomorrow = addDaysISO(todayISO(), 1);
     const ordered = opts.sortByCheckout
@@ -351,4 +329,15 @@ export function renderStaffToday(container) {
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
   _unsub.push(listen('checkinForms', arr => { _checkinForms = arr; draw(); }, { orderBy: null }));
+}
+
+// การ์ดหัวข้อแบบเดียวกับแดชบอร์ดคอม (ชิปไอคอน + ชื่อ + จำนวน) · เนื้อหาเดิมต่อท้ายในการ์ด
+function stCard(ico, title, n) {
+  return el('div', { class: 'd-card st-card' }, [
+    el('div', { class: 'd-card-h' }, [
+      el('span', { class: 'd-ci', html: ico || '' }),
+      el('h2', { text: title }),
+      el('span', { class: 'd-cnt', text: `${n} รายการ` }),
+    ]),
+  ]);
 }

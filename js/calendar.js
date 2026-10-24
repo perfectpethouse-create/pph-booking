@@ -19,26 +19,32 @@ export function renderCalendar(container) {
   _unsub.forEach(u => u()); _unsub = [];
   _view = new Date();
 
-  const title = el('h1', {});
-  const prev = el('button', { class: 'btn ghost sm', html: icons.chevronLeft + ' ก่อนหน้า', 'aria-label': 'เดือนก่อนหน้า' });
-  const next = el('button', { class: 'btn ghost sm', html: 'ถัดไป ' + icons.chevronRight, 'aria-label': 'เดือนถัดไป' });
-  const roomSel = el('select', { style: 'max-width:180px' });
-  const petSel = el('select', { style: 'max-width:130px' }, [
+  const title = el('span', { class: 'd-month' });
+  const subtitle = el('div', { class: 'd-date' });
+  const prev = el('button', { class: 'btn ghost sm', html: icons.chevronLeft, 'aria-label': 'เดือนก่อนหน้า' });
+  const next = el('button', { class: 'btn ghost sm', html: icons.chevronRight, 'aria-label': 'เดือนถัดไป' });
+  const roomSel = el('select', { 'aria-label': 'กรองประเภทห้อง' });
+  const petSel = el('select', { 'aria-label': 'กรองห้องสุนัข/แมว' }, [
     el('option', { value: '', text: 'ทุกสัตว์' }),
     ...PET_TYPES.map(p => el('option', { value: p.id, text: `ห้อง${p.label}` })),
   ]);
   const grid = el('div', {});
-  const legend = el('div', { class: 'muted', style: 'font-size:12px;margin-top:8px' });
+  const legend = el('div', { class: 'd-cal-legend' });
 
   // มือถือ = ปฏิทินกะทัดรัด + รายละเอียดวันที่เลือกใต้ปฏิทิน (.mcal) · คอม = แบบเดิม (.cal-full)
   let _bookings = [];
   const mobile = buildMobileCalendar(() => _bookings);
   container.appendChild(mobile.node);
   container.appendChild(el('div', { class: 'cal-full' }, [
-    el('div', { class: 'page-title' }, [
-      title, el('div', { class: 'row', style: 'gap:8px;align-items:center' }, [roomSel, petSel, prev, next]),
+    el('div', { class: 'd-top' }, [el('h1', { text: 'ปฏิทินห้องว่าง' }), subtitle]),
+    el('div', { class: 'd-card' }, [
+      el('div', { class: 'd-filters' }, [
+        el('div', { class: 'd-datenav' }, [prev, title, next]),
+        roomSel, petSel,
+      ]),
+      el('div', { class: 'd-cal' }, [grid]),
+      legend,
     ]),
-    el('div', { class: 'card' }, [grid, legend]),
   ]));
 
   const refreshRoomOptions = () => {
@@ -100,11 +106,14 @@ export function renderCalendar(container) {
       const dayOcc = occ[iso] || {};
       const used = usedOf(dayOcc);
       const over = totalCap > 0 && used > totalCap;
-      const cell = el('div', { class: 'cal-cell' + (iso === todayISO() ? ' today' : ''), role: 'button', tabindex: '0' }, [
+      // ระดับความเต็ม (สีของป้ายและแถบ): ว่างเยอะ < 70% ≤ เริ่มเต็ม < 100% ≤ เต็ม/เกิน
+      const pct = totalCap ? Math.min(100, Math.round(used / totalCap * 100)) : 0;
+      const lvl = !used ? 'free' : (totalCap && used >= totalCap) ? 'full' : pct >= 70 ? 'mid' : 'low';
+      const cell = el('div', { class: `cal-cell lvl-${lvl}` + (iso === todayISO() ? ' today' : ''), role: 'button', tabindex: '0' }, [
         el('div', { class: 'd', text: String(d) }),
       ]);
       if (used > 0) {
-        cell.appendChild(el('span', { class: 'cal-occ' + (over ? ' over' : ''), text: `${used}/${totalCap || '∞'} ห้อง${over ? ' ⚠️เกิน' : ''}` }));
+        cell.appendChild(el('span', { class: 'cal-occ' + (over ? ' over' : ''), text: `${used}/${totalCap || '∞'} ห้อง${over ? ' เกิน' : ''}` }));
         // ชิปแยกสุนัข/แมว — เห็นปราดเดียวว่าวันนั้นมีสัตว์ชนิดไหนพักกี่ห้อง
         const perPet = { dog: 0, cat: 0 };
         Object.entries(dayOcc).forEach(([k, n]) => {
@@ -120,6 +129,7 @@ export function renderCalendar(container) {
       } else {
         cell.appendChild(el('span', { class: 'cal-occ muted', text: 'ว่าง' }));
       }
+      if (totalCap) cell.appendChild(el('div', { class: 'd-cal-bar' }, [el('i', { style: `width:${pct}%` })]));
       cell.classList.add('clickable');
       cell.onclick = () => openDayDetail(iso);
       cell.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDayDetail(iso); } };
@@ -127,7 +137,13 @@ export function renderCalendar(container) {
     }
     grid.appendChild(el('div', { class: 'cal-grid' }, cells));
     const petLabel = filterPet ? ` (ห้อง${PET_TYPES.find(p => p.id === filterPet)?.label})` : '';
-    legend.textContent = `ตัวเลข = ห้องที่ถูกจอง/ความจุ · สีแดง = จองเกินความจุ (ปรับความจุแยกห้องสุนัข/แมวได้ที่หน้า "ตั้งค่า") · ความจุรวม ${filterRoom ? (getSettings()?.roomPrices?.[filterRoom]?.label + ' ' + totalCap) : totalCap} ห้อง${petLabel}`;
+    const capText = `${filterRoom ? (getSettings()?.roomPrices?.[filterRoom]?.label + ' ' + totalCap) : totalCap} ห้อง${petLabel}`;
+    subtitle.textContent = `ห้องที่ถูกจอง / ความจุรวม ${capText}`;
+    legend.innerHTML = '';
+    legend.append(
+      ...[['low', 'ว่างเยอะ'], ['mid', 'เริ่มเต็ม'], ['full', 'เต็ม/เกิน']].map(([k, t]) => el('span', { class: `cal-occ lg-${k}`, text: t })),
+      el('span', { text: '· ตัวเลข = ห้องที่จอง / ความจุ · กดวันเพื่อดูรายชื่อ · ปรับความจุแยกห้องสุนัข/แมวได้ที่หน้า "ตั้งค่า"' }),
+    );
   };
 
   prev.onclick = () => { _view = new Date(_view.getFullYear(), _view.getMonth() - 1, 1); draw(); };

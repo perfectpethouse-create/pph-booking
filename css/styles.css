@@ -250,6 +250,9 @@ textarea { resize: vertical; min-height: 64px; }
 .navlink .ico { display: grid; place-items: center; color: var(--muted); }
 .navlink.active .ico { color: var(--accent); }
 .navlink .ico svg { width: 19px; height: 19px; }
+/* หัวกลุ่มเมนูในแถบข้าง (เมนูหลัก / งานจากเว็บ / รายงาน & ระบบ) — มือถือซ่อน */
+.nav-gl { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--muted); padding: 14px 12px 6px; }
+#sidebar .brand + .nav-gl { padding-top: 2px; }
 /* ป้ายสั้นใช้เฉพาะแถบล่างบนมือถือ ที่ความกว้างต่อปุ่มมีแค่ ~70px */
 .txt-short { display: none; }
 #sidebar .spacer { flex: 1; }
@@ -1073,7 +1076,7 @@ body.modal-open { overflow: hidden; }
   .navfab:active .fab-in { transform: scale(0.93); }
   .navfab svg { width: 26px; height: 26px; stroke-width: 2.2; }
   /* โลโก้/อีเมล/ปุ่มออก ย้ายไปอยู่ในแผ่นเลื่อน "เพิ่มเติม" แทน */
-  #sidebar .brand, #sidebar .spacer, #sidebar .who { display: none; }
+  #sidebar .brand, #sidebar .spacer, #sidebar .who, #sidebar .nav-gl { display: none; }
 
   .navlink, .navmore {
     flex: 1 1 0; min-width: 0; max-width: 96px;
@@ -1712,3 +1715,370 @@ body.modal-open { overflow: hidden; }
   .m-qrow .m-tx b svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
   .m-qrow .pill { flex-shrink: 0; }
 }
+
+/* ═══ แดชบอร์ดบนคอม (dashboard.js .dash-full) — ตาม dashboard-mockup ═══
+   การ์ดสถิติ 4 ใบ (ใบแรกสีหลัก) · 2 คอลัมน์: ซ้าย = ตารางงานลูกค้า · ขวา = สรุป/ห้อง/คิว/ข่าว */
+.d-top { margin-bottom: 18px; }
+.d-top h1 { font-size: 26px; margin: 0; letter-spacing: -0.025em; }
+.d-date { font-size: 13.5px; color: var(--muted); margin-top: 2px; }
+
+.dash-full .promo-banner {
+  background: var(--card); border: none; border-radius: 16px; box-shadow: var(--shadow);
+  padding: 12px 14px 12px 16px; margin: 0 0 12px; color: var(--ink-2); font-weight: 500;
+}
+.dash-full .promo-banner strong { color: var(--ink); }
+.dash-full .promo-banner .promo-text svg {
+  width: 30px; height: 30px; padding: 7px; border-radius: 10px; vertical-align: middle;
+  background: var(--accent-tint); color: var(--accent-dark); margin-right: 10px;
+}
+.dash-full .promo-banner.warn .promo-text svg { background: var(--red-tint); color: #C0281C; }
+
+.d-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 4px 0 18px; }
+.d-stat { background: var(--card); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); min-width: 0; }
+.d-stat-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.d-stat-i { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; }
+.d-stat-i svg { width: 21px; height: 21px; }
+.d-stat-tag { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+.d-stat-n { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-stat-l { font-size: 13px; color: var(--muted); margin-top: 6px; font-weight: 500; }
+.d-stat.orange .d-stat-i { background: var(--orange-tint); color: #C93400; }
+.d-stat.blue .d-stat-i { background: rgba(0, 122, 255, 0.12); color: #0A63C9; }
+.d-stat.red .d-stat-i, .d-stat.red .d-stat-tag { background: var(--red-tint); color: #C0281C; }
+.d-stat.hero { background: var(--accent-fill); color: #fff; box-shadow: 0 12px 26px -12px var(--accent-fill); }
+.d-stat.hero .d-stat-i, .d-stat.hero .d-stat-tag { background: rgba(255, 255, 255, 0.2); color: #fff; }
+.d-stat.hero .d-stat-l { color: #fff; }
+
+.d-grid { display: grid; grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.d-col { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.d-col > div:empty { display: none; }
+.d-col .card { margin: 0; }
+
+.d-card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.d-card-h { display: flex; align-items: center; gap: 10px; padding: 16px 18px 10px; }
+.d-ci { width: 30px; height: 30px; border-radius: 9px; background: var(--accent-tint); color: var(--accent-dark); display: grid; place-items: center; flex: none; }
+.d-ci svg { width: 17px; height: 17px; }
+.d-card-h h2 { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.d-cnt { font-size: 12px; color: var(--muted); font-weight: 500; }
+.d-empty { margin: 0; padding: 2px 18px 18px; font-size: 13.5px; color: var(--muted); }
+
+.d-tw { margin: 0; padding: 0 8px 8px; }
+.d-tw table { font-size: 13.5px; }
+.d-tw th { font-size: 11.5px; font-weight: 600; letter-spacing: .03em; padding: 8px 10px; border-bottom: 1px solid var(--hairline); }
+.d-tw td { padding: 11px 10px; vertical-align: middle; }
+.d-tw tbody tr:hover td { background: var(--bg); }
+.d-nm { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.d-nm strong { font-weight: 600; }
+.d-sub { font-size: 12px; color: var(--muted); margin-top: 1px; }
+
+.d-io { padding: 0 18px 8px; }
+.d-io-row { display: grid; grid-template-columns: 1fr 70px 70px; align-items: center; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--hairline-soft); }
+.d-io-row:last-child { border-bottom: none; }
+.d-io-row > b { text-align: center; font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.d-io-head { padding: 4px 0 8px; }
+.d-io-head span { font-size: 11.5px; font-weight: 600; color: var(--muted); text-align: center; }
+.d-io-head span:first-child { text-align: left; }
+.d-io-l { display: flex; align-items: center; gap: 9px; font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.d-dot { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+.d-dot.in { background: var(--green); }
+.d-dot.out { background: var(--orange); }
+.d-io-foot { display: flex; justify-content: space-between; padding: 12px 18px; background: var(--bg); font-size: 12.5px; color: var(--ink-2); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.d-occ { display: flex; align-items: center; gap: 18px; padding: 4px 18px 18px; }
+.d-donut { position: relative; width: 118px; height: 118px; flex: none; }
+.d-donut-c { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.d-donut-c b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; font-variant-numeric: tabular-nums; }
+.d-donut-c b span { font-size: 15px; color: var(--muted); font-weight: 600; }
+.d-donut-c small { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.d-occ-leg { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.d-occ-leg .r { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--ink-2); font-weight: 500; }
+.d-occ-leg .r b { margin-left: auto; color: var(--ink); font-variant-numeric: tabular-nums; }
+.d-occ-leg .r b span { color: var(--muted); font-weight: 500; }
+.d-occ-leg .r.sub { font-size: 12.5px; color: var(--muted); }
+.d-occ-leg .sw { width: 10px; height: 10px; border-radius: 3px; background: var(--fill); flex: none; }
+.d-occ-leg .sw.on { background: var(--accent); }
+.d-occ-leg hr { border: none; border-top: 1px solid var(--hairline-soft); margin: 1px 0; width: 100%; }
+
+.d-qs { padding: 0 18px; }
+.d-q { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--hairline-soft); }
+.d-q-t { width: 46px; flex: none; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.d-q-i { flex: 1; min-width: 0; }
+.d-q-i b { display: block; font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-q-i small { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-q-p { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+.d-qs .d-empty { padding: 0 0 12px; }
+.d-q-foot { padding: 11px 18px 14px; font-size: 12.5px; color: var(--muted); }
+
+@media (max-width: 1180px) {
+  .d-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .d-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ═══ หน้าการจองทั้งหมดบนคอม (bookings.js .book-full) — ตาม bookings-mockup ═══ */
+.d-filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 16px 18px 8px; }
+.d-sp { margin-left: auto; }
+.d-search {
+  display: flex; align-items: center; gap: 9px; height: 40px; padding: 0 13px; border-radius: 11px;
+  background: var(--fill); color: var(--muted); cursor: text;
+}
+.d-search span { display: grid; place-items: center; }
+.d-search svg { width: 16px; height: 16px; }
+.d-search input { border: none; background: none; padding: 0; height: 100%; width: 210px; font-size: 14px; box-shadow: none !important; }
+.d-filters select { width: auto; height: 40px; padding-top: 0; padding-bottom: 0; }
+.d-legend {
+  display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+  padding: 6px 18px 14px; border-bottom: 1px solid var(--hairline-soft);
+}
+.d-legend > span { display: inline-flex; align-items: center; gap: 7px; }
+.d-legend small { font-size: 12px; color: var(--muted); }
+.book-full .table-wrap { margin: 0; padding: 0 8px 8px; }
+.d-bktable th { font-size: 11.5px; font-weight: 600; letter-spacing: .03em; padding: 10px; border-bottom: 1px solid var(--hairline); }
+.d-bktable td { padding: 11px 10px; font-variant-numeric: tabular-nums; }
+.d-bktable tbody tr:hover td { background: var(--bg); }
+.d-bktable td.d-owe { color: #C0281C; font-weight: 600; }
+.d-bktable tr.d-cancel td { color: var(--muted); }
+.d-bktable tr.d-cancel strong { font-weight: 500; }
+
+/* ═══ การ์ดสถิติบนคอม (ทุกหน้าที่ใช้ .stat-grid) — ไอคอนบน ตัวเลขใหญ่ แบบ mockup ═══
+   มือถือคงแบบไอคอนข้างเดิม · หน้าเช็คอินใบแรกเป็นสีหลัก (งานวันนี้) */
+@media (min-width: 761px) {
+  .stat-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+  .stat { flex-direction: column; align-items: flex-start; gap: 14px; padding: 18px; }
+  .stat .n { font-size: 30px; letter-spacing: -0.02em; line-height: 1.1; }
+  .stat .l { font-size: 13px; margin-top: 6px; font-weight: 500; }
+  .stat-ico { width: 40px; height: 40px; }
+  .stat-ico svg { width: 21px; height: 21px; }
+  .stat[style*="cursor"]:hover { box-shadow: 0 2px 4px rgba(60, 35, 15, 0.06), 0 14px 30px rgba(60, 35, 15, 0.09); }
+
+  /* ── หน้าข้อมูลลงทะเบียนเช็คอิน (registrations.js .reg-page) — ตาม checkin-mockup ── */
+  .reg-page { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: start; }
+  .reg-page > * { grid-column: 1 / -1; }
+  .reg-page > .page-title { grid-column: 1; flex-direction: column; align-items: flex-start; gap: 2px; margin-bottom: 18px; }
+  .reg-page .reg-src { color: var(--muted); font-size: 13.5px !important; }
+  .reg-page > .reg-tools {
+    grid-column: 2; grid-row: 1; align-self: start; border: none; margin: 4px 0 0 !important; padding: 0 13px;
+    display: flex; align-items: center; gap: 9px; height: 42px; border-radius: 12px;
+    background: var(--card); box-shadow: var(--shadow); color: var(--muted);
+  }
+  .reg-page .reg-search-ico { display: grid; place-items: center; }
+  .reg-page .reg-search-ico svg { width: 16px; height: 16px; }
+  .reg-page .reg-tools input { border: none; background: none; padding: 0; height: 100%; width: 240px; box-shadow: none !important; font-size: 14px; }
+  .reg-page .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .reg-page .stat:first-child { background: var(--accent-fill); box-shadow: 0 12px 26px -12px var(--accent-fill); }
+  .reg-page .stat:first-child .stat-ico { background: rgba(255, 255, 255, 0.2); color: #fff; }
+  .reg-page .stat:first-child .n, .reg-page .stat:first-child .l { color: #fff; }
+  .reg-page .reg-seg .seg { display: flex; background: var(--card); box-shadow: var(--shadow); border-radius: 14px; padding: 5px; gap: 4px; }
+  .reg-page .reg-seg .seg-btn { height: 36px; padding: 0 16px; border-radius: 10px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+  .reg-page .reg-seg .seg-btn:not(.active):hover { background: var(--fill); color: var(--ink-2); }
+  .reg-page .reg-seg .seg-btn.active { background: var(--accent-fill); color: #fff; box-shadow: none; }
+  .reg-page .reg-ghead { font-size: 14px; font-weight: 700; color: var(--ink-2); margin: 22px 0 11px; }
+  .reg-page .reg-ghead .ic { width: 27px; height: 27px; border-radius: 8px; background: var(--accent-tint); color: var(--accent-dark); display: grid; place-items: center; }
+  .reg-page .reg-ghead .ic svg { width: 15px; height: 15px; }
+  .reg-page .reg-ghead .c { font-weight: 500; font-size: 12.5px; color: var(--muted); opacity: 1; }
+  .reg-page .card.day-guest { border-radius: 16px; margin-bottom: 10px; transition: box-shadow .15s var(--ease), transform .15s var(--ease); }
+  .reg-page .card.day-guest:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(60, 35, 15, 0.06), 0 14px 30px rgba(60, 35, 15, 0.09); }
+  .reg-page .card.day-guest strong { font-size: 15px; }
+  .reg-page .card.reg-dupe { background: #FFF6EE; box-shadow: var(--shadow), inset 0 0 0 1.5px rgba(201, 52, 0, 0.35); }
+}
+
+/* ═══ คิวบริการบนคอม (appointments.js .appt-full) — ตาม appointments-mockup ═══
+   แถบเครื่องมือในการ์ดเดียว · รายวัน 2 โซนคู่กัน · แต่ละรอบเป็นแถว (เวลา+ความจุ | คิว) */
+.d-qbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; margin-bottom: 18px; overflow: visible; }
+.d-qbar .seg { padding: 4px; border-radius: 12px; }
+.d-qbar .seg-btn { height: 34px; padding: 0 15px; border-radius: 9px; font-size: 13.5px; }
+.d-qbar .seg-btn.active { background: var(--accent-fill); color: #fff; }
+.d-datenav { display: flex; align-items: center; gap: 4px; }
+.d-datenav input { width: 160px; height: 40px; text-align: center; }
+.d-datenav .btn { width: 36px; height: 36px; padding: 0; justify-content: center; }
+.d-qbar > select { width: auto; height: 40px; padding-top: 0; padding-bottom: 0; }
+
+.d-zgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.d-zstack { display: flex; flex-direction: column; gap: 18px; }
+.d-zstack > .slot-board { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 0 0 16px; overflow: hidden; margin: 0; }
+.d-zstack > .slot-board .week-grid { padding: 0 16px; }
+.d-zone { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin: 0 !important; }
+.d-zone .sb-head, .d-zstack .sb-head { margin: 0 0 4px; padding: 14px 18px; border-radius: 0; background: var(--cat-tint); border: none; }
+
+.d-slot { display: flex; gap: 14px; padding: 11px 18px; border-bottom: 1px solid var(--hairline-soft); }
+.d-slot:last-child { border-bottom: none; }
+.d-slot-t { width: 62px; flex: none; padding-top: 2px; }
+.d-slot-t b { display: block; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.d-cap { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--fill); color: var(--muted); font-variant-numeric: tabular-nums; }
+.d-slot--part .d-cap { background: var(--green-tint); color: #1E7A37; }
+.d-slot--full .d-cap { background: var(--red-tint); color: #C0281C; }
+.d-slot-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 7px; justify-content: center; }
+.d-appt {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; width: 100%; text-align: left;
+  background: var(--bg); border: 1px solid transparent; border-radius: 11px; padding: 8px 11px;
+  font-family: inherit; font-size: 13.5px; color: var(--ink); cursor: pointer; transition: border-color .13s var(--ease);
+}
+.d-appt:hover { border-color: var(--cat); }
+.d-appt b { font-weight: 600; }
+.d-appt.done { opacity: .7; }
+.d-atag { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; white-space: nowrap; background: var(--cat-tint); color: var(--cat); }
+.slot-board--grooming .d-atag { color: #5B3FD6; }
+.slot-board--exercise .d-atag { color: #0A6F78; }
+.d-ap { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.d-appt.done .d-ap { color: #1E7A37; font-weight: 600; font-size: 12.5px; }
+.d-slot-free { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; color: var(--muted); }
+.d-slot-add {
+  margin-left: auto; width: 32px; height: 32px; border-radius: 9px; border: 1.5px dashed var(--hairline);
+  background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; flex: none;
+}
+.d-slot-add:hover { border-color: var(--cat); border-style: solid; color: var(--cat); background: var(--cat-tint); }
+.d-slot-add svg { width: 16px; height: 16px; }
+@media (max-width: 1180px) { .d-zgrid { grid-template-columns: minmax(0, 1fr); } }
+
+/* ═══ ลูกค้า & สัตว์เลี้ยงบนคอม (customers.js .cust-full) — ตาม customers-mockup ═══ */
+.cust-full .table-wrap { margin: 0; padding: 0 8px 8px; border-top: 1px solid var(--hairline-soft); }
+.d-cname { display: flex; align-items: center; gap: 10px; }
+.d-cava {
+  width: 34px; height: 34px; border-radius: 11px; flex: none; display: grid; place-items: center;
+  background: var(--accent-tint); color: var(--accent-dark); font-weight: 700; font-size: 14px;
+}
+.d-pets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.d-petc {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600;
+  padding: 3px 9px; border-radius: 8px; background: rgba(0, 122, 255, 0.1); color: #0A63C9;
+}
+.d-petc.cat { background: rgba(175, 82, 222, 0.11); color: #8A38B8; }
+.d-petc svg { width: 14px; height: 14px; }
+
+/* ═══ ปฏิทินห้องว่างบนคอม (calendar.js .cal-full) — ตาม calendar-mockup ═══
+   สีป้าย/แถบตามระดับความเต็ม: เขียว = ว่างเยอะ · ส้ม = เริ่มเต็ม (≥70%) · แดง = เต็ม/เกิน */
+.d-month { min-width: 150px; text-align: center; font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.cal-full .d-datenav .btn { width: 38px; height: 38px; }
+.cal-full .d-filters select { width: auto; }
+.d-cal { padding: 4px 18px 0; }
+.d-cal .cal-grid { gap: 8px; }
+.d-cal .cal-dow { font-size: 12px; font-weight: 700; padding: 4px 0 6px; }
+.d-cal .cal-cell {
+  min-height: 92px; border: 1px solid var(--hairline-soft); border-radius: 13px; padding: 9px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 5px; background: var(--card);
+}
+.d-cal .cal-cell.clickable:hover { border-color: var(--accent); background: var(--card); transform: translateY(-1px); box-shadow: var(--shadow); }
+.d-cal .cal-cell .d { font-size: 13px; font-weight: 700; color: var(--ink-2); }
+.d-cal .cal-cell.today { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-tint); }
+.d-cal .cal-cell.today .d { color: var(--accent-dark); }
+.d-cal .cal-occ { margin: 0; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 7px; }
+.d-cal .cal-occ.muted { padding: 3px 0; color: var(--muted); font-weight: 500; }
+.d-cal .lvl-low .cal-occ, .cal-occ.lg-low { background: var(--green-tint); color: #1E7A37; }
+.d-cal .lvl-mid .cal-occ, .cal-occ.lg-mid { background: var(--orange-tint); color: #A15C00; }
+.d-cal .lvl-full .cal-occ, .cal-occ.lg-full { background: var(--red-tint); color: #C0281C; }
+.d-cal .cal-pets { margin-top: 0; }
+.d-cal-bar { width: 100%; height: 4px; border-radius: 3px; background: var(--fill); overflow: hidden; margin-top: auto; }
+.d-cal-bar i { display: block; height: 100%; border-radius: 3px; background: var(--green); }
+.lvl-mid .d-cal-bar i { background: var(--orange); }
+.lvl-full .d-cal-bar i { background: var(--red); }
+.d-cal-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 16px 18px; font-size: 12.5px; color: var(--muted); }
+.d-cal-legend .cal-occ { font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 7px; margin: 0; }
+
+/* ═══ คำขอจองจากเว็บบนคอม (booking-requests.js .req-full) — ตาม requests-mockup ═══ */
+.d-seg {
+  display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 5px; margin-bottom: 18px;
+  background: var(--card); border-radius: 14px; box-shadow: var(--shadow);
+}
+.d-seg button {
+  height: 36px; padding: 0 16px; border: none; border-radius: 10px; background: none; cursor: pointer;
+  font-family: inherit; font-size: 13.5px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.d-seg button:not(.on):hover { background: var(--fill); color: var(--ink-2); }
+.d-seg button.on { background: var(--accent-fill); color: #fff; }
+.d-req {
+  background: var(--card); border-radius: 16px; box-shadow: var(--shadow); padding: 15px 17px; margin-bottom: 10px;
+  cursor: pointer; transition: box-shadow .15s var(--ease), transform .15s var(--ease);
+}
+.d-req:hover { transform: translateY(-1px); box-shadow: 0 2px 4px rgba(60, 35, 15, 0.06), 0 14px 30px rgba(60, 35, 15, 0.09); }
+.d-req.done { opacity: .72; }
+.d-req .li-head strong { font-size: 15px; }
+.d-req-meta { font-size: 12.5px; color: var(--muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.d-req-acts { margin-top: 12px; }
+.d-req .li-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+/* ═══ รายงานรายเดือน (reports.js) — KPI 4 ใบ + 2 คอลัมน์ ตาม reports-mockup ═══ */
+.rep-page .page-title h1 { margin: 0; }
+.rep-page .page-title select { width: auto; }
+.rep-page .d-grid { margin-bottom: 8px; }
+.d-note { margin: 0; padding: 4px 18px 16px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.rep-page .d-tw .bar { width: 160px; }
+.rep-page .d-tw tfoot td { border-top: 1px solid var(--hairline); border-bottom: none; }
+.d-fins { padding: 0 18px 10px; }
+.d-fin { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--hairline-soft); font-size: 13.5px; font-weight: 600; color: var(--ink-2); }
+.d-fin:last-child { border-bottom: none; }
+.d-fin > span { display: flex; align-items: center; gap: 9px; }
+.d-fin b { font-size: 16px; font-variant-numeric: tabular-nums; color: var(--ink); }
+.d-fin b.owe { color: #C0281C; }
+.d-bars { padding: 2px 18px 10px; display: flex; flex-direction: column; gap: 12px; }
+.d-barrow { display: grid; grid-template-columns: 96px minmax(0, 1fr) 48px 84px; align-items: center; gap: 10px; font-size: 13px; }
+.d-barrow .bl { color: var(--ink-2); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.d-barrow .bt { height: 8px; border-radius: 5px; background: var(--fill); overflow: hidden; }
+.d-barrow .bt i { display: block; height: 100%; border-radius: 5px; background: var(--accent); }
+.d-barrow .bv { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.d-barrow b { text-align: right; font-variant-numeric: tabular-nums; }
+.rep-page .d-io-foot { margin-top: 4px; }
+@media (max-width: 760px) {
+  /* มือถือมีการ์ด .rep-hero แสดงยอดขายรวมอยู่แล้ว — ซ่อน KPI ใบแรกที่ซ้ำกัน */
+  .rep-kpis .d-stat.hero { display: none; }
+  .rep-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px; }
+  .rep-kpis .d-stat { padding: 12px; border-radius: 18px; }
+  .rep-kpis .d-stat-h { margin-bottom: 8px; }
+  .rep-kpis .d-stat-i { width: 32px; height: 32px; border-radius: 10px; }
+  .rep-kpis .d-stat-tag { display: none; }
+  .rep-kpis .d-stat-n { font-size: 18px; }
+  .rep-kpis .d-stat-l { font-size: 11.5px; line-height: 1.3; }
+  .rep-sub { display: none; }
+  .d-barrow { grid-template-columns: 78px minmax(0, 1fr) 44px; }
+  .d-barrow b { grid-column: 1 / -1; text-align: left; margin-top: -8px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .d-occ { gap: 12px; }
+}
+.d-stat.green .d-stat-i, .d-stat.green .d-stat-tag { background: var(--green-tint); color: #1E7A37; }
+
+/* ═══ ฟอร์มการจองบนคอม — 2 แผงตาม booking-form-mockup ═══
+   ซ้าย = กลุ่มฟอร์มเดิมทั้งหมด · ขวา = สรุปยอด + ปุ่มบันทึก (ติดอยู่ตลอดตอนเลื่อน) */
+@media (min-width: 761px) {
+  .modal.modal--full { max-width: 1060px; }
+  .modal--full .bk-form { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0 22px; align-items: start; }
+  .modal--full .bk-form > h2 { grid-column: 1 / -1; font-size: 21px; letter-spacing: -0.02em; margin-bottom: 16px; }
+  .bf-main { min-width: 0; }
+  .bf-side {
+    position: sticky; top: 0; align-self: start;
+    background: var(--bg); border-radius: 18px; padding: 18px;
+  }
+  .bf-side-h { margin: 0 0 10px; font-size: 15px; }
+  .bf-side .summary-box { background: var(--card); padding: 14px 16px; }
+  .bf-side .bf-acts { justify-content: stretch !important; margin-top: 12px; }
+  .bf-side .bf-acts .btn { flex: 1 1 auto; justify-content: center; }
+  .bf-side .sticky-summary {
+    position: static; margin: 14px 0 0; padding: 14px 0 0; background: none; border: none; border-top: 1px solid var(--hairline);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    flex-direction: column; align-items: stretch; gap: 12px;
+  }
+  .bf-side .sticky-summary .ss-figures { flex-direction: row; justify-content: space-between; align-items: baseline; }
+  .bf-side .sticky-summary .ss-deposit { font-size: 19px; }
+  .bf-side .sticky-summary .btn { height: 48px; justify-content: center; font-size: 15.5px; border-radius: 14px; }
+}
+@media (max-width: 760px) {
+  .bf-main, .bf-side { display: contents; }
+  .bf-side-h { display: none; }
+  .modal--full .bf-side > .summary-box { background: var(--card); box-shadow: var(--shadow); border-radius: 20px; margin-bottom: 12px; }
+}
+/* แท็บเล็ต/จอเล็ก: ที่ไม่พอวาง 2 แผง → เรียงลงมา สรุปยอดอยู่ท้ายฟอร์ม */
+@media (min-width: 761px) and (max-width: 1000px) {
+  .modal--full .bk-form { grid-template-columns: minmax(0, 1fr); }
+  .bf-side { position: static; margin-top: 4px; }
+}
+
+/* ═══ หน้าที่ไม่มีใน mockup (ข่าวสาร · ตั้งค่า · สำรองข้อมูล · งานวันนี้ของพี่เลี้ยง) — ภาษาเดียวกับหน้าอื่นบนคอม ═══ */
+@media (min-width: 761px) {
+  /* หน้าฟอร์ม/อ่าน: ไม่ยืดเต็มจอกว้าง อ่านและกรอกง่ายกว่า */
+  #content[data-route="settings"], #content[data-route="backup"], #content[data-route="news"] { max-width: 1080px; }
+  #content[data-route="settings"] .card > h2:first-child,
+  #content[data-route="backup"] .card > h2:first-child { font-size: 16px; letter-spacing: -0.01em; }
+  #content[data-route="backup"] .card[style*="--orange"] { border: none !important; background: #FFF6EE !important; box-shadow: var(--shadow), inset 0 0 0 1px rgba(201, 77, 7, 0.18); }
+}
+/* การ์ดในหน้างานวันนี้ (พี่เลี้ยง) — หัวแบบแดชบอร์ด เนื้อในเป็นการ์ดน้องเดิม */
+.st-card { padding-bottom: 14px; }
+.st-card > :not(.d-card-h) { margin-left: 18px; margin-right: 18px; }
+.st-card > .lineitem { margin-top: 0; margin-bottom: 10px; }
+.st-card > .lineitem:last-child { margin-bottom: 0; }
+.st-empty { margin: 0; font-size: 13.5px; }
+.d-stat.purple .d-stat-i { background: rgba(175, 82, 222, 0.12); color: #8A38B8; }

@@ -128,8 +128,8 @@ export function renderAppointments(container) {
   // 'day' = ตารางรอบเวลาละเอียดของวันเดียว · 'week' = ภาพรวม 7 วัน ตอบลูกค้าว่า "ว่างวันไหน"
   let mode = 'day';
 
-  const dateInput = el('input', { type: 'date', value: todayISO(), style: 'max-width:170px' });
-  const typeFilter = el('select', { style: 'max-width:220px' }, [
+  const dateInput = el('input', { type: 'date', value: todayISO(), 'aria-label': 'เลือกวันที่' });
+  const typeFilter = el('select', { 'aria-label': 'กรองประเภทบริการ' }, [
     el('option', { value: '', text: 'ทุกประเภท' }),
     ...APPOINTMENT_TYPES.map(t => el('option', { value: t.id, text: t.label })),
   ]);
@@ -161,25 +161,28 @@ export function renderAppointments(container) {
   todayBtn.onclick = () => { dateInput.value = todayISO(); draw(); };
 
   const board = el('div', {});
+  const subtitle = el('div', { class: 'd-date' });
 
   // มือถือ = ไทม์ไลน์แบบแอป (.mappt) · คอม = บอร์ดเต็ม (.appt-full) — สลับด้วย CSS
   const mobile = buildMobileQueue();
   container.appendChild(mobile.node);
   container.appendChild(el('div', { class: 'appt-full' }, [
-    el('div', { class: 'page-title' }, [
-      el('h1', { text: 'Grooming & โซนออกกำลังกาย' }),
-      addBtn,
+    el('div', { class: 'd-top' }, [el('h1', { text: 'Grooming & โซนออกกำลังกาย' }), subtitle]),
+    el('div', { class: 'd-card d-qbar' }, [
+      seg,
+      el('div', { class: 'd-datenav' }, [prevBtn, dateInput, nextBtn]),
+      todayBtn, typeFilter, el('span', { class: 'd-sp' }), addBtn,
     ]),
-    el('div', { class: 'card' }, [
-      el('div', { class: 'toolbar' }, [seg, prevBtn, dateInput, nextBtn, todayBtn, typeFilter]),
-      board,
-    ]),
+    board,
   ]));
 
   const draw = () => {
     const date = dateInput.value || todayISO();
     const only = typeFilter.value;
     board.innerHTML = '';
+    // รายวัน = 2 โซนวางคู่กัน (ตาม mockup) · 7 วัน = เรียงลงมาเต็มความกว้าง
+    board.className = mode === 'day' && !only ? 'd-zgrid' : 'd-zstack';
+    subtitle.textContent = mode === 'day' ? 'ตารางคิวรายวัน' : 'ภาพรวม 7 วัน — กดวันที่เพื่อดูรอบเวลา';
     const types = only ? APPOINTMENT_TYPES.filter(t => t.id === only) : APPOINTMENT_TYPES;
     types.forEach(t => board.appendChild(
       mode === 'week'
@@ -366,61 +369,66 @@ function boardHeader(type, subtitle, booked, capText) {
   ]);
 }
 
+// ตารางรอบเวลาของวันที่เลือก แบบแถว (ตาม appointments-mockup): ซ้าย = เวลา+ความจุ · ขวา = คิวในรอบ
+// รอบว่างย่อเหลือบรรทัดเดียว ทั้งวันจึงกวาดตาดูได้ในจอเดียว
 function buildSlotBoard(type, date) {
   const s = getSettings();
   const cap = capacityFor(type.id, s);
   const dayCount = _appts.filter(a => a.type === type.id && a.date === date && a.status !== 'ยกเลิก').length;
-  const wrap = el('div', { class: `slot-board slot-board--${type.id}` }, [
-    boardHeader(type, formatDateTH(date), dayCount ? `${dayCount} คิว` : 'ยังว่าง', `รับได้รอบละ ${cap}`),
+  const wrap = el('div', { class: `slot-board slot-board--${type.id} d-zone` }, [
+    boardHeader(type, `${formatDateTH(date)} · รับได้รอบละ ${cap} ตัว`, dayCount ? `${dayCount} คิว` : 'ยังว่าง'),
   ]);
 
-  const grid = el('div', { class: 'slot-grid' });
   slotsFor(type.id).forEach(time => {
     const inSlot = _appts.filter(a => a.type === type.id && a.date === date && a.time === time && a.status !== 'ยกเลิก');
     const n = inSlot.reduce((sum, a) => sum + petCountOf(a), 0); // นับตัวจริง (การ์ดอาจมีหลายตัว)
     const state = n === 0 ? 'free' : (n >= cap ? 'full' : 'part');
     // รอบดึกที่รับเฉพาะอาบน้ำ — บอกไว้บนช่อง กันพนักงานรับงานตัดขนแล้วมาพบทีหลังว่าจองไม่ได้
     const bathOnly = type.id === 'grooming' && !slotsFor('grooming', true).includes(time);
-    const cell = el('div', { class: `slot slot--${state}` }, [
-      el('div', { class: 'slot-time' }, [
-        el('span', { text: time }),
-        el('span', { class: 'slot-count', text: `${n}/${cap}` }),
-      ]),
-      bathOnly ? el('div', { class: 'slot-tag', text: 'อาบน้ำเท่านั้น' }) : null,
+    const add = el('button', { class: 'd-slot-add', html: icons.plus, 'aria-label': `จองรอบ ${time}`, title: `จองรอบ ${time}` });
+    add.onclick = () => openAppointmentForm(null, date, { type: type.id, time });
+
+    const body = el('div', { class: 'd-slot-b' }, [
       ...inSlot.map(a => {
-        // 1 การ์ดอาจมีหลายตัว → ป้ายเดียวติด "×N ตัว" · ตัวเลข n/cap ด้านบนนับตัวจริง
+        // 1 การ์ดอาจมีหลายตัว → ป้ายเดียวติด "×N ตัว" · ตัวเลข n/cap ด้านซ้ายนับตัวจริง
         const pets = petsOf(a);
         const pcount = pets.length;
         const firstName = pets[0]?.petName || a.customerName || '-';
         const hasCut = a.type === 'grooming' && pets.some(p => groomServiceOf(p) !== 'bath');
-        // งานตัดขนกินเวลานานกว่าเท่าตัว — ติดป้ายไว้ให้เห็นตอนวางแผนคิวทั้งวัน
-        const chip = el('button', {
-          class: 'slot-chip',
-          title: `${a.type === 'grooming' ? groomServiceLabel(groomServiceOf(a)) : 'ออกกำลังกาย'}${pcount > 1 ? ` · ${pcount} ตัว` : ''} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
-        }, [
-          el('span', { class: 'slot-pet', text: pcount > 1 ? `${firstName} ×${pcount} ตัว` : firstName }),
-          el('span', { class: 'slot-price', text: formatBaht(a.price) }),
-          // ป้ายอยู่ท้ายสุดใน DOM เพื่อให้ตกลงบรรทัดใหม่ ไม่ไปบีบชื่อน้องจนอ่านไม่ออก
-          hasCut
-            ? el('span', { class: 'slot-tag slot-tag--inline', text: pcount > 1 ? 'มีตัดขน' : (groomServiceOf(a) === 'cut' ? 'ตัดขน' : 'อาบน้ำ+ตัดขน') }) : null,
+        const tags = [
+          a.type === 'exercise' ? exerciseZoneLabelSafe(a)
+            : hasCut ? (pcount > 1 ? 'มีตัดขน' : (groomServiceOf(a) === 'cut' ? 'ตัดขน' : 'อาบน้ำ+ตัดขน')) : 'อาบน้ำ',
           // โซนออกกำลังกายที่มี add-on → มีคิวกรูมผูกอยู่ · คิวกรูมที่มาจากการเล่น → บอกที่มา
-          (a.type === 'exercise' && Number(a.addOnTotal) > 0)
-            ? el('span', { class: 'slot-tag slot-tag--inline', text: '+ กรูม' }) : null,
-          (a.type === 'grooming' && a.source === 'exercise-addon')
-            ? el('span', { class: 'slot-tag slot-tag--inline', text: 'เสริมจากเล่น' }) : null,
+          (a.type === 'exercise' && Number(a.addOnTotal) > 0) ? '+ กรูม' : null,
+          (a.type === 'grooming' && a.source === 'exercise-addon') ? 'เสริมจากเล่น' : null,
+        ].filter(Boolean);
+        const chip = el('button', {
+          class: 'd-appt' + (a.status === 'เสร็จแล้ว' ? ' done' : ''),
+          title: `${a.customerName || ''} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
+        }, [
+          el('b', { text: pcount > 1 ? `${firstName} ×${pcount} ตัว` : firstName }),
+          ...tags.map(t => el('span', { class: 'd-atag', text: t })),
+          a.status === 'เสร็จแล้ว' ? el('span', { class: 'd-ap', text: 'เสร็จแล้ว' })
+            : Number(a.price) > 0 ? el('span', { class: 'd-ap', text: formatBaht(a.price) }) : null,
         ].filter(Boolean));
         chip.onclick = () => openAppointmentForm(a);
         return chip;
       }),
-      (() => {
-        const add = el('button', { class: 'slot-add', html: icons.plus, 'aria-label': `จองรอบ ${time}` });
-        add.onclick = () => openAppointmentForm(null, date, { type: type.id, time });
-        return add;
-      })(),
-    ]);
-    grid.appendChild(cell);
+      n < cap ? el('div', { class: 'd-slot-free' }, [
+        el('span', { text: n ? `รับเพิ่มได้ ${cap - n} ตัว` : `ว่าง — รับได้ ${cap} ตัว` }),
+        bathOnly ? el('span', { class: 'd-atag', text: 'อาบน้ำเท่านั้น' }) : null,
+        add,
+      ].filter(Boolean)) : null,
+    ].filter(Boolean));
+
+    wrap.appendChild(el('div', { class: `d-slot d-slot--${state}` }, [
+      el('div', { class: 'd-slot-t' }, [
+        el('b', { text: time }),
+        el('span', { class: 'd-cap', text: n >= cap ? `${n}/${cap} เต็ม` : `${n}/${cap}` }),
+      ]),
+      body,
+    ]));
   });
-  wrap.appendChild(grid);
   return wrap;
 }
 

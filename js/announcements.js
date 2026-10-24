@@ -120,9 +120,9 @@ export function renderAnnouncements(container) {
   const owner = isOwner();
   let showArchive = false; // เจ้าของกดดู "คลังข่าว" (ปิด/หมดอายุ)
 
-  container.appendChild(el('div', { class: 'page-title' }, [
+  container.appendChild(el('div', { class: 'd-top' }, [
     el('h1', { text: 'ข่าวสารร้าน' }),
-    el('span', { class: 'muted', text: owner ? 'โพสต์/แก้ไขข่าวให้พนักงานทั้งร้าน' : 'ข่าวสาร ประกาศ และโปรโมชั่นจากร้าน' }),
+    el('div', { class: 'd-date', text: owner ? 'โพสต์/แก้ไขข่าวให้พนักงานทั้งร้าน' : 'ข่าวสาร ประกาศ และโปรโมชั่นจากร้าน' }),
   ]));
 
   if (owner) {

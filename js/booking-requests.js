@@ -74,13 +74,14 @@ export function renderBookingRequests(container) {
   // มือถือ = ชิปกรอง + การ์ดแบบแอป (.mreq) · คอม = แบบเดิม (.req-full) — ข้อมูลและตัวกรองชุดเดียวกัน
   const mobileWrap = el('div', { class: 'mreq' });
   container.appendChild(mobileWrap);
+  // คอม: แท็บแบ่งกลุ่มแทนดรอปดาวน์ (ตาม requests-mockup) — filterSel ยังเป็นตัวเก็บค่าที่เลือก
+  const seg = el('div', { class: 'd-seg', role: 'tablist' });
   container.appendChild(el('div', { class: 'req-full' }, [
-    el('div', { class: 'page-title' }, [
+    el('div', { class: 'd-top' }, [
       el('h1', { text: 'คำขอจองจากเว็บ' }),
-      filterSel,
+      el('div', { class: 'd-date', text: 'ลูกค้ากรอกฟอร์มที่ perfectbkk.com → ตรวจแล้วกด "สร้างการจอง" เพื่อเติมห้อง/ราคา/มัดจำ' }),
     ]),
-    el('p', { class: 'muted', style: 'font-size:13px;margin-top:-8px', text:
-      'ลูกค้ากรอกฟอร์มจองที่ perfectbkk.com → คำขอเด้งมาที่นี่ → ตรวจแล้วกด "สร้างการจอง" เพื่อเติมห้อง/ราคา/มัดจำ' }),
+    seg,
     listWrap,
   ]));
 
@@ -94,10 +95,17 @@ export function renderBookingRequests(container) {
       .sort((a, b) => String(b.submittedAt || '').localeCompare(String(a.submittedAt || '')));
 
     drawMobile(mobileWrap, rows, f, (v) => { filterSel.value = v; draw(); });
+    const newN = _reqs.filter(r => (r.status || 'new') === 'new').length;
+    seg.innerHTML = '';
+    [['new', `ยังไม่จัดการ · ${newN}`], ['all', 'ทั้งหมด'], ['done', 'จัดการแล้ว']].forEach(([v, label]) => {
+      const b = el('button', { class: v === f ? 'on' : '', role: 'tab', 'aria-selected': String(v === f), text: label });
+      b.onclick = () => { filterSel.value = v; draw(); };
+      seg.appendChild(b);
+    });
     listWrap.innerHTML = '';
     if (!rows.length) {
-      listWrap.appendChild(el('div', { class: 'card' }, [
-        el('p', { class: 'muted', style: 'padding:16px;text-align:center', text:
+      listWrap.appendChild(el('div', { class: 'd-card' }, [
+        el('p', { class: 'd-empty', style: 'padding:22px 18px;text-align:center', text:
           f === 'new' ? 'ไม่มีคำขอค้างอยู่ — เคลียร์หมดแล้ว' : 'ยังไม่มีคำขอจองเข้ามา' }),
       ]));
       return;
@@ -106,7 +114,11 @@ export function renderBookingRequests(container) {
       const t = typeOf(r);
       const isNew = (r.status || 'new') === 'new';
       const pet = petIdFromWeb(r.pet);
-      const card = el('div', { class: `card day-guest section-card section--${t.color}`, style: 'padding:14px 16px' }, [
+      const when = [
+        r.checkin ? (r.checkout ? rangeOf({ checkIn: r.checkin, checkOut: r.checkout }) : shortDate(r.checkin)) : '',
+        r.time ? `${r.time} น.` : '',
+      ].filter(Boolean).join(' · ') || 'ไม่ระบุวัน';
+      const card = el('div', { class: 'd-req' + (isNew ? '' : ' done'), role: 'button', tabindex: '0' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [
             el('strong', { text: r.owner || '-' }),
@@ -122,10 +134,13 @@ export function renderBookingRequests(container) {
           r.room ? el('span', { class: 'pill grey', text: r.room }) : null,
           ...onlineChips(r),
         ].filter(Boolean)),
-        el('div', { class: 'muted', style: 'font-size:13px', text:
-          `${r.checkin ? formatDateTH(r.checkin) : '-'}${r.checkout ? ` → ${formatDateTH(r.checkout)}` : ''}${r.time ? ` · ${r.time} น.` : ''} · ส่งเมื่อ ${r.submittedAt ? new Date(r.submittedAt).toLocaleString('th-TH') : '-'}` }),
-      ]);
+        el('div', { class: 'd-req-meta', text:
+          `${when} · ส่งเมื่อ ${r.submittedAt ? new Date(r.submittedAt).toLocaleString('th-TH') : '-'}` }),
+        // ปุ่มนี้เปิดหน้ารายละเอียดเดิม (ที่มีปุ่มสร้างการจองจริง) — ไม่ได้สร้างอะไรเอง
+        isNew ? el('div', { class: 'd-req-acts' }, [el('span', { class: 'btn primary sm', text: 'ตรวจคำขอ → สร้างการจอง' })]) : null,
+      ].filter(Boolean));
       card.onclick = () => openRequestDetail(r);
+      card.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openRequestDetail(r); } };
       listWrap.appendChild(card);
     });
   };

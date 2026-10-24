@@ -13,7 +13,10 @@ import { icons } from './icons.js';
 export async function renderSettings(container) {
   const s = structuredClone(cachedSettings() || await getSettings());
 
-  container.appendChild(el('div', { class: 'page-title' }, [el('h1', { text: 'ตั้งค่า' })]));
+  container.appendChild(el('div', { class: 'd-top' }, [
+    el('h1', { text: 'ตั้งค่า' }),
+    el('div', { class: 'd-date', text: 'ราคาห้อง · ความจุ · บริการ · สิทธิ์พี่เลี้ยง · ข้อมูลร้าน' }),
+  ]));
 
   // ── ราคาห้อง + ความจุ (แยกห้องสุนัข/ห้องแมว) ──
   // ข้อมูลเก่าเก็บความจุเป็นเลขเดียวรวมทุกสัตว์ → แปลงเป็น {dog, cat} ให้แก้ต่อได้

@@ -18,7 +18,7 @@ export function renderReports(container) {
   _unsub.forEach(u => u()); _unsub = [];
 
   const monthSel = el('select', { style: 'max-width:200px' });
-  const summary = el('div', { class: 'stat-grid', style: 'margin-bottom:16px' });
+  const summary = el('div', { class: 'd-stats rep-kpis' });
   const detail = el('div', {});
 
   // มือถือ: การ์ดสรุปใหญ่ด้านบน (.rep-hero แสดงเฉพาะจอแคบ) · ตาราง/ตัวเลขชุดเดิมทั้งหมดอยู่ใต้การ์ด
@@ -26,7 +26,8 @@ export function renderReports(container) {
   const page = el('div', { class: 'rep-page' });
   container.appendChild(page);
   page.appendChild(el('div', { class: 'page-title' }, [
-    el('h1', { text: 'รายงานรายเดือน' }), monthSel,
+    el('div', {}, [el('h1', { text: 'รายงานรายเดือน' }), el('div', { class: 'd-date rep-sub', text: 'สรุปยอดขาย · รายได้ · อัตราเข้าพัก' })]),
+    monthSel,
   ]));
   page.append(hero, summary, detail);
 
@@ -124,28 +125,47 @@ export function renderReports(container) {
       ]),
     );
 
+    // ── การ์ด KPI 4 ใบ (ตาม reports-mockup) — ใบแรกสีหลัก · ตัวเลขอื่นย้ายไปอยู่ในการ์ดด้านล่างครบทุกตัว ──
     summary.innerHTML = '';
     [
-      ['การจองห้องพัก', String(inMonth.length), icons.bookings, 'blue'],
-      ['ยอดขายห้องพัก', formatBaht(revenue), icons.home, 'blue'],
-      ['ยอดขายบริการ', formatBaht(serviceRevenue), icons.star, 'purple'],
-      ['ยอดขายทั้งร้าน', formatBaht(revenue + serviceRevenue), icons.chart, 'green'],
-      ['รับเงินแล้วจริง (ห้องพัก)', formatBaht(received), icons.banknote, 'green'],
-      ['รับมัดจำแล้ว', formatBaht(deposit), icons.check, 'green'],
-      ['ยอดค้างรับ (ห้องพัก)', formatBaht(balance), icons.alert, 'red'],
-      ['รวมส่วนลด (ห้องพัก)', formatBaht(discount), icons.star, 'orange'],
-      ['อัตราเข้าพัก', `${occupancy.toFixed(1)}%`, icons.chart, 'purple'],
-    ].forEach(([l, n, ico, color]) => summary.appendChild(
-      el('div', { class: `stat stat--${color}` }, [
-        el('div', { class: 'stat-ico', html: ico }),
-        el('div', {}, [el('div', { class: 'n', text: n }), el('div', { class: 'l', text: l })]),
+      ['hero', icons.chart, thShort(cur), formatBaht(revenue + serviceRevenue), 'ยอดขายทั้งร้าน · ห้องพัก + บริการ'],
+      ['blue', icons.bookings, null, String(inMonth.length), 'การจองห้องพัก'],
+      ['green', icons.home, 'เข้าพัก', `${occupancy.toFixed(1)}%`, 'อัตราเข้าพักเฉลี่ย'],
+      ['red', icons.alert, balance > 0 ? 'ค้าง' : null, formatBaht(balance), 'ยอดค้างรับ (ห้องพัก)'],
+    ].forEach(([tone, ico, tag, n, l]) => summary.appendChild(
+      el('div', { class: `d-stat ${tone}` }, [
+        el('div', { class: 'd-stat-h' }, [
+          el('span', { class: 'd-stat-i', html: ico }),
+          tag ? el('span', { class: 'd-stat-tag', text: tag }) : null,
+        ].filter(Boolean)),
+        el('div', { class: 'd-stat-n', text: n }),
+        el('div', { class: 'd-stat-l', text: l }),
       ])
     ));
 
     detail.innerHTML = '';
+    const left = el('div', { class: 'd-col' });
+    const right = el('div', { class: 'd-col' });
+    detail.appendChild(el('div', { class: 'd-grid' }, [left, right]));
+
+    // ── รายได้แยกหมวด: ห้องพัก vs บริการ (โดนัท 2 สี) ──
+    const total = revenue + serviceRevenue;
+    const roomPct = total > 0 ? Math.round(revenue / total * 100) : 0;
+    const donut = el('div', { class: 'd-donut', html:
+      `<svg viewBox="0 0 42 42" width="118" height="118" aria-hidden="true">
+        <circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--fill)" stroke-width="5"></circle>
+        ${total > 0 ? `<circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--accent)" stroke-width="5" stroke-dasharray="${roomPct} ${100 - roomPct}" stroke-dashoffset="25"></circle>
+        <circle cx="21" cy="21" r="15.915" fill="none" stroke="#0A84FF" stroke-width="5" stroke-dasharray="${100 - roomPct} ${roomPct}" stroke-dashoffset="${25 - roomPct}"></circle>` : ''}
+      </svg>` });
+    donut.appendChild(el('div', { class: 'd-donut-c' }, [
+      el('b', { style: 'font-size:18px', text: shortBaht(total) }), el('small', { text: 'รายได้รวม' }),
+    ]));
+    left.appendChild(repCard(icons.chart, 'รายได้แยกหมวด', [el('div', { class: 'd-occ' }, [donut, el('div', { class: 'd-occ-leg' }, [
+      el('div', { class: 'r' }, [el('i', { class: 'sw on' }), el('span', { text: 'ห้องพัก' }), el('b', { text: formatBaht(revenue) })]),
+      el('div', { class: 'r' }, [el('i', { class: 'sw', style: 'background:#0A84FF' }), el('span', { text: 'บริการ (Grooming/เล่น)' }), el('b', { text: formatBaht(serviceRevenue) })]),
+    ])])]));
 
     // ── อัตราเข้าพักแยกประเภทห้อง ──
-    const occCard = el('div', { class: 'card' }, [el('h2', { text: 'อัตราเข้าพักแยกประเภทห้อง' })]);
     const occRows = roomTypes.map(rt => {
       const capN = capacityOf(capacity, rt) * daysInMonth;
       const used = roomNightsInMonth[rt] || 0;
@@ -158,23 +178,63 @@ export function renderReports(container) {
         el('td', { class: 'num', text: `${pct.toFixed(1)}%` }),
       ]);
     });
-    if (occRows.length && daysInMonth) {
-      occCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, [
-          el('th', { text: 'ประเภทห้อง' }), el('th', { class: 'num', text: 'ห้อง-คืน / ขายได้' }),
-          el('th', { class: 'bar-cell', text: '' }), el('th', { class: 'num', text: 'อัตรา' }),
-        ])]),
-        el('tbody', {}, occRows),
-      ])]));
-      occCard.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text:
-        `* ขายได้ = ความจุรวม ${totalCapacity} ห้อง × ${daysInMonth} วัน = ${capacityNights} ห้อง-คืน · ปรับความจุที่หน้า "ตั้งค่า" · คืนที่คร่อมเดือนถูกนับเข้าเดือนที่นอนจริง` }));
-    } else {
-      occCard.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีข้อมูลในเดือนนี้' }));
-    }
-    detail.appendChild(occCard);
+    left.appendChild(repCard(icons.home, 'อัตราเข้าพักแยกประเภทห้อง', occRows.length && daysInMonth ? [
+      tableOf(['ประเภทห้อง', '#ห้อง-คืน / ขายได้', '', '#อัตรา'], occRows),
+      note(`* ขายได้ = ความจุรวม ${totalCapacity} ห้อง × ${daysInMonth} วัน = ${capacityNights} ห้อง-คืน · ปรับความจุที่หน้า "ตั้งค่า" · คืนที่คร่อมเดือนถูกนับเข้าเดือนที่นอนจริง`),
+    ] : [note('ยังไม่มีข้อมูลในเดือนนี้')]));
+
+    // ── รายได้แยกประเภทห้อง ──
+    const byRoom = {};
+    inMonth.forEach(b => b.lineItems.forEach(li => {
+      byRoom[li.roomType] = byRoom[li.roomType] || { rooms: 0, revenue: 0 };
+      byRoom[li.roomType].rooms += (Number(li.rooms) || 0) * (Number(li.nights) || 0);
+      byRoom[li.roomType].revenue += li.subtotal || 0;
+    }));
+    const rows = Object.entries(byRoom).map(([rt, v]) => el('tr', {}, [
+      el('td', { text: s?.roomPrices?.[rt]?.label || rt }),
+      el('td', { class: 'num', text: String(v.rooms) }),
+      el('td', { class: 'num', text: formatBaht(v.revenue) }),
+    ]));
+    left.appendChild(repCard(icons.bookings, 'รายได้แยกประเภทห้อง', rows.length ? [
+      tableOf(['ประเภทห้อง', '#คืน-ห้อง', '#ยอด (หลังลด)'], rows),
+      note('* ยอดเงินคิดจากการจองที่มี Check-in ในเดือนที่เลือก · ไม่รวมการจองที่ยกเลิก'),
+    ] : [note('ยังไม่มีข้อมูลในเดือนนี้')]));
+
+    // ── รายได้บริการ (Grooming & ออกกำลังกาย) ──
+    const svcRows = APPOINTMENT_TYPES.filter(t => svcByType[t.id]).map(t => {
+      const v = svcByType[t.id];
+      return el('tr', {}, [
+        el('td', { text: t.label }),
+        el('td', { class: 'num', text: String(v.queues) }),
+        el('td', { class: 'num', text: String(v.pets) }),
+        el('td', { class: 'num', text: formatBaht(v.revenue) }),
+      ]);
+    });
+    left.appendChild(repCard(icons.star, 'รายได้บริการ (Grooming & ออกกำลังกาย)', svcRows.length ? [
+      tableOf(['ประเภทบริการ', '#จำนวนคิว', '#จำนวนตัว', '#ยอดขาย'], svcRows, [
+        el('td', {}, [el('strong', { text: 'รวมบริการ' })]),
+        el('td', { class: 'num' }, [el('strong', { text: String(apptInMonth.length) })]),
+        el('td', { class: 'num' }, [el('strong', { text: String(svcPets) })]),
+        el('td', { class: 'num' }, [el('strong', { text: formatBaht(serviceRevenue) })]),
+      ]),
+      note(`* นับจากคิวที่ไม่ถูกยกเลิก · อ้างเดือนของวันนัด · เสร็จแล้ว ${svcDone} คิว`
+        + `${svcCancelled ? ` · ยกเลิก ${svcCancelled} คิว (ไม่นับในยอด)` : ''}`
+        + ' · บริการจ่ายจบครั้งเดียว จึงไม่แยกช่องทางรับเงิน'),
+    ] : [note('ยังไม่มีคิวบริการในเดือนนี้')]));
+
+    // ── การเงิน (ห้องพัก) — ตัวเลขชุดเดิม: รับจริง / รับมัดจำ / ค้างรับ / ส่วนลด ──
+    const fin = (dot, label, v, cls) => el('div', { class: 'd-fin' }, [
+      el('span', {}, [el('i', { class: 'd-dot', style: `background:${dot}` }), label]),
+      el('b', { class: cls || '', text: formatBaht(v) }),
+    ]);
+    right.appendChild(repCard(icons.banknote, 'การเงิน (ห้องพัก)', [el('div', { class: 'd-fins' }, [
+      fin('var(--green)', 'รับเงินแล้วจริง', received),
+      fin('#0A84FF', 'รับมัดจำแล้ว', deposit),
+      fin('var(--red)', 'ยอดค้างรับ', balance, balance > 0 ? 'owe' : ''),
+      fin('var(--orange)', 'รวมส่วนลด', discount),
+    ])]));
 
     // ── รับเงินตามช่องทาง (ไว้กระทบยอดกับบัญชี/เงินสดหน้าร้าน) ──
-    const payCard = el('div', { class: 'card' }, [el('h2', { text: 'รับเงินตามช่องทาง' })]);
     const byMethod = {};
     const addPay = (method, amount) => {
       if (!amount) return;
@@ -192,83 +252,22 @@ export function renderReports(container) {
     const methodKeys = [...PAYMENT_METHODS, 'ไม่ระบุ'].filter(k => byMethod[k]);
     if (methodKeys.length) {
       const totalPaid = methodKeys.reduce((sum, k) => sum + byMethod[k], 0);
-      payCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, [
-          el('th', { text: 'ช่องทาง' }), el('th', { class: 'num', text: 'ยอดรับ' }), el('th', { class: 'num', text: 'สัดส่วน' }),
-        ])]),
-        el('tbody', {}, methodKeys.map(k => el('tr', {}, [
-          el('td', { text: k }),
-          el('td', { class: 'num', text: formatBaht(byMethod[k]) }),
-          el('td', { class: 'num', text: `${((byMethod[k] / totalPaid) * 100).toFixed(1)}%` }),
-        ]))),
-        el('tfoot', {}, [el('tr', {}, [
-          el('td', {}, [el('strong', { text: 'รวมรับจริง' })]),
-          el('td', { class: 'num' }, [el('strong', { text: formatBaht(totalPaid) })]),
-          el('td', {}),
-        ])]),
-      ])]));
-      payCard.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text:
-        '* นับเฉพาะเงินที่รับแล้วจริง (มัดจำ + ยอดคงเหลือที่ปิดแล้ว) · "ไม่ระบุ" = รายการเก่าก่อนมีระบบบันทึกช่องทาง' }));
+      right.appendChild(repCard(icons.banknote, 'ช่องทางรับเงิน', [
+        el('div', { class: 'd-bars' }, methodKeys.map(k => {
+          const pct = (byMethod[k] / totalPaid) * 100;
+          return el('div', { class: 'd-barrow' }, [
+            el('span', { class: 'bl', text: k }),
+            el('span', { class: 'bt' }, [el('i', { style: `width:${pct}%` })]),
+            el('span', { class: 'bv', text: `${pct.toFixed(1)}%` }),
+            el('b', { text: formatBaht(byMethod[k]) }),
+          ]);
+        })),
+        el('div', { class: 'd-io-foot' }, [el('span', { text: 'รวมรับจริง' }), el('b', { text: formatBaht(totalPaid) })]),
+        note('* นับเฉพาะเงินที่รับแล้วจริง (มัดจำ + ยอดคงเหลือที่ปิดแล้ว) · "ไม่ระบุ" = รายการเก่าก่อนมีระบบบันทึกช่องทาง'),
+      ]));
     } else {
-      payCard.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีการรับเงินในเดือนนี้' }));
+      right.appendChild(repCard(icons.banknote, 'ช่องทางรับเงิน', [note('ยังไม่มีการรับเงินในเดือนนี้')]));
     }
-    detail.appendChild(payCard);
-
-    // ── รายได้แยกประเภทห้อง ──
-    const byRoom = {};
-    inMonth.forEach(b => b.lineItems.forEach(li => {
-      byRoom[li.roomType] = byRoom[li.roomType] || { rooms: 0, revenue: 0 };
-      byRoom[li.roomType].rooms += (Number(li.rooms) || 0) * (Number(li.nights) || 0);
-      byRoom[li.roomType].revenue += li.subtotal || 0;
-    }));
-    const rows = Object.entries(byRoom).map(([rt, v]) => el('tr', {}, [
-      el('td', { text: s?.roomPrices?.[rt]?.label || rt }),
-      el('td', { class: 'num', text: String(v.rooms) }),
-      el('td', { class: 'num', text: formatBaht(v.revenue) }),
-    ]));
-    const card = el('div', { class: 'card' }, [el('h2', { text: 'รายได้แยกประเภทห้อง' })]);
-    if (rows.length) {
-      const head = el('tr', {}, [el('th', { text: 'ประเภทห้อง' }), el('th', { class: 'num', text: 'คืน-ห้อง' }), el('th', { class: 'num', text: 'ยอด (หลังลด)' })]);
-      card.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [el('thead', {}, [head]), el('tbody', {}, rows)])]));
-    } else {
-      card.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีข้อมูลในเดือนนี้' }));
-    }
-    detail.appendChild(card);
-    detail.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text: '* ยอดเงินคิดจากการจองที่มี Check-in ในเดือนที่เลือก · ไม่รวมการจองที่ยกเลิก' }));
-
-    // ── รายได้บริการ (Grooming & ออกกำลังกาย) ──
-    const svcCard = el('div', { class: 'card' }, [el('h2', { text: 'รายได้บริการ (Grooming & ออกกำลังกาย)' })]);
-    const svcRows = APPOINTMENT_TYPES.filter(t => svcByType[t.id]).map(t => {
-      const v = svcByType[t.id];
-      return el('tr', {}, [
-        el('td', { text: t.label }),
-        el('td', { class: 'num', text: String(v.queues) }),
-        el('td', { class: 'num', text: String(v.pets) }),
-        el('td', { class: 'num', text: formatBaht(v.revenue) }),
-      ]);
-    });
-    if (svcRows.length) {
-      svcCard.appendChild(el('div', { class: 'table-wrap' }, [el('table', {}, [
-        el('thead', {}, [el('tr', {}, [
-          el('th', { text: 'ประเภทบริการ' }), el('th', { class: 'num', text: 'จำนวนคิว' }),
-          el('th', { class: 'num', text: 'จำนวนตัว' }), el('th', { class: 'num', text: 'ยอดขาย' }),
-        ])]),
-        el('tbody', {}, svcRows),
-        el('tfoot', {}, [el('tr', {}, [
-          el('td', {}, [el('strong', { text: 'รวมบริการ' })]),
-          el('td', { class: 'num' }, [el('strong', { text: String(apptInMonth.length) })]),
-          el('td', { class: 'num' }, [el('strong', { text: String(svcPets) })]),
-          el('td', { class: 'num' }, [el('strong', { text: formatBaht(serviceRevenue) })]),
-        ])]),
-      ])]));
-      svcCard.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text:
-        `* นับจากคิวที่ไม่ถูกยกเลิก · อ้างเดือนของวันนัด · เสร็จแล้ว ${svcDone} คิว`
-        + `${svcCancelled ? ` · ยกเลิก ${svcCancelled} คิว (ไม่นับในยอด)` : ''}`
-        + ' · บริการจ่ายจบครั้งเดียว จึงไม่แยกช่องทางรับเงิน' }));
-    } else {
-      svcCard.appendChild(el('p', { class: 'muted', text: 'ยังไม่มีคิวบริการในเดือนนี้' }));
-    }
-    detail.appendChild(svcCard);
   };
 
   monthSel.onchange = draw;
@@ -282,3 +281,35 @@ function thMonth(mk) {
   const d = new Date(Number(y), Number(m) - 1, 1);
   return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
 }
+
+// "ต.ค. 69" — ป้ายเดือนบนการ์ด KPI
+function thShort(mk) {
+  if (!mk) return '';
+  const [y, m] = mk.split('-');
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
+}
+
+// "฿248.6k" — ตัวเลขกลางโดนัท (พื้นที่แคบ) · ยอดเต็มอยู่ในคำอธิบายข้างๆ เสมอ
+function shortBaht(n) {
+  return n >= 1000 ? `฿${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : formatBaht(n);
+}
+
+// การ์ดแบบเดียวกับแดชบอร์ดคอม: หัว (ชิปไอคอน + ชื่อ) แล้วตามด้วยเนื้อหา
+function repCard(ico, title, children) {
+  return el('div', { class: 'd-card' }, [
+    el('div', { class: 'd-card-h' }, [el('span', { class: 'd-ci', html: ico }), el('h2', { text: title })]),
+    ...children,
+  ]);
+}
+
+// หัวคอลัมน์ที่ขึ้นต้นด้วย # = ชิดขวา · หัวว่าง = คอลัมน์แถบกราฟ (ซ่อนบนมือถือ)
+function tableOf(heads, rows, footCells) {
+  return el('div', { class: 'table-wrap d-tw' }, [el('table', {}, [
+    el('thead', {}, [el('tr', {}, heads.map(h => h.startsWith('#') ? el('th', { class: 'num', text: h.slice(1) })
+      : h ? el('th', { text: h }) : el('th', { class: 'bar-cell' })))]),
+    el('tbody', {}, rows),
+    footCells ? el('tfoot', {}, [el('tr', {}, footCells)]) : null,
+  ].filter(Boolean))]);
+}
+
+function note(text) { return el('p', { class: 'd-note', text }); }

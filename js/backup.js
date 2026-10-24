@@ -9,7 +9,10 @@ import { formatDateTH, todayISO } from './calc.js';
 const LAST_BACKUP_KEY = 'pph_last_backup';
 
 export function renderBackup(container) {
-  container.appendChild(el('div', { class: 'page-title' }, [el('h1', { text: 'สำรองข้อมูล' })]));
+  container.appendChild(el('div', { class: 'd-top' }, [
+    el('h1', { text: 'สำรองข้อมูล' }),
+    el('div', { class: 'd-date', text: 'ดาวน์โหลด / นำเข้าไฟล์สำรองของทั้งร้าน' }),
+  ]));
 
   const last = localStorage.getItem(LAST_BACKUP_KEY);
   const daysSince = last ? Math.floor((Date.now() - Number(last)) / 86400000) : null;

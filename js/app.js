@@ -126,6 +126,7 @@ function showApp(user) {
   } else {
     // ระหว่างรอ: ซ่อนเมนูทั้งหมดไว้ก่อน กันข้อมูลแวบ
     document.querySelectorAll('.navlink').forEach(b => b.classList.add('hidden'));
+    syncNavGroups();
     contentEl.innerHTML = '<p class="muted" style="padding:30px;text-align:center">กำลังโหลด…</p>';
   }
 }
@@ -148,9 +149,21 @@ function routeAllowed(route) {
 function applyRoleUI() {
   document.querySelectorAll('.navlink').forEach(b =>
     b.classList.toggle('hidden', !routeAllowed(b.dataset.route)));
+  syncNavGroups();
   applyMobileNav();
   const cur = location.hash.replace('#', '');
   if (cur && !appEl.classList.contains('hidden') && !routeAllowed(cur)) navigate(defaultRoute());
+}
+
+// ป้ายหัวกลุ่มในแถบข้าง (คอม) — ซ่อนกลุ่มที่ไม่มีเมนูให้เห็นเลย (เช่น พี่เลี้ยงไม่มีสิทธิ์รายงาน/ตั้งค่า)
+function syncNavGroups() {
+  document.querySelectorAll('#sidebar .nav-gl').forEach(gl => {
+    let any = false;
+    for (let n = gl.nextElementSibling; n && !n.classList.contains('nav-gl'); n = n.nextElementSibling) {
+      if (n.classList.contains('navlink') && !n.classList.contains('hidden')) { any = true; break; }
+    }
+    gl.classList.toggle('hidden', !any);
+  });
 }
 
 // ── แถบเมนูล่างบนมือถือ ──
@@ -291,6 +304,7 @@ function navigate(route) {
     b.classList.toggle('active', b.dataset.route === route));
   syncMoreActive();
   contentEl.innerHTML = '';
+  contentEl.dataset.route = route; // ให้ CSS ปรับเฉพาะบางหน้าได้ (เช่น จำกัดความกว้างหน้าฟอร์มตั้งค่า)
   document.getElementById('main')?.scrollTo?.({ top: 0 });
   try {
     ROUTES[route](contentEl);
