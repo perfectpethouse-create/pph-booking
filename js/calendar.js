@@ -3,11 +3,12 @@
 // ห้องถูกจองในช่วง [checkIn, checkOut) — วันเช็คเอาท์นับว่าห้องว่าง
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
-import { el, getSettings, toast, openModal, isStaff, escapeHtml } from './ui.js';
+import { el, getSettings, toast, openModal, isStaff, staffCan, escapeHtml } from './ui.js';
 import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween, eachDate, isoOf, owedOf } from './calc.js';
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { icons } from './icons.js';
+import { formForBooking, openGuestCheckin, parseRaw, mapFormToPets } from './registrations.js';
 import { MONTHS, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
@@ -33,7 +34,9 @@ export function renderCalendar(container) {
 
   // มือถือ = ปฏิทินกะทัดรัด + รายละเอียดวันที่เลือกใต้ปฏิทิน (.mcal) · คอม = แบบเดิม (.cal-full)
   let _bookings = [];
-  const mobile = buildMobileCalendar(() => _bookings);
+  // ใบลงทะเบียน + ลูกค้า — แตะชื่อแขกแล้วเปิดข้อมูลเช็คอิน (หมา/แมว สุขภาพ) แทนใบจอง
+  const reg = { forms: [], customers: [] };
+  const mobile = buildMobileCalendar(() => _bookings, reg);
   container.appendChild(mobile.node);
   container.appendChild(el('div', { class: 'cal-full' }, [
     el('div', { class: 'd-top' }, [el('h1', { text: 'ปฏิทินห้องว่าง' }), subtitle]),
@@ -208,23 +211,29 @@ export function renderCalendar(container) {
         head, roomChips, info,
         b.notes ? el('div', { class: 'muted', style: 'font-size:12px;margin-top:4px', text: `หมายเหตุ: ${b.notes}` }) : null,
       ].filter(Boolean));
-      // พี่เลี้ยงกดแล้วไม่เปิดฟอร์มจอง (มีราคา/ส่วนลด) — ดูอย่างเดียว
-      if (!isStaff()) {
-        row.onclick = () => { m.close(); openBookingForm(b); };
-      } else {
-        row.style.cursor = 'default';
-      }
+      if (canSeeReg()) row.onclick = () => { m.close(); openGuest(b, () => _bookings, reg); };
+      else row.style.cursor = 'default';
       wrap.appendChild(row);
     });
   }
 
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); mobile.draw(); }));
+  _unsub.push(listen('checkinForms', arr => { reg.forms = arr; mobile.draw(); }, { orderBy: null }));
+  _unsub.push(listen('customers', arr => { reg.customers = arr; }));
+}
+
+// แขกที่พัก → ข้อมูลเช็คอิน (ต้องรู้ว่าหมาหรือแมว) · ยังไม่ลงทะเบียน → แผ่นส่งลิงก์ให้ลูกค้า
+// เจ้าของร้านมีปุ่ม "เปิดใบจอง" ในแผ่นนั้นด้วย (พี่เลี้ยงไม่เห็นใบจอง — มีราคา/ส่วนลด)
+const canSeeReg = () => !isStaff() || staffCan('registrations');
+function openGuest(b, getBookings, reg) {
+  openGuestCheckin(b, { forms: reg.forms, bookings: getBookings(), customers: reg.customers },
+    isStaff() ? null : () => openBookingForm(b));
 }
 
 // ═══════════ มือถือ: ปฏิทินห้องว่าง ═══════════
 // ตัวเลขในช่อง = "ห้องที่ยังว่าง" (คำถามหน้าเคาน์เตอร์คือ "ว่างไหม" ไม่ใช่ "จองไปกี่ห้อง")
 // แตะวัน → ใต้ปฏิทินแสดงห้องว่างแยกประเภท + รายชื่อแขกวันนั้น (ไม่ต้องเปิดหน้าต่างซ้อน)
-function buildMobileCalendar(getBookings) {
+function buildMobileCalendar(getBookings, reg) {
   const node = el('div', { class: 'mcal' });
   const now = new Date();
   let y = now.getFullYear(), mth = now.getMonth();
@@ -331,16 +340,26 @@ function buildMobileCalendar(getBookings) {
     node.appendChild(el('div', { class: 'm-list' }, guests.map(b => {
       const tag = b.checkIn === selected ? el('span', { class: 'pill green', text: 'เข้า' })
         : b.checkOut === selected ? el('span', { class: 'pill yellow', text: 'ออก' }) : null;
+      // ชนิดสัตว์จากใบลงทะเบียน (ถ้ามี) แม่นกว่าห้องที่จอง · ยังไม่ลงทะเบียน = ป้ายเตือนให้ส่งลิงก์
+      const f = formForBooking(b, reg.forms);
+      const pets = f ? mapFormToPets(parseRaw(f)) : [];
+      const cat = pets.length ? pets.every(p => p.species === 'cat') : isCat(b);
+      const petTxt = pets.length ? [['dog', 'สุนัข'], ['cat', 'แมว']].map(([k, t]) => {
+        const n = pets.filter(p => p.species === k).length; return n ? `${t} ${n}` : '';
+      }).filter(Boolean).join(' · ') : '';
       const row = el('div', { class: 'm-row' }, [
-        el('span', { class: 'm-pet' + (isCat(b) ? ' cat' : ''), html: isCat(b) ? icons.cat : icons.dog }),
-        el('div', { class: 'm-tx' }, [el('b', { text: b.customerName || '-' }), el('small', { text: `${roomsOf(b)} · ${rangeOf(b)}` })]),
+        el('span', { class: 'm-pet' + (cat ? ' cat' : ''), html: cat ? icons.cat : icons.dog }),
+        el('div', { class: 'm-tx' }, [
+          el('b', { text: b.customerName || '-' }),
+          el('small', { text: `${roomsOf(b)} · ${rangeOf(b)}` }),
+          el('small', { class: f ? 'm-reg ok' : 'm-reg', text: f ? `ลงทะเบียนแล้ว${petTxt ? ' · ' + petTxt : ''}` : 'ยังไม่ลงทะเบียน · แตะเพื่อส่งลิงก์' }),
+        ]),
         tag,
       ]);
-      // พี่เลี้ยงดูอย่างเดียว — ฟอร์มจองมีราคา/ส่วนลด (กติกาเดียวกับหน้าคอม)
-      if (!isStaff()) {
+      if (canSeeReg()) {
         row.setAttribute('role', 'button'); row.setAttribute('tabindex', '0');
-        row.onclick = () => openBookingForm(b);
-        row.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBookingForm(b); } };
+        row.onclick = () => openGuest(b, getBookings, reg);
+        row.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openGuest(b, getBookings, reg); } };
       }
       else row.style.cursor = 'default';
       return row;

@@ -26,7 +26,7 @@ import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
 } from './summary-card.js';
 import { icons } from './icons.js';
-import { DOW, dateOf, longDate, MONTHS } from './mobile-kit.js';
+import { DOW, dateOf, longDate, MONTHS, openDatePicker } from './mobile-kit.js';
 
 let _appts = [];
 let _unsub = [];
@@ -225,10 +225,15 @@ function buildMobileQueue() {
     const next = el('button', { class: 'm-arr', html: icons.chevronRight, 'aria-label': 'สัปดาห์ถัดไป' });
     prev.onclick = () => { weekStart = addDaysISO(weekStart, -7); date = weekStart; draw(); };
     next.onclick = () => { weekStart = addDaysISO(weekStart, 7); date = weekStart; draw(); };
-    node.appendChild(el('div', { class: 'm-mhead' }, [
-      el('b', { text: `${MONTHS[ws.getMonth()]} ${ws.getFullYear() + 543}` }),
-      el('span', { class: 'm-arrs' }, [prev, next]),
-    ]));
+    // แตะชื่อเดือน → ปฏิทินทั้งเดือน (เลขใต้วัน = จำนวนคิวโซนนี้) เลือกวันแล้วแถบ 7 วันเริ่มที่วันนั้น
+    const monthBtn = el('button', { type: 'button', class: 'm-monthbtn', 'aria-label': 'เปิดปฏิทินเลือกวัน' }, [
+      el('b', { text: `${MONTHS[ws.getMonth()]} ${ws.getFullYear() + 543}` }), el('span', { html: icons.calendar }),
+    ]);
+    monthBtn.onclick = () => openDatePicker(date, {
+      title: type === 'exercise' ? 'เลือกวัน · ออกกำลังกาย' : 'เลือกวัน · Grooming',
+      countOf: (iso) => _appts.filter(a => a.type === type && a.date === iso && a.status !== 'ยกเลิก').length,
+    }, (iso) => { date = iso; weekStart = iso; draw(); });
+    node.appendChild(el('div', { class: 'm-mhead' }, [monthBtn, el('span', { class: 'm-arrs' }, [prev, next])]));
 
     const week = el('div', { class: 'm-week', role: 'tablist' });
     for (let i = 0; i < 7; i++) {
@@ -769,13 +774,14 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       el('aside', { class: 'bf-side' }, [
         el('h3', { class: 'bf-side-h', text: 'สรุปคิว' }),
         sumBox,
+        readOnly ? null : el('div', { class: 'bf-key', text: `กด ${isMac ? '⌘' : 'Ctrl'} + Enter เพื่อบันทึก` }),
+        el('div', { class: 'bf-acts' }, [cardBtn]),
+        delBtn ? el('div', { class: 'bf-acts bf-acts-sm' }, [delBtn]) : null,
+        // แถบบันทึกอยู่ท้ายสุด (เหตุผลเดียวกับฟอร์มจองห้อง)
         el('div', { class: 'sticky-summary' }, [
           el('div', { class: 'ss-figures' }, [el('span', { class: 'ss-total', text: 'ยอดชำระ' }), stickyTotal]),
           saveBtn,
         ]),
-        readOnly ? null : el('div', { class: 'bf-key', text: `กด ${isMac ? '⌘' : 'Ctrl'} + Enter เพื่อบันทึก` }),
-        el('div', { class: 'bf-acts' }, [cardBtn]),
-        delBtn ? el('div', { class: 'bf-acts bf-acts-sm' }, [delBtn]) : null,
       ].filter(Boolean)),
     );
     refreshSide();

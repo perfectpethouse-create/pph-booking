@@ -807,10 +807,11 @@ export function openBookingForm(existing) {
       el('aside', { class: 'bf-side' }, [
         el('h3', { class: 'bf-side-h owner-only', text: 'สรุปยอด' }),
         summaryBox,
-        stickyBar,
         keyHint,
         el('div', { class: 'bf-acts' }, [cardBtn]),
         dupBtn || delBtn ? el('div', { class: 'bf-acts bf-acts-sm' }, [dupBtn, delBtn].filter(Boolean)) : null,
+        // แถบบันทึกต้องอยู่ท้ายสุด: มือถือลอยติดล่าง (margin ติดลบ) จะได้ไม่ทับปุ่มการ์ด/ลบ · คอมจัดลำดับด้วย CSS order
+        stickyBar,
       ].filter(Boolean)),
     );
     refreshSummary();
