@@ -3,12 +3,12 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff } from './ui.js';
-import { computeBooking, computeAddOn, freeBathRights, formatBaht, nightsBetween, todayISO, addDaysISO, owedOf } from './calc.js';
+import { computeBooking, computeAddOn, computeLineItem, formatBaht, nightsBetween, todayISO, addDaysISO, owedOf } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE, VIP_CAT_PROMO_PRICE,
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
   DAYCARE_SIZES, daycarePrice,
-  FREE_BATH_MIN_NIGHTS, FREE_BATH_ADDON_NAME,
+  longStayPct, VIP_HIGH_SEASON,
   PAYMENT_METHODS, DEFAULT_DEPOSIT_METHOD,
 } from './config-shop.js';
 import { buildCustomerCard, downloadCardPNG, copySummaryText, copyText, shareCard } from './summary-card.js';
@@ -266,8 +266,11 @@ function priceFor(roomType, petType, s) { return s?.roomPrices?.[roomType]?.[pet
 // โหลดรายชื่อลูกค้าถ้ายังไม่มี (กรณีเปิดฟอร์มจากหน้าอื่น เช่น ปฏิทิน
 // โดยยังไม่เคยเข้าหน้าการจอง) — เพื่อให้ autocomplete + เตือนวัคซีนทำงาน
 let _custSub = null;
+let _allBookings = [];   // ไว้หา "ครั้งก่อนพักห้องอะไร" ของลูกค้าเก่า (โหลดครั้งเดียว ฟังต่อเนื่อง)
+let _bkSub = null;
 function ensureCustomersLoaded() {
   if (!_custSub) _custSub = listen('customers', arr => { _customers = arr; });
+  if (!_bkSub) _bkSub = listen('bookings', arr => { _allBookings = arr; });
 }
 
 export function openBookingForm(existing) {
@@ -291,6 +294,13 @@ export function openBookingForm(existing) {
   const m = openModal(form);
   // มือถือ: ฟอร์มนี้ยาวมาก → เปิดเต็มจอแบบหน้าแอป (ดู .modal--full ใน styles.css) · คอมยังเป็นกล่องกลางจอเหมือนเดิม
   m.el.classList.add('modal--full');
+  // สถานะหน้าจอที่ต้องอยู่รอดข้าม rerender (ไม่บันทึกลงฐานข้อมูล)
+  const openDisc = new Set();   // รายการห้องที่เปิดช่องส่วนลดไว้ (index)
+  let saveNow = () => {};
+  // ⌘/Ctrl + Enter = บันทึก (ผูกครั้งเดียวที่ตัวฟอร์ม ซึ่งไม่ถูกสร้างใหม่ตอน rerender)
+  form.addEventListener('keydown', e => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveNow(); }
+  });
   build();
 
   function rerender() { form.innerHTML = ''; build(); }
@@ -313,8 +323,12 @@ export function openBookingForm(existing) {
           '− ' + formatBaht(b.billDiscountAmount)) : null,
         b.totalDiscount ? line('รวมส่วนลดทั้งหมด', '− ' + formatBaht(b.totalDiscount)) : null,
         line('ยอดทั้งหมด', formatBaht(b.grandTotal), 'grand'),
-        line(`มัดจำ ${b.depositPct}%`, formatBaht(b.depositAmount)),
-        line('จ่ายเพิ่มวัน Check-in', formatBaht(b.balanceDue)),
+        // ตัวเลขที่ต้องบอกลูกค้า = มัดจำ — ทำเป็นกล่องเด่น ไม่ซ้ำกับแถบล่างบนคอม (ดู .bf-pay)
+        el('div', { class: 'bf-pay' }, [
+          el('span', { class: 'bf-pay-k', text: `มัดจำ ${b.depositPct}%` }),
+          el('b', { text: formatBaht(b.depositAmount) }),
+          el('span', { class: 'bf-pay-k', text: `จ่ายเพิ่มวัน Check-in ${formatBaht(b.balanceDue)}` }),
+        ]),
       ].filter(Boolean).forEach(n => summaryBox.appendChild(n));
       // อัปเดตแถบสรุปลอยล่าง
       stickyTotal.innerHTML = `ยอดทั้งหมด <b>${formatBaht(b.grandTotal)}</b>`;
@@ -325,10 +339,12 @@ export function openBookingForm(existing) {
 
     // ป้าย "N คืน" ระหว่างวันเข้า-ออก — เห็นทันทีว่านับคืนถูกไหมก่อนดูยอดเงิน
     const nightsBadge = el('span', { class: 'nights-badge' });
+    const quickChips = [];   // ชิปลัด "วันนี้/พรุ่งนี้/N คืน" — ไฮไลต์ตัวที่ตรงกับวันที่ตอนนี้
     const refreshNightsBadge = () => {
       const n = nightsBetween(draft.checkIn, draft.checkOut);
       nightsBadge.textContent = n > 0 ? `${n} คืน` : 'เลือกวันที่';
       nightsBadge.classList.toggle('empty', !(n > 0));
+      quickChips.forEach(c => c.classList.toggle('on', c.isOn()));
     };
 
     function syncNights() {
@@ -336,7 +352,7 @@ export function openBookingForm(existing) {
       const n = nightsBetween(draft.checkIn, draft.checkOut);
       if (n > 0) {
         draft.lineItems.forEach(li => li.nights = n);
-        itemsWrap.querySelectorAll('input[data-nights]').forEach(inp => inp.value = n);
+        itemsWrap.querySelectorAll('[data-nights]').forEach(out => out.value = n);
       }
     }
 
@@ -359,14 +375,64 @@ export function openBookingForm(existing) {
         `${icons.alert} วัคซีนของ <strong>${escapeHtml(names)}</strong> ${bad.some(x => x.st === 'expired') ? 'หมดอายุก่อนวันเข้าพัก' : 'ใกล้หมดอายุ'} — แจ้งลูกค้าเตรียมสมุดวัคซีน/ฉีดกระตุ้น` }));
     }
 
-    // ── หัวลูกค้า ──
-    const nameField = field('ชื่อลูกค้า', draft.customerName, v => { draft.customerName = v; const c = _customers.find(c => c.name === v); if (c?.phone && !draft.phone) { draft.phone = c.phone; phoneField.querySelector('input').value = c.phone; } refreshVaccine(); }, { list: 'cust-names' });
+    // ── หัวลูกค้า ── พิมพ์ชื่อหรือเบอร์ก็เจอ (datalist ทั้งสองช่อง) ถ้าตรงลูกค้าเก่า → การ์ดให้แตะเติมข้อมูลเดิม
+    const digits = (t) => (t || '').replace(/\D/g, '');
+    const nameField = field('ชื่อลูกค้า', draft.customerName, v => { draft.customerName = v; const c = _customers.find(c => c.name === v); if (c?.phone && !draft.phone) { draft.phone = c.phone; phoneField.querySelector('input').value = c.phone; } refreshVaccine(); refreshCust(); }, { list: 'cust-names', autocomplete: 'off' });
     nameField.appendChild(el('datalist', { id: 'cust-names' }, _customers.map(c => el('option', { value: c.name }))));
-    const phoneField = field('เบอร์โทร', draft.phone, v => { draft.phone = v; refreshVaccine(); });
+    const phoneField = field('เบอร์โทร', draft.phone, v => {
+      draft.phone = v;
+      const c = digits(v).length >= 9 && _customers.find(c => digits(c.phone) === digits(v));
+      if (c?.name && !draft.customerName) { draft.customerName = c.name; nameField.querySelector('input').value = c.name; }
+      refreshVaccine(); refreshCust();
+    }, { list: 'cust-phones', type: 'tel', inputmode: 'tel', autocomplete: 'off' });
+    phoneField.appendChild(el('datalist', { id: 'cust-phones' }, _customers.filter(c => c.phone).map(c => el('option', { value: c.phone, label: c.name || '' }))));
+
+    const custCard = el('div', { class: 'bf-cust hidden' });
+    function refreshCust() {
+      const c = _customers.find(c =>
+        (draft.phone && c.phone && digits(c.phone) === digits(draft.phone)) ||
+        (draft.customerName && c.name === draft.customerName));
+      custCard.innerHTML = '';
+      custCard.classList.toggle('hidden', !c);
+      if (!c) return;
+      const last = _allBookings
+        .filter(b => b.id !== draft.id && ((c.phone && digits(b.phone) === digits(c.phone)) || b.customerName === c.name))
+        .sort((a, b) => (b.checkIn || '').localeCompare(a.checkIn || ''))[0];
+      const lastLi = last?.lineItems?.[0];
+      const lastRoom = lastLi && s?.roomPrices?.[lastLi.roomType]?.label;
+      const pets = (c.pets || []).map(p => `${p.name || 'ไม่ระบุชื่อ'} (${p.species === 'cat' ? 'แมว' : 'สุนัข'})`).join(', ');
+      const pet0 = c.pets?.[0]?.species || lastLi?.petType;
+      const li0 = draft.lineItems[0];
+      // ใช้ข้อมูลเดิมแล้ว = ชื่อ/เบอร์ตรง และ (ถ้ามีห้อง) ชนิดสัตว์/ห้องตรงกับครั้งก่อน
+      const applied = c.name === draft.customerName && (!c.phone || digits(c.phone) === digits(draft.phone)) &&
+        (!li0 || ((!pet0 || li0.petType === pet0) && (!lastLi || li0.roomType === lastLi.roomType)));
+      custCard.append(
+        el('div', { class: 'bf-cust-txt' }, [
+          el('b', { text: `ลูกค้าเก่า · ${c.name || ''}${c.phone ? ' · ' + c.phone : ''}` }),
+          el('span', { text: [pets, lastRoom ? `ครั้งก่อนพัก ${lastRoom}` : ''].filter(Boolean).join(' · ') || 'ยังไม่มีข้อมูลน้อง' }),
+        ]),
+        applied ? el('span', { class: 'bf-cust-ok', html: icons.check + ' ใช้ข้อมูลเดิมแล้ว' }) : (() => {
+          const b = el('button', { type: 'button', class: 'bf-chip on', text: 'ใช้ข้อมูลเดิม' });
+          b.onclick = () => {
+            draft.customerName = c.name || draft.customerName;
+            draft.phone = c.phone || draft.phone;
+            // ใบใหม่เท่านั้นที่เติมสัตว์/ห้องให้ — ใบเดิมไม่ไปแก้รายการที่บันทึกไว้แล้ว
+            if (isNew && li0) {
+              if (pet0) li0.petType = pet0;
+              if (lastLi?.roomType && s?.roomPrices?.[lastLi.roomType]) li0.roomType = lastLi.roomType;
+              li0.pricePerNight = priceFor(li0.roomType, li0.petType, s);
+            }
+            rerender();
+          };
+          return b;
+        })(),
+      );
+    }
 
     const depDateField = field('วันที่โอนมัดจำ', draft.depositDate, v => draft.depositDate = v, { type: 'date' });
-    const inDateField = field('วันที่ Check-in', draft.checkIn, v => {
+    const setCheckIn = (v) => {
       draft.checkIn = v;
+      inDateField.querySelector('input').value = v;
       const outInp = outDateField.querySelector('input');
       // มีห้องพัก → เด้งเช็คเอาท์เป็น +1 คืนอัตโนมัติ (ถ้ายังว่างหรือไม่หลังเช็คอิน)
       // ไม่มีห้อง (จองบริการรายวัน เช่น Day Care) → วันเดียว เช็คเอาท์ = วันเดียวกัน
@@ -378,12 +444,29 @@ export function openBookingForm(existing) {
         if (outInp) outInp.value = v;
       }
       syncNights(); refreshSummary();
-    }, { type: 'date' });
+    };
+    const inDateField = field('วันที่ Check-in', draft.checkIn, v => setCheckIn(v), { type: 'date' });
     const outDateField = field('วันที่ Check-out', draft.checkOut, v => { draft.checkOut = v; syncNights(); refreshSummary(); }, { type: 'date' });
+
+    // ชิปลัด: วันเช็คอิน (วันนี้/พรุ่งนี้) + จำนวนคืน → ตั้งวันเช็คเอาท์ให้
+    const quickChip = (text, isOn, onClick) => {
+      const b = el('button', { type: 'button', class: 'bf-chip', text });
+      b.isOn = isOn; b.onclick = onClick;
+      quickChips.push(b);
+      return b;
+    };
+    const dayChips = [['วันนี้', 0], ['พรุ่งนี้', 1]].map(([t, d]) =>
+      quickChip(t, () => draft.checkIn === addDaysISO(todayISO(), d), () => setCheckIn(addDaysISO(todayISO(), d))));
+    const nightChips = draft.lineItems.length ? [1, 2, 3, 5, 7].map(n =>
+      quickChip(`${n} คืน`, () => nightsBetween(draft.checkIn, draft.checkOut) === n, () => {
+        if (!draft.checkIn) return toast('เลือกวันเช็คอินก่อน');
+        draft.checkOut = addDaysISO(draft.checkIn, n);
+        outDateField.querySelector('input').value = draft.checkOut;
+        syncNights(); refreshSummary();
+      })) : [];
     const inTimeField = field('เวลาเข้า', draft.checkInTime, v => draft.checkInTime = v, { type: 'time' });
     const outTimeField = field('เวลาออก', draft.checkOutTime, v => draft.checkOutTime = v, { type: 'time' });
     const depPctField = field('มัดจำ (%)', draft.depositPct, v => { draft.depositPct = Number(v) || 0; refreshSummary(); }, { type: 'number', min: 0, max: 100 });
-    const depMethodSel = selectEl(PAYMENT_METHODS.map(m => [m, m]), draft.depositMethod || DEFAULT_DEPOSIT_METHOD, v => draft.depositMethod = v);
 
     // ── รายการห้อง ──
     const itemsWrap = el('div', {});
@@ -394,84 +477,124 @@ export function openBookingForm(existing) {
       itemsWrap.appendChild(el('p', { class: 'muted', style: 'margin:2px 2px 12px',
         text: 'ไม่มีห้องพัก — ลูกค้าจองแค่บริการรายวัน (เช่น Day Care) ได้ เพิ่มบริการที่หัวข้อ “บริการเสริม” ด้านล่าง' }));
     }
-    const addItemBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มห้อง/สัตว์' });
+    const addItemBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มน้อง / ห้องอีกรายการ' });
     addItemBtn.onclick = () => { draft.lineItems.push(blankLineItem(s)); rerender(); };
 
-    // ตัวเลือกราคา/คืน — ล็อกเฉพาะราคามาตรฐานจากหน้าตั้งค่า (+โปร VIP)
-    // กันพนักงานพิมพ์ราคาผิด · ถ้าข้อมูลเก่ามีราคาอื่นอยู่แล้ว ให้คงเป็นตัวเลือกไว้
+    // ตัวเลือกราคา/คืน — ล็อกเฉพาะราคาที่ร้านกำหนด กันพนักงานพิมพ์ราคาผิด
+    // VIP ตามช่วง: สุนัข ปกติ 1,590 / High season 1,890 · แมว ปกติ 1,390 / High season 1,590
+    // (ยืนยันกับเจ้าของร้าน 24 ต.ค. 2569) · ราคาในตารางตั้งค่าคงไว้เป็นอีกตัวเลือกถ้าไม่ซ้ำ
+    // พนักงานเลือกเองตอนจอง — ค่าเริ่มต้นยังเป็นราคาจากตารางตั้งค่าเหมือนเดิม · ใบเก่าที่ใช้ราคาอื่นคงไว้เป็นตัวเลือก
+    function seasonPrices(roomType, petType) {
+      if (roomType !== 'vip') return [];
+      const low = petType === 'cat' ? (s?.vipCatPromoPrice || VIP_CAT_PROMO_PRICE) : (s?.vipPromoPrice || VIP_PROMO_PRICE);
+      return [[low, 'ช่วงปกติ'], [VIP_HIGH_SEASON[petType] || 0, 'High season']].filter(([v]) => v);
+    }
     function priceOptions(roomType, petType, current) {
-      const opts = [];
+      const opts = seasonPrices(roomType, petType).map(([v, t]) => [String(v), `${t} ${formatBaht(v)}`]);
       const std = priceFor(roomType, petType, s);
-      if (std) opts.push([String(std), `มาตรฐาน ${std.toLocaleString('th-TH')}`]);
-      const promo = s?.vipPromoPrice || VIP_PROMO_PRICE;
-      if (roomType === 'vip' && promo && promo !== std) {
-        opts.push([String(promo), `โปร VIP ${promo.toLocaleString('th-TH')}`]);
-      }
-      // โปรพิเศษเฉพาะห้อง VIP ของแมว — เพิ่มอีก 1 ตัวเลือกในดรอปดาวน์ (ห้อง VIP หมาไม่มี)
-      const catPromo = s?.vipCatPromoPrice || VIP_CAT_PROMO_PRICE;
-      if (roomType === 'vip' && petType === 'cat' && catPromo && !opts.some(([v]) => Number(v) === catPromo)) {
-        opts.push([String(catPromo), `โปร VIP แมว ${catPromo.toLocaleString('th-TH')}`]);
-      }
+      if (std && !opts.some(([v]) => Number(v) === std)) opts.push([String(std), opts.length ? `ราคาตั้งค่า ${formatBaht(std)}` : `มาตรฐาน ${formatBaht(std)}`]);
       const cur = Number(current) || 0;
       if (cur && !opts.some(([v]) => Number(v) === cur)) {
-        opts.push([String(cur), `ราคาเดิม ${cur.toLocaleString('th-TH')}`]);
+        opts.push([String(cur), `ราคาเดิม ${formatBaht(cur)}`]);
       }
       return opts.length ? opts : [['0', '0']];
     }
 
     function lineItemRow(li, idx) {
-      const petSel = selectEl(PET_TYPES.map(p => [p.id, p.label]), li.petType, v => { li.petType = v; li.pricePerNight = priceFor(li.roomType, v, s); rerender(); });
-      const roomSel = selectEl(Object.entries(s?.roomPrices || {}).map(([k, r]) => [k, r.label]), li.roomType, v => { li.roomType = v; li.pricePerNight = priceFor(v, li.petType, s); rerender(); });
-      const priceSel = selectEl(priceOptions(li.roomType, li.petType, li.pricePerNight), String(li.pricePerNight ?? ''), v => { li.pricePerNight = Number(v) || 0; refreshSummary(); });
-      const roomsInp = numInput(li.rooms, v => { li.rooms = v; refreshSummary(); }, 'ห้อง', 1);
-      const nightsInp = numInput(li.nights, v => { li.nights = v; refreshSummary(); }, 'คืน', 1);
-      nightsInp.setAttribute('data-nights', '1');
-      const discType = selectEl([['percent', 'ส่วนลด %'], ['amount', 'ส่วนลด บาท']], li.discountType, v => { li.discountType = v; refreshSummary(); });
-      const discVal = numInput(li.discountValue, v => { li.discountValue = v; refreshSummary(); });
+      const petSeg = chipGroup(PET_TYPES.map(p => [p.id, p.label]), li.petType, 'สัตว์', v => {
+        li.petType = v; li.pricePerNight = priceFor(li.roomType, v, s); rerender();
+      });
+      const rooms = el('div', { class: 'bf-rooms', role: 'radiogroup', 'aria-label': 'ประเภทห้อง' },
+        Object.entries(s?.roomPrices || {}).map(([k, r]) => {
+          const on = k === li.roomType;
+          const p = priceFor(k, li.petType, s);
+          const all = [p, ...seasonPrices(k, li.petType).map(([v]) => v)].filter(Boolean);   // VIP: โชว์ช่วงราคา
+          const low = Math.min(...all), high = Math.max(...all);
+          const b = el('button', { type: 'button', role: 'radio', 'aria-checked': String(on), class: 'bf-room' + (on ? ' on' : '') }, [
+            el('b', { text: r.label }),
+            el('span', { class: 'owner-only', text: !all.length ? 'ยังไม่ตั้งราคา' : low < high ? `${formatBaht(low)}–${formatBaht(high, false)}/คืน` : `${formatBaht(high)}/คืน` }),
+          ]);
+          b.onclick = () => { if (on) return; li.roomType = k; li.pricePerNight = priceFor(k, li.petType, s); rerender(); };
+          return b;
+        }));
+      // ราคา/คืน: โชว์ดรอปดาวน์เฉพาะตอนมีให้เลือกมากกว่า 1 (เช่น VIP มีราคาโปร / ใบเก่าที่ใช้ราคาอื่น)
+      const opts = priceOptions(li.roomType, li.petType, li.pricePerNight);
+      // มีให้เลือกมากกว่า 1 ราคา (VIP ช่วงปกติ/High season · ใบเก่าที่ใช้ราคาอื่น) → ชิปแตะเลือก
+      const priceSel = opts.length > 1
+        ? el('div', { class: 'bf-price owner-only' }, [chipGroup(opts, String(li.pricePerNight ?? ''), 'ราคาต่อคืน', v => { li.pricePerNight = Number(v) || 0; refreshSummary(); })])
+        : null;
+      const roomsStep = labeled('จำนวนห้อง', stepper(li.rooms, 1, 'จำนวนห้อง', v => { li.rooms = v; refreshSummary(); }));
+      const nightsStep = stepper(li.nights, 1, 'จำนวนคืน', v => { li.nights = v; refreshSummary(); });
+      nightsStep.querySelector('output').setAttribute('data-nights', '1');
 
-      const rmBtn = el('button', { class: 'btn sm danger', html: icons.x, 'aria-label': 'ลบรายการ' });
+      // ส่วนลดรายห้อง: ซ่อนไว้หลังลิงก์ (แทบไม่ได้ใช้) · มีค่าอยู่แล้ว = เปิดค้าง
+      const discOpen = openDisc.has(idx) || Number(li.discountValue) > 0;
+      const discToggle = discOpen ? null : el('button', { type: 'button', class: 'bf-link owner-only', text: 'ใส่ส่วนลด' });
+      if (discToggle) discToggle.onclick = () => { openDisc.add(idx); rerender(); };
+      const discRow = discOpen ? el('div', { class: 'row owner-only' }, [
+        labeled('ชนิดส่วนลด', selectEl([['percent', 'ส่วนลด %'], ['amount', 'ส่วนลด บาท']], li.discountType, v => { li.discountType = v; refreshSummary(); })),
+        labeled('ส่วนลด', numInput(li.discountValue, v => { li.discountValue = v; refreshSummary(); })),
+      ]) : null;
+
+      const rmBtn = el('button', { type: 'button', class: 'btn sm ghost bf-rm', html: icons.trash, 'aria-label': `ลบรายการที่ ${idx + 1}` });
       // ลบได้จนหมด — ถ้าไม่เหลือห้องเลยจะกลายเป็น "จองบริการรายวัน" (เช่น Day Care) ล้วน
-      rmBtn.onclick = () => { draft.lineItems.splice(idx, 1); rerender(); };
+      rmBtn.onclick = () => { draft.lineItems.splice(idx, 1); openDisc.clear(); rerender(); };
 
-      return el('div', { class: 'lineitem' }, [
-        el('div', { class: 'li-head' }, [el('strong', { text: `รายการที่ ${idx + 1}` }), rmBtn]),
-        el('div', { class: 'row' }, [labeled('สัตว์', petSel), labeled('ประเภทห้อง', roomSel), labeled('ราคา/คืน', priceSel, 'owner-only')]),
-        el('div', { class: 'row' }, [labeled('จำนวนห้อง', roomsInp), labeled('จำนวนคืน', nightsInp), labeled('ชนิดส่วนลด', discType, 'owner-only'), labeled('ส่วนลด', discVal, 'owner-only')]),
-      ]);
+      return el('div', { class: 'lineitem bf-li' }, [
+        el('div', { class: 'li-head' }, [petSeg, rmBtn]),
+        rooms,
+        priceSel,
+        el('div', { class: 'bf-li-row' }, [roomsStep, labeled('จำนวนคืน', nightsStep), discToggle].filter(Boolean)),
+        discRow,
+      ].filter(Boolean));
     }
 
-    // ── โปรพัก 5 คืนขึ้นไป: อาบน้ำฟรี 1 สิทธิ์/ห้อง ──
+    // ── ส่วนลดพักยาว (ลดเฉพาะค่าห้อง): 5–9 คืน 5% · 10 คืนขึ้นไป 10% ──
+    // ขั้นเดียวกับหน้าจองออนไลน์ (longStayDiscounts ในตั้งค่า) · นับคืนของแต่ละรายการห้อง
+    // กดรับสิทธิ์ = ใส่ส่วนลดเป็น "บาท ปัดเต็ม" ให้ห้องที่เข้าเงื่อนไข (แบบเดียวกับใบที่มาจากเว็บ → ยอดไม่มีเศษสตางค์)
+    // เปลี่ยนคืน/ราคาทีหลัง → ปุ่มเปลี่ยนเป็น "ปรับส่วนลด" · พักไม่ถึงเกณฑ์แล้วแต่ยังมีส่วนลด → เตือนให้เอาออก
     const promoBanner = el('div', { class: 'promo-banner hidden' });
+    const tiers = s?.longStayDiscounts;
+    const longStayAmt = (li, pct) => Math.round(computeLineItem(li).gross * pct / 100);
     function refreshPromo() {
-      const rights = freeBathRights(draft.lineItems, FREE_BATH_MIN_NIGHTS);
-      const used = (draft.addOns || []).some(a => a.name === FREE_BATH_ADDON_NAME);
       promoBanner.innerHTML = '';
-      if (!rights) { promoBanner.classList.add('hidden'); return; }
-      promoBanner.classList.remove('hidden');
-      promoBanner.appendChild(el('span', { class: 'promo-text', html: `${icons.star} พักครบ ${FREE_BATH_MIN_NIGHTS} คืน — ได้สิทธิ์<strong>อาบน้ำฟรี ${rights} สิทธิ์</strong> (1 สิทธิ์/ห้อง)` }));
-      if (used) {
-        promoBanner.appendChild(el('span', { class: 'pill green', text: 'ใช้สิทธิ์แล้ว' }));
-      } else {
-        const useBtn = el('button', { class: 'btn sm primary', text: 'ใช้สิทธิ์' });
-        useBtn.onclick = () => {
-          draft.addOns.push({ kind: 'custom', name: FREE_BATH_ADDON_NAME, qty: rights, unitPrice: 0 });
-          rerender();
-        };
-        promoBanner.appendChild(useBtn);
+      promoBanner.classList.remove('warn');
+      const lis = draft.lineItems.map(li => ({ li, pct: longStayPct(li.nights, tiers) }));
+      const hits = lis.filter(x => x.pct);
+      const stale = lis.filter(x => !x.pct && Number(x.li.discountValue) > 0);
+      const btn = (text, fn) => { const b = el('button', { type: 'button', class: 'btn sm primary', text }); b.onclick = () => { fn(); rerender(); }; return b; };
+      if (hits.length) {
+        const pct = Math.max(...hits.map(x => x.pct));
+        const nights = Math.max(...hits.map(x => Number(x.li.nights) || 0));
+        const ok = ({ li, pct }) => li.discountType === 'amount' && Number(li.discountValue) === longStayAmt(li, pct);
+        promoBanner.appendChild(el('span', { class: 'promo-text', html:
+          `${icons.star} พัก ${nights} คืน — ได้<strong>ส่วนลดพักยาว ${pct}%</strong> (ลดเฉพาะค่าห้อง)` }));
+        promoBanner.appendChild(hits.every(ok)
+          ? el('span', { class: 'pill green', text: 'รับสิทธิ์แล้ว' })
+          : btn(hits.some(x => Number(x.li.discountValue) > 0) ? 'ปรับส่วนลด' : 'รับสิทธิ์',
+            () => hits.forEach(({ li, pct }) => { li.discountType = 'amount'; li.discountValue = longStayAmt(li, pct); })));
+      } else if (stale.length) {
+        // ส่วนลดที่ค้างอยู่อาจเป็นส่วนลดพิเศษที่ตั้งใจให้ — แค่เตือน ไม่ลบเอง
+        promoBanner.classList.add('warn');
+        promoBanner.appendChild(el('span', { class: 'promo-text', html:
+          `${icons.alert} จำนวนคืนไม่ถึงเกณฑ์ส่วนลดพักยาวแล้ว แต่ห้องยังมีส่วนลดอยู่ — ถ้าเป็นส่วนลดพักยาว ให้เอาออก` }));
+        promoBanner.appendChild(btn('เอาส่วนลดออก', () => stale.forEach(({ li }) => { li.discountValue = 0; })));
       }
+      promoBanner.classList.toggle('hidden', !promoBanner.childNodes.length);
     }
 
     // ── บริการเสริม ──
     const addonsWrap = el('div', {});
     const addonOpts = (s?.addOnServices || []).filter(o => o.name);
     draft.addOns.forEach((a, idx) => addonsWrap.appendChild(addonRow(a, idx)));
-    const addAddonBtn = el('button', { class: 'btn sm ghost', html: icons.plus + ' เพิ่มบริการเสริม' });
-    addAddonBtn.onclick = () => {
-      const a = {};
-      applyAddonKind(a, 'bath');
-      draft.addOns.push(a);
-      rerender();
-    };
+    // แตะครั้งเดียวได้รายการชนิดที่ถูกเลย (เดิมต้องกดเพิ่ม แล้วไปเปลี่ยนชนิดในดรอปดาวน์อีกที)
+    const addonChips = el('div', { class: 'bf-chips' }, [
+      ['bath', 'อาบน้ำ'], ['groom', 'อาบน้ำตัดขน'], ['daycare', 'Day Care'], ['custom', 'อื่น ๆ'],
+    ].map(([key, text]) => {
+      const b = el('button', { type: 'button', class: 'bf-chip', html: icons.plus + escapeHtml(text) });
+      b.onclick = () => { const a = {}; applyAddonKind(a, key); draft.addOns.push(a); rerender(); };
+      return b;
+    }));
 
     // ตั้งค่ารายการบริการตามชนิดที่เลือก (ล้างค่าเก่าที่ไม่เกี่ยวออก)
     function applyAddonKind(a, key) {
@@ -589,21 +712,19 @@ export function openBookingForm(existing) {
     const billDiscVal = numInput(draft.billDiscountValue, v => { draft.billDiscountValue = v; refreshSummary(); }, 'เช่น 5');
 
     // ── สถานะ + หมายเหตุ ──
-    // สถานะมัดจำ: คอมใช้ดรอปดาวน์เดิม · มือถือใช้ปุ่มชิปแตะครั้งเดียว — ทั้งคู่เขียนค่าเดียวกันและซิงก์กัน
-    const depSel = selectEl(DEPOSIT_STATUSES.map(x => [x, x]), draft.depositStatus, v => { draft.depositStatus = v; syncDepChips(); });
-    const depChips = el('div', { class: 'dep-chips', role: 'radiogroup', 'aria-label': 'สถานะมัดจำ' });
-    const syncDepChips = () => depChips.querySelectorAll('button').forEach(b => {
-      const on = b.dataset.v === draft.depositStatus;
-      b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
-    });
-    DEPOSIT_STATUSES.forEach(x => {
-      const b = el('button', { type: 'button', role: 'radio', 'data-v': x, text: x });
-      b.onclick = () => { draft.depositStatus = x; depSel.value = x; syncDepChips(); };
-      depChips.appendChild(b);
-    });
-    syncDepChips();
-    const depStatus = el('div', { class: 'field', style: 'margin:0' }, [el('label', { text: 'สถานะมัดจำ' }), depSel, depChips]);
+    // สถานะมัดจำ / ช่องทางโอน = ชิปแตะครั้งเดียว (ทั้งคอมและมือถือ)
+    const depStatus = labeled('สถานะมัดจำ', chipGroup(DEPOSIT_STATUSES.map(x => [x, x]), draft.depositStatus, 'สถานะมัดจำ',
+      v => { draft.depositStatus = v; }, 'dep-chips'));
+    const depMethod = labeled('ช่องทางโอนมัดจำ', chipGroup(PAYMENT_METHODS.map(x => [x, x]), draft.depositMethod || DEFAULT_DEPOSIT_METHOD, 'ช่องทางโอนมัดจำ',
+      v => { draft.depositMethod = v; }));
     const recStatus = labeled('สถานะบันทึก', selectEl(RECORD_STATUSES.map(x => [x, x]), draft.recordStatus, v => draft.recordStatus = v));
+    // ตัวเลือกที่ไม่ค่อยแตะ → พับไว้ · มีค่าที่ไม่ใช่ค่าเริ่มต้น = เปิดค้าง จะได้ไม่มีส่วนลดซ่อนอยู่โดยไม่เห็น
+    const moreOpen = Number(draft.billDiscountValue) > 0 || Number(draft.depositPct) !== Number(s?.depositPctDefault ?? 50);
+    const more = el('details', { class: 'bf-more', open: moreOpen ? '' : null }, [
+      el('summary', { text: 'ตัวเลือกเพิ่มเติม · ส่วนลดทั้งบิล · % มัดจำ · สถานะบันทึก' }),
+      el('div', { class: 'row' }, [labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType), labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal)]),
+      el('div', { class: 'row' }, [depPctField, recStatus]),
+    ]);
     const notesInp = el('textarea', { placeholder: 'พันธุ์ / น้ำหนัก / อาการสุขภาพ / เงื่อนไขพิเศษ' });
     notesInp.value = draft.notes || '';
     notesInp.oninput = () => draft.notes = notesInp.value;
@@ -614,15 +735,18 @@ export function openBookingForm(existing) {
     const readOnly = !isNew && isStaff();
     const saveBtn = el('button', {
       class: 'btn primary' + (readOnly ? ' disabled' : ''),
-      html: icons.save + (readOnly ? ' แก้ไขได้เฉพาะเจ้าของร้าน' : ' บันทึก'),
+      html: icons.save + (readOnly ? ' แก้ไขได้เฉพาะเจ้าของร้าน' : ' บันทึกการจอง'),
     });
-    saveBtn.onclick = () => readOnly
+    saveNow = () => readOnly
       ? toast('ใบที่บันทึกแล้วแก้ได้เฉพาะเจ้าของร้าน — ถ้าต้องแก้ กรุณาแจ้งเจ้าของร้าน')
       : doSave(draft, isNew, m);
-    const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ด' });
+    saveBtn.onclick = saveNow;
+    const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+    const keyHint = readOnly ? null : el('div', { class: 'bf-key', text: `กด ${isMac ? '⌘' : 'Ctrl'} + Enter เพื่อบันทึก` });
+    const cardBtn = el('button', { class: 'btn ghost', html: icons.image + ' ดูการ์ดส่งลูกค้า' });
     cardBtn.onclick = () => openCardPreview(draft);
     // ฟังก์ชัน C: จองซ้ำ — ก็อปการจองเดิม เปิดใบใหม่ให้แก้เฉพาะวัน
-    const dupBtn = existing?.id ? el('button', { class: 'btn ghost', html: icons.copy + ' จองซ้ำ' }) : null;
+    const dupBtn = existing?.id ? el('button', { class: 'btn sm ghost', html: icons.copy + ' จองซ้ำ' }) : null;
     if (dupBtn) dupBtn.onclick = () => {
       const clone = structuredClone(draft);
       delete clone.id;
@@ -635,12 +759,12 @@ export function openBookingForm(existing) {
       toast('ก็อปการจองแล้ว — กรอกวันเข้าพักใหม่');
     };
     // ลบได้เฉพาะเจ้าของร้าน (firestore.rules บล็อกฝั่ง server อยู่แล้ว — ตรงนี้กันไม่ให้เห็นปุ่มที่กดแล้วพัง)
-    const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn danger', html: icons.trash + ' ลบ' }) : null;
+    const delBtn = existing?.id && !isStaff() ? el('button', { class: 'btn sm ghost bf-del', html: icons.trash + ' ลบการจอง' }) : null;
     if (delBtn) delBtn.onclick = async () => {
       if (await confirmDialog('ลบการจองนี้?', { danger: true, okText: 'ลบ' })) { await remove('bookings', existing.id); m.close(); toast('ลบแล้ว'); }
     };
 
-    // ฟังก์ชัน B: แถบสรุปยอด+มัดจำ ลอยติดล่าง (มีปุ่มบันทึกในตัว)
+    // ฟังก์ชัน B: แถบสรุปยอด+มัดจำ ลอยติดล่าง (มีปุ่มบันทึกในตัว) · บนคอมตัวเลขในแถบนี้ซ่อน (ซ้ำกับ .bf-pay)
     const stickyBar = el('div', { class: 'sticky-summary' }, [
       el('div', { class: 'ss-figures' }, [stickyTotal, stickyDeposit]),
       saveBtn,
@@ -650,54 +774,82 @@ export function openBookingForm(existing) {
     // — syncNights ทำงานเฉพาะตอน "เปลี่ยนวันที่" ถ้าไม่เรียกตรงนี้จะค้างที่ 1 คืน = คิดเงินขาด
     if (isNew && draft.checkIn && draft.checkOut) syncNights();
 
-    // คอม: 2 แผง (ตาม booking-form-mockup) — ซ้าย = ฟอร์ม · ขวา = สรุปยอด + ปุ่มบันทึก ติดอยู่ตลอดตอนเลื่อน
+    // คอม: 2 แผง — ซ้าย = ขั้นตอนกรอก (เลขขั้นนับด้วย CSS counter จึงไม่ข้ามเลขตอนพี่เลี้ยงไม่เห็นกลุ่มมัดจำ)
+    //       ขวา = สรุปยอด + ปุ่มบันทึก ติดอยู่ตลอดตอนเลื่อน
     // มือถือ: .bf-main/.bf-side เป็น display:contents → ลำดับเหมือนเดิม และแถบสรุปยังลอยติดล่างจอ
     form.append(
       el('h2', { text: isNew ? 'เพิ่มการจอง' : 'แก้ไขการจอง' }),
       el('div', { class: 'bf-main' }, [
-      formGroup(icons.users, 'ข้อมูลลูกค้า', 'blue',
-        el('div', { class: 'row' }, [nameField, phoneField]), vaccineBanner),
-      formGroup(icons.calendar, 'ช่วงเข้าพัก', 'green',
-        el('div', { class: 'row date-pair' }, [inDateField, nightsBadge, outDateField]),
-        el('div', { class: 'row' }, [inTimeField, outTimeField])),
-      formGroup(icons.home, 'ห้องพัก', 'orange',
-        itemsWrap, addItemBtn, promoBanner),
-      formGroup(icons.star, 'บริการเสริม', 'purple',
-        addonsWrap, addAddonBtn),
-      formGroup(icons.banknote, 'การชำระเงิน / มัดจำ', 'gold owner-only',
-        el('div', { class: 'row' }, [depDateField, depPctField]),
-        el('div', { class: 'row' }, [labeled('ช่องทางโอนมัดจำ', depMethodSel)]),
-        el('div', { class: 'row' }, [
-          labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType),
-          labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal),
-        ]),
-        el('div', { class: 'row' }, [depStatus])),
-      formGroup(icons.bookings, 'หมายเหตุ', 'grey',
-        el('div', { class: 'row' }, [recStatus]),
-        el('div', { class: 'field' }, [el('label', { text: 'รายละเอียด/หมายเหตุ' }), notesInp])),
-      ]),
+        bfGroup('ลูกค้า', null,
+          el('div', { class: 'row' }, [nameField, phoneField]), custCard, vaccineBanner),
+        bfGroup('วันเข้าพัก', nightsBadge,
+          el('div', { class: 'row' }, [inDateField, outDateField]),
+          el('div', { class: 'bf-chips bf-quick' }, [...dayChips, nightChips.length ? el('span', { class: 'bf-sep' }) : null, ...nightChips].filter(Boolean)),
+          el('div', { class: 'row' }, [inTimeField, outTimeField])),
+        bfGroup('ห้องพัก', null,
+          itemsWrap, addItemBtn, promoBanner),
+        bfGroup('บริการเสริม', null,
+          addonsWrap, addonChips),
+        bfGroup('มัดจำ owner-only', null,
+          depStatus,
+          el('div', { class: 'row' }, [depMethod]),
+          el('div', { class: 'row' }, [depDateField]),
+          more),
+        bfGroup('หมายเหตุ', null,
+          el('div', { class: 'field' }, [notesInp])),
+      ].filter(Boolean)),
       el('aside', { class: 'bf-side' }, [
         el('h3', { class: 'bf-side-h owner-only', text: 'สรุปยอด' }),
         summaryBox,
-        el('div', { class: 'row bf-acts', style: 'justify-content:flex-end;gap:8px;flex-wrap:wrap' }, [delBtn, dupBtn, cardBtn].filter(Boolean)),
         stickyBar,
-      ]),
+        keyHint,
+        el('div', { class: 'bf-acts' }, [cardBtn]),
+        dupBtn || delBtn ? el('div', { class: 'bf-acts bf-acts-sm' }, [dupBtn, delBtn].filter(Boolean)) : null,
+      ].filter(Boolean)),
     );
     refreshSummary();
     refreshNightsBadge();
+    refreshCust();
   }
 }
 
 // ────────── helpers ──────────
-// การ์ดกลุ่มในฟอร์ม — หัวสี+ไอคอน แยกประเภทชัดเจน (color = blue|green|orange|purple|gold|grey)
-function formGroup(icon, title, color, ...children) {
-  return el('div', { class: `form-group form-group--${color}` }, [
-    el('div', { class: 'form-group-head' }, [
-      el('span', { class: 'fg-ico', html: icon }),
-      el('span', { text: title }),
-    ]),
-    el('div', { class: 'form-group-body' }, children),
+// กลุ่มขั้นตอนในฟอร์มจอง — หัว = เลขขั้น (CSS counter) + ชื่อ + ของเสริมชิดขวา (เช่นป้าย N คืน)
+// title ต่อท้ายคลาสได้ด้วยเว้นวรรค เช่น 'มัดจำ owner-only'
+function bfGroup(title, aside, ...children) {
+  const [name, ...cls] = title.split(' ');
+  return el('section', { class: ['form-group', 'bf-group', ...cls].join(' ') }, [
+    el('div', { class: 'form-group-head' }, [el('span', { class: 'bf-n', 'aria-hidden': 'true' }), el('h3', { text: name }), aside]),
+    el('div', { class: 'form-group-body' }, children.filter(Boolean)),
   ]);
+}
+
+// ชิปเลือกได้ 1 ค่า (radiogroup) — แทน dropdown ที่มีตัวเลือกไม่เกิน ~4 ตัว
+function chipGroup(pairs, value, label, onChange, cls = '') {
+  const wrap = el('div', { class: ('bf-chips ' + cls).trim(), role: 'radiogroup', 'aria-label': label });
+  const sync = (v) => wrap.querySelectorAll('button').forEach(b => {
+    const on = b.dataset.v === v;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+  });
+  pairs.forEach(([v, t]) => {
+    const b = el('button', { type: 'button', role: 'radio', class: 'bf-chip', 'data-v': v, text: t });
+    b.onclick = () => { sync(v); onChange(v); };
+    wrap.appendChild(b);
+  });
+  sync(value);
+  return wrap;
+}
+
+// ปุ่ม − ค่า + · ค่าเก็บใน <output> (syncNights เขียน .value ทับได้ตรงๆ)
+function stepper(value, min, label, onChange) {
+  const out = el('output', { 'aria-live': 'polite' });
+  out.value = String(Number(value) || min);
+  const btn = (d, icon, name) => {
+    const b = el('button', { type: 'button', class: 'bf-stepbtn', html: icon, 'aria-label': `${name}${label}` });
+    b.onclick = () => { const v = Math.max(min, (Number(out.value) || min) + d); out.value = String(v); onChange(v); };
+    return b;
+  };
+  return el('div', { class: 'bf-step', role: 'group', 'aria-label': label }, [btn(-1, icons.minus, 'ลด'), out, btn(1, icons.plus, 'เพิ่ม')]);
 }
 
 function field(label, value, onInput, extra = {}) {

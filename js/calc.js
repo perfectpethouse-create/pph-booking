@@ -52,12 +52,6 @@ export function addOnsTotal(addOns = []) {
   return round2(addOns.reduce((s, a) => s + computeAddOn(a).total, 0));
 }
 
-// จำนวนสิทธิ์อาบน้ำฟรี: 1 สิทธิ์/ห้อง ที่พักครบ minNights คืน
-export function freeBathRights(lineItems = [], minNights = 5) {
-  return lineItems.reduce((n, li) =>
-    n + ((Number(li.nights) || 0) >= minNights ? (Number(li.rooms) || 0) : 0), 0);
-}
-
 // คำนวณยอดทั้งการจอง → grandTotal, deposit, balance, และ line items ที่คำนวณแล้ว
 export function computeBooking(booking) {
   const lineItems = (booking.lineItems || []).map(computeLineItem);
