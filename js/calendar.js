@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings, toast, openModal, isStaff, escapeHtml } from './ui.js';
-import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween, eachDate, isoOf } from './calc.js';
+import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween, eachDate, isoOf, owedOf } from './calc.js';
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { icons } from './icons.js';
@@ -201,7 +201,7 @@ export function renderCalendar(container) {
         })));
       const nights = nightsBetween(b.checkIn, b.checkOut);
       // พี่เลี้ยงไม่เห็นยอดเงิน
-      const money = ` · ยอด ${formatBaht(b.grandTotal)} · ค้างชำระ ${formatBaht(b.balanceDue)}`;
+      const money = ` · ยอด ${formatBaht(b.grandTotal)} · ค้างชำระ ${formatBaht(owedOf(b))}`;
       const info = el('div', { class: 'muted', style: 'font-size:13px', text:
         `${formatDateTH(b.checkIn)} → ${formatDateTH(b.checkOut)} · ${nights} คืน${money}` });
       const row = el('div', { class: 'lineitem day-guest' }, [

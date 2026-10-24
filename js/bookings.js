@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff } from './ui.js';
-import { computeBooking, computeAddOn, freeBathRights, formatBaht, nightsBetween, todayISO, addDaysISO } from './calc.js';
+import { computeBooking, computeAddOn, freeBathRights, formatBaht, nightsBetween, todayISO, addDaysISO, owedOf } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE, VIP_CAT_PROMO_PRICE,
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
@@ -138,7 +138,7 @@ function buildMobileList() {
 function mobileCard(raw) {
   const b = computeBooking(raw);
   const nights = nightsBetween(b.checkIn, b.checkOut);
-  const owe = b.depositStatus !== 'ยกเลิก' && b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
+  const owe = owedOf(b);
   const card = el('div', { class: 'm-bk' + (b.depositStatus === 'ยกเลิก' ? ' cancel' : ''), role: 'button', tabindex: '0' }, [
     el('div', { class: 'm-bk-top' }, [
       el('span', { class: 'm-pet' + (isCat(b) ? ' cat' : ''), html: isCat(b) ? icons.cat : icons.dog }),
@@ -149,7 +149,7 @@ function mobileCard(raw) {
       el('div', {}, [el('span', { text: 'ห้อง' }), el('b', { text: roomsOf(b) })]),
       el('div', {}, [el('span', { text: 'วันที่' }), el('b', { text: rangeOf(b) })]),
       el('div', {}, owe
-        ? [el('span', { text: 'คงเหลือ' }), el('b', { class: 'owe', text: formatBaht(b.balanceDue) })]
+        ? [el('span', { text: 'คงเหลือ' }), el('b', { class: 'owe', text: formatBaht(owe) })]
         : [el('span', { text: 'จำนวน' }), el('b', { text: nights ? `${nights} คืน` : '-' })]),
     ]),
     depositRow(b),
@@ -228,10 +228,7 @@ function buildTable(rows) {
     const dateCell = !paidIn ? el('td', { class: 'muted', text: '—' })
       : b.depositDate ? el('td', { text: dayLabel(b.depositDate) })
       : el('td', {}, [el('span', { class: 'pill yellow', text: 'ไม่ระบุ' })]);
-    // คงเหลือ = ยอดที่ยังต้องเก็บจริง (สูตรเดียวกับยอดค้างรับในแดชบอร์ด/รายงาน)
-    // balanceDue ในข้อมูลคือ ยอดรวม−มัดจำ เสมอ แม้จ่ายครบหรือยกเลิกแล้ว จึงคำนวณตามสถานะตรงนี้
-    const left = b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue
-      : b.depositStatus === 'ยังไม่มัดจำ' ? b.grandTotal : 0;
+    const left = owedOf(b); // คงเหลือ = ยอดที่ยังต้องเก็บจริง (สูตรเดียวกับแดชบอร์ด)
     const moneyCells = [
       el('td', { class: 'num', text: formatBaht(b.grandTotal) }),
       dateCell,

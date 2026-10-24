@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
-import { computeBooking, formatBaht, todayISO, addDaysISO, nightsBetween } from './calc.js';
+import { computeBooking, formatBaht, todayISO, addDaysISO, nightsBetween, owedOf } from './calc.js';
 import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel, capacityOf } from './config-shop.js';
 import { shortDate, rangeOf } from './mobile-kit.js';
 import { matchCustomer, vaccineStatus } from './customers.js';
@@ -103,12 +103,11 @@ export function renderDashboard(container) {
     const newToday = active.filter(b => localDateISO(b.createdAt) === today);
     const pendingDeposit = newToday.filter(b => b.depositStatus === 'ยังไม่มัดจำ');
     // ค้างเท่าไหร่จริง: ยังไม่มัดจำ = ค้างทั้งก้อน · มัดจำแล้ว = ค้างครึ่งหลัง
-    const owedOf = b => b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal;
     const balanceSum = unpaid.reduce((s, b) => s + owedOf(b), 0);
 
     // การ์ดสถิติ 4 ใบ — ใบแรกเป็นสีหลัก (งานสำคัญสุดของวัน) · สีที่เหลือสื่อความหมายเดิม
     // เขียว=เข้าพัก · ส้ม=ออกวันนี้ · ฟ้า=กำลังพัก · แดง=ยอดค้าง
-    const inOwed = checkinToday.filter(b => b.depositStatus !== 'จ่ายครบแล้ว').reduce((s, b) => s + owedOf(b), 0);
+    const inOwed = checkinToday.reduce((s, b) => s + owedOf(b), 0);
     statGrid.innerHTML = '';
     [
       ['hero', icons.login, 'วันนี้', checkinToday.length, inOwed ? `เข้าพักวันนี้ · ต้องเก็บยอด ${formatBaht(inOwed)}` : 'เข้าพักวันนี้'],
@@ -150,13 +149,13 @@ export function renderDashboard(container) {
     body.innerHTML = '';
     body.append(...[
       newCard,
-      section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', 'เก็บเพิ่ม', b => b.balanceDue, icons.login, 'checkin'),
-      section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', 'ยอดค้าง', b => b.balanceDue, icons.logout, 'checkout'),
+      section('เช็คอินวันนี้ · เก็บยอดที่เหลือ', checkinToday, 'ไม่มีลูกค้าเข้าพักวันนี้', 'เก็บเพิ่ม', owedOf, icons.login, 'checkin'),
+      section('เช็คเอาท์วันนี้', checkoutToday, 'ไม่มีลูกค้าออกวันนี้', 'ยอดค้าง', owedOf, icons.logout, 'checkout'),
       stayingSection(staying),
       section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', 'ค้าง', owedOf, icons.banknote, 'pay'),
       // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
-      section(`พรุ่งนี้เข้าพัก · ${tmr} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', 'เก็บเพิ่ม', b => b.balanceDue, icons.calendar),
-      section(`พรุ่งนี้เช็คเอาท์ · ${tmr} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', 'ยอดค้าง', b => b.balanceDue, icons.calendar),
+      section(`พรุ่งนี้เข้าพัก · ${tmr} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', 'เก็บเพิ่ม', owedOf, icons.calendar),
+      section(`พรุ่งนี้เช็คเอาท์ · ${tmr} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', 'ยอดค้าง', owedOf, icons.calendar),
       notRecorded.length ? section('ยังไม่ลงระบบ', notRecorded, '', 'ยอดรวม', b => b.grandTotal, icons.alert) : null,
     ].filter(Boolean));
 
@@ -259,7 +258,7 @@ export function renderDashboard(container) {
       if (b.stayStatus === 'checked-in' || b.stayStatus === 'checked-out') {
         td.appendChild(el('span', { class: 'pill green', text: `เช็คอินแล้ว ${time(b.checkedInAt)}` }));
         // เตือนถ้าเช็คอินไปแล้วแต่ยังไม่ได้อัปเดตยอด
-        if (b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0) {
+        if (owedOf(b) > 0) {
           td.appendChild(el('div', { style: 'margin-top:4px' }, [payNowBtn(b)]));
         }
       } else {
@@ -289,7 +288,7 @@ export function renderDashboard(container) {
       dep.onclick = (e) => { e.stopPropagation(); runMarkDeposit(b); };
       return dep;
     }
-    const btn = el('button', { class: 'btn sm danger', text: `รับเงิน ${formatBaht(b.balanceDue)}` });
+    const btn = el('button', { class: 'btn sm danger', text: `รับเงิน ${formatBaht(owedOf(b))}` });
     btn.onclick = (e) => { e.stopPropagation(); runCollectBalance(b); };
     return btn;
   }
@@ -414,7 +413,7 @@ function stayingSection(list) {
   const rows = sorted.map(b => {
     const total = nightsBetween(b.checkIn, b.checkOut) || 1;
     const nightNo = Math.min(total, Math.max(1, nightsBetween(b.checkIn, today) + 1));
-    const paid = b.depositStatus === 'จ่ายครบแล้ว' || b.balanceDue <= 0;
+    const paid = owedOf(b) <= 0;
 
     const outCell = el('td', {}, [
       el('span', { text: shortDate(b.checkOut) }),
@@ -422,8 +421,7 @@ function stayingSection(list) {
     ].filter(Boolean));
     const statusCell = el('td', { class: 'num' }, [
       paid ? el('span', { class: 'pill green', text: 'จ่ายครบ' })
-        // ยังไม่มัดจำ = ค้างทั้งก้อน (balanceDue คือแค่ครึ่งหลัง) — สูตรเดียวกับยอดค้างรับรวม
-        : el('span', { class: 'pill red', text: `ค้าง ${formatBaht(b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal)}` }),
+        : el('span', { class: 'pill red', text: `ค้าง ${formatBaht(owedOf(b))}` }),
     ]);
     const tr = el('tr', { style: 'cursor:pointer' }, [
       nameCell(b, vaccineFlag(b)),

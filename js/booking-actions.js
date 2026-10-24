@@ -6,7 +6,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { save } from './db.js';
 import { el, toast, confirmDialog, openModal } from './ui.js';
-import { formatBaht } from './calc.js';
+import { formatBaht, owedOf } from './calc.js';
 import { PAYMENT_METHODS } from './config-shop.js';
 
 // เลือกช่องทางรับเงิน — ใช้ร่วมกันทุกจุดที่ปิดยอด
@@ -26,7 +26,7 @@ export function askPayMethod(b, okText = 'รับแล้ว') {
     const okBtn = el('button', { class: 'btn primary', text: okText });
     const cancelBtn = el('button', { class: 'btn ghost', text: 'ยกเลิก' });
     const m = openModal(el('div', {}, [
-      el('h2', { text: `รับยอดคงเหลือ ${formatBaht(b.balanceDue)}` }),
+      el('h2', { text: `รับยอดคงเหลือ ${formatBaht(owedOf(b))}` }),
       el('p', { class: 'muted', style: 'margin-top:-6px', text: `จาก ${b.customerName} — ระบบจะบันทึกเป็น "จ่ายครบแล้ว"` }),
       el('div', { class: 'field' }, [el('label', { text: 'รับเงินทางช่องทางไหน' }), sel]),
       el('div', { class: 'row', style: 'justify-content:flex-end;gap:8px' }, [cancelBtn, okBtn]),
@@ -39,23 +39,26 @@ export function askPayMethod(b, okText = 'รับแล้ว') {
 // เช็คอิน: นโยบายร้านคือลูกค้าจ่ายส่วนที่เหลือ "วันเช็คอิน"
 // → ถามตอนกดเช็คอินเลย จะได้ไม่ลืมอัปเดตยอด
 export function runCheckin(b) {
-  const unpaid = b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
+  const unpaid = owedOf(b) > 0;
   if (!unpaid) {
     // จ่ายครบแล้ว → เช็คอินได้เลย
     return save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() })
       .then(() => toast(`เช็คอิน ${b.customerName} แล้ว`));
   }
   const sel = methodSelect();
-  const paidBtn = el('button', { class: 'btn primary block', text: `รับเงิน ${formatBaht(b.balanceDue)} แล้ว — เช็คอิน` });
+  const paidBtn = el('button', { class: 'btn primary block', text: `รับเงิน ${formatBaht(owedOf(b))} แล้ว — เช็คอิน` });
   const laterBtn = el('button', { class: 'btn block', text: 'ยังไม่รับเงิน — เช็คอินก่อน' });
   const cancelBtn = el('button', { class: 'btn ghost block', text: 'ยกเลิก' });
   const m = openModal(el('div', {}, [
     el('h2', { text: `เช็คอิน ${b.customerName}` }),
     el('div', { class: 'summary-box', style: 'margin:12px 0' }, [
       el('div', { class: 'line' }, [el('span', { text: 'ยอดทั้งหมด' }), el('span', { text: formatBaht(b.grandTotal) })]),
-      el('div', { class: 'line' }, [el('span', { text: `มัดจำแล้ว ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) })]),
-      el('div', { class: 'line grand' }, [el('span', { text: 'ต้องเก็บวันนี้' }), el('span', { text: formatBaht(b.balanceDue) })]),
-    ]),
+      // ยังไม่มัดจำ → ไม่มีแถวมัดจำ และต้องเก็บทั้งก้อน (ดู owedOf ใน calc.js)
+      b.depositStatus === 'มัดจำแล้ว'
+        ? el('div', { class: 'line' }, [el('span', { text: `มัดจำแล้ว ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) })])
+        : null,
+      el('div', { class: 'line grand' }, [el('span', { text: 'ต้องเก็บวันนี้' }), el('span', { text: formatBaht(owedOf(b)) })]),
+    ].filter(Boolean)),
     el('div', { class: 'field' }, [el('label', { text: 'รับเงินทางช่องทางไหน' }), sel]),
     el('div', { style: 'display:flex;flex-direction:column;gap:8px' }, [paidBtn, laterBtn, cancelBtn]),
   ]));
@@ -65,11 +68,11 @@ export function runCheckin(b) {
       ...b, stayStatus: 'checked-in', checkedInAt: Date.now(),
       depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(), balanceMethod: method,
     });
-    m.close(); toast(`เช็คอิน ${b.customerName} + รับ ${formatBaht(b.balanceDue)} (${method})`);
+    m.close(); toast(`เช็คอิน ${b.customerName} + รับ ${formatBaht(owedOf(b))} (${method})`);
   };
   laterBtn.onclick = async () => {
     await save('bookings', { ...b, stayStatus: 'checked-in', checkedInAt: Date.now() });
-    m.close(); toast(`เช็คอินแล้ว — ยอด ${formatBaht(b.balanceDue)} ยังค้างอยู่ (จะเตือนในหน้านี้)`);
+    m.close(); toast(`เช็คอินแล้ว — ยอด ${formatBaht(owedOf(b))} ยังค้างอยู่ (จะเตือนในหน้านี้)`);
   };
   cancelBtn.onclick = () => m.close();
 }
@@ -104,12 +107,12 @@ export async function runCollectBalance(b) {
   const method = await askPayMethod(b);
   if (!method) return;
   await save('bookings', { ...b, depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(), balanceMethod: method });
-  toast(`รับยอด ${b.customerName} แล้ว (${method})`);
+  toast(`รับยอด ${formatBaht(owedOf(b))} จาก ${b.customerName} แล้ว (${method})`);
 }
 
 // เช็คเอาท์ — ถ้ายังค้างยอดต้องเก็บเงิน + ระบุช่องทาง ก่อนเช็คเอาท์
 export async function runCheckout(b) {
-  const needPay = b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0;
+  const needPay = owedOf(b) > 0;
   if (needPay) {
     const method = await askPayMethod(b, 'เช็คเอาท์');
     if (!method) return;
@@ -117,7 +120,7 @@ export async function runCheckout(b) {
       ...b, stayStatus: 'checked-out', checkedOutAt: Date.now(),
       depositStatus: 'จ่ายครบแล้ว', balancePaidAt: Date.now(), balanceMethod: method,
     });
-    toast(`เช็คเอาท์ ${b.customerName} + รับ ${formatBaht(b.balanceDue)} (${method})`);
+    toast(`เช็คเอาท์ ${b.customerName} + รับ ${formatBaht(owedOf(b))} (${method})`);
     return;
   }
   if (!await confirmDialog(`เช็คเอาท์ ${b.customerName}?`, { okText: 'เช็คเอาท์' })) return;

@@ -98,6 +98,15 @@ export function computeBooking(booking) {
   };
 }
 
+// ยอดที่ร้าน "ยังต้องเก็บจริง" ของใบจอง (ต้องผ่าน computeBooking มาแล้ว)
+// ⚠️ ห้ามใช้ balanceDue ตรงๆ แทน — balanceDue = ยอดรวม−มัดจำ เสมอ แม้ยังไม่โอนมัดจำ/จ่ายครบ/ยกเลิกแล้ว
+//    ยังไม่มัดจำ = ค้างทั้งก้อน · มัดจำแล้ว = ค้างส่วนที่เหลือ · จ่ายครบ/ยกเลิก = 0
+export function owedOf(b) {
+  if (b.depositStatus === 'มัดจำแล้ว') return b.balanceDue;
+  if (b.depositStatus === 'ยังไม่มัดจำ') return b.grandTotal;
+  return 0;
+}
+
 // ─── ฟอร์แมตแสดงผล ───
 
 export function formatBaht(n, withSymbol = true) {

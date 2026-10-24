@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, openModal, getSettings } from './ui.js';
-import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
+import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween, owedOf } from './calc.js';
 import { PET_TYPES } from './config-shop.js';
 import { matchCustomer, vaccineStatus, isLoyal, openCustomerForm } from './customers.js';
 import { openBookingForm } from './bookings.js';
@@ -22,7 +22,7 @@ function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label ||
 function fmtTime(ts) {
   return ts ? new Date(ts).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
 }
-function isPaid(b) { return b.depositStatus === 'จ่ายครบแล้ว' || b.balanceDue <= 0; }
+function isPaid(b) { return owedOf(b) <= 0; }
 function isCheckedIn(b) { return b.stayStatus === 'checked-in' || b.stayStatus === 'checked-out'; }
 
 function roomsDesc(b) {
@@ -118,14 +118,16 @@ export function openBookingCockpit(booking) {
     }
     const box = el('div', { class: 'summary-box', style: 'border-left:4px solid #dc2626;margin:12px 0' }, [
       el('div', { class: 'line' }, [el('span', { text: 'ยอดทั้งหมด' }), el('span', { text: formatBaht(b.grandTotal) })]),
-      el('div', { class: 'line' }, [el('span', { text: `มัดจำแล้ว ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) })]),
-      el('div', { class: 'line grand' }, [el('span', { text: 'ต้องเก็บวันนี้' }), el('span', { text: formatBaht(b.balanceDue) })]),
+      b.depositStatus === 'มัดจำแล้ว'
+        ? el('div', { class: 'line' }, [el('span', { text: `มัดจำแล้ว ${b.depositPct}%` }), el('span', { text: formatBaht(b.depositAmount) })])
+        : el('div', { class: 'line' }, [el('span', { text: 'มัดจำ' }), el('span', { text: 'ยังไม่ได้รับ' })]),
+      el('div', { class: 'line grand' }, [el('span', { text: 'ต้องเก็บวันนี้' }), el('span', { text: formatBaht(owedOf(b)) })]),
     ]);
     // ยังไม่เช็คอิน → ปุ่มเดียวจบ (รับเงิน+เช็คอิน) · เช็คอินไปแล้วแต่ค้าง → รับเงินอย่างเดียว
     const notIn = !isCheckedIn(b);
     const btn = el('button', {
       class: 'btn primary block', style: 'margin-top:8px',
-      text: notIn ? `รับเงิน ${formatBaht(b.balanceDue)} + เช็คอิน` : `รับเงิน ${formatBaht(b.balanceDue)}`,
+      text: notIn ? `รับเงิน ${formatBaht(owedOf(b))} + เช็คอิน` : `รับเงิน ${formatBaht(owedOf(b))}`,
     });
     btn.onclick = () => (notIn ? runCheckin(b) : runCollectBalance(b));
     box.appendChild(btn);

@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { el, getSettings } from './ui.js';
 import { DOW, dateOf, shortDate, longDate, rangeOf, roomsOf, isCat, roomsUsed } from './mobile-kit.js';
-import { formatBaht, todayISO, addDaysISO, nightsBetween } from './calc.js';
+import { formatBaht, todayISO, addDaysISO, nightsBetween, owedOf } from './calc.js';
 import { capacityOf, groomServiceOf, groomServiceLabel, exerciseZoneLabel } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 import { runCheckin, runCheckout, runCollectBalance, runMarkDeposit } from './booking-actions.js';
@@ -127,8 +127,6 @@ export function createMobileHome() {
     node.appendChild(outList.length ? list(outList, b => checkoutAction(b, isToday)) : empty('ไม่มีลูกค้าออก'));
 
     // ── เรื่องเงิน/งานค้างทั้งร้าน (ไม่ขึ้นกับวันที่เลือก) — เกณฑ์เดียวกับแดชบอร์ดคอม ──
-    // ค้างจริง: ยังไม่มัดจำ = ค้างทั้งก้อน · มัดจำแล้ว = ค้างครึ่งหลัง
-    const owedOf = (b) => b.depositStatus === 'มัดจำแล้ว' ? b.balanceDue : b.grandTotal;
     const unpaid = active.filter(b => b.depositStatus !== 'จ่ายครบแล้ว' && b.grandTotal > 0)
       .sort((a, b) => String(a.checkIn).localeCompare(String(b.checkIn)));
     const owedSum = unpaid.reduce((sum, b) => sum + owedOf(b), 0);
@@ -201,7 +199,7 @@ export function createMobileHome() {
   // ปุ่มเช็คอิน/เช็คเอาท์ โผล่เฉพาะ "วันนี้" — วันอื่นแสดงสถานะการเงินแทน กันกดล่วงหน้าผิดวัน
   function checkinAction(b, isToday) {
     if (b.stayStatus === 'checked-in' || b.stayStatus === 'checked-out') {
-      if (b.depositStatus !== 'จ่ายครบแล้ว' && b.balanceDue > 0) return payBtn(b);
+      if (owedOf(b) > 0) return payBtn(b);
       return done(timeOf(b.checkedInAt) || 'เข้าแล้ว');
     }
     if (!isToday) return payPill(b);
@@ -216,7 +214,7 @@ export function createMobileHome() {
     btn.onclick = (e) => { e.stopPropagation(); runCheckout(b); };
     return btn;
   }
-  // ยังไม่มัดจำ → ปุ่ม "รับมัดจำแล้ว" (balanceDue ตอนนี้คือแค่ครึ่งหลัง จึงไม่ตรงกับยอดค้างจริง)
+  // ยังไม่มัดจำ → ปุ่ม "รับมัดจำแล้ว" (ขั้นแรกของการเก็บเงิน)
   // มัดจำแล้ว → "รับ ฿ยอดที่เหลือ" ตามเดิม
   function payBtn(b) {
     if (b.depositStatus === 'ยังไม่มัดจำ') {
@@ -224,7 +222,7 @@ export function createMobileHome() {
       dep.onclick = (e) => { e.stopPropagation(); runMarkDeposit(b); };
       return dep;
     }
-    const btn = el('button', { class: 'm-act warn', text: `รับ ${formatBaht(b.balanceDue)}` });
+    const btn = el('button', { class: 'm-act warn', text: `รับ ${formatBaht(owedOf(b))}` });
     btn.onclick = (e) => { e.stopPropagation(); runCollectBalance(b); };
     return btn;
   }
