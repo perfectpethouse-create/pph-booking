@@ -22,6 +22,33 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+// ── ชิ้นส่วนฟอร์มแบบขั้นตอน (ฟอร์มจองห้อง bookings.js + ฟอร์มจองคิว appointments.js) ──
+// กลุ่มขั้นตอน — หัว = เลขขั้น (CSS counter) + ชื่อ + ของเสริมชิดขวา (เช่นป้าย N คืน)
+// title ต่อท้ายคลาสได้ด้วยเว้นวรรค เช่น 'มัดจำ owner-only'
+export function bfGroup(title, aside, ...children) {
+  const [name, ...cls] = title.split(' ');
+  return el('section', { class: ['form-group', 'bf-group', ...cls].join(' ') }, [
+    el('div', { class: 'form-group-head' }, [el('span', { class: 'bf-n', 'aria-hidden': 'true' }), el('h3', { text: name }), aside]),
+    el('div', { class: 'form-group-body' }, children.filter(Boolean)),
+  ]);
+}
+
+// ชิปเลือกได้ 1 ค่า (radiogroup) — แทน dropdown ที่มีตัวเลือกไม่เกิน ~4 ตัว
+export function chipGroup(pairs, value, label, onChange, cls = '') {
+  const wrap = el('div', { class: ('bf-chips ' + cls).trim(), role: 'radiogroup', 'aria-label': label });
+  const sync = (v) => wrap.querySelectorAll('button').forEach(b => {
+    const on = b.dataset.v === v;
+    b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
+  });
+  pairs.forEach(([v, t]) => {
+    const b = el('button', { type: 'button', role: 'radio', class: 'bf-chip', 'data-v': v, text: t });
+    b.onclick = () => { sync(v); onChange(v); };
+    wrap.appendChild(b);
+  });
+  sync(value);
+  return wrap;
+}
+
 export function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, m =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));

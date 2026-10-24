@@ -2,7 +2,7 @@
 // bookings.js — หน้ารายการจอง + ฟอร์มเพิ่ม/แก้ไข (หัวใจของระบบ)
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
-import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff } from './ui.js';
+import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff, bfGroup, chipGroup } from './ui.js';
 import { computeBooking, computeAddOn, computeLineItem, formatBaht, nightsBetween, todayISO, addDaysISO, owedOf } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE, VIP_CAT_PROMO_PRICE,
@@ -820,31 +820,7 @@ export function openBookingForm(existing) {
 }
 
 // ────────── helpers ──────────
-// กลุ่มขั้นตอนในฟอร์มจอง — หัว = เลขขั้น (CSS counter) + ชื่อ + ของเสริมชิดขวา (เช่นป้าย N คืน)
-// title ต่อท้ายคลาสได้ด้วยเว้นวรรค เช่น 'มัดจำ owner-only'
-function bfGroup(title, aside, ...children) {
-  const [name, ...cls] = title.split(' ');
-  return el('section', { class: ['form-group', 'bf-group', ...cls].join(' ') }, [
-    el('div', { class: 'form-group-head' }, [el('span', { class: 'bf-n', 'aria-hidden': 'true' }), el('h3', { text: name }), aside]),
-    el('div', { class: 'form-group-body' }, children.filter(Boolean)),
-  ]);
-}
-
-// ชิปเลือกได้ 1 ค่า (radiogroup) — แทน dropdown ที่มีตัวเลือกไม่เกิน ~4 ตัว
-function chipGroup(pairs, value, label, onChange, cls = '') {
-  const wrap = el('div', { class: ('bf-chips ' + cls).trim(), role: 'radiogroup', 'aria-label': label });
-  const sync = (v) => wrap.querySelectorAll('button').forEach(b => {
-    const on = b.dataset.v === v;
-    b.classList.toggle('on', on); b.setAttribute('aria-checked', String(on));
-  });
-  pairs.forEach(([v, t]) => {
-    const b = el('button', { type: 'button', role: 'radio', class: 'bf-chip', 'data-v': v, text: t });
-    b.onclick = () => { sync(v); onChange(v); };
-    wrap.appendChild(b);
-  });
-  sync(value);
-  return wrap;
-}
+// bfGroup / chipGroup ย้ายไป ui.js (ใช้ร่วมกับฟอร์มจองคิว)
 
 // ปุ่ม − ค่า + · ค่าเก็บใน <output> (syncNights เขียน .value ทับได้ตรงๆ)
 function stepper(value, min, label, onChange) {
