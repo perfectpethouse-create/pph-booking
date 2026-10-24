@@ -297,9 +297,12 @@ export function openBookingForm(existing) {
   // สถานะหน้าจอที่ต้องอยู่รอดข้าม rerender (ไม่บันทึกลงฐานข้อมูล)
   const openDisc = new Set();   // รายการห้องที่เปิดช่องส่วนลดไว้ (index)
   let saveNow = () => {};
+  // กำลังบันทึกอยู่ → กดซ้ำไม่ทำอะไร (ใบใหม่ยังไม่มี id ถ้ายิง save สองครั้งจะได้ใบจองซ้ำ 2 ใบ)
+  let saving = false;
   // ⌘/Ctrl + Enter = บันทึก (ผูกครั้งเดียวที่ตัวฟอร์ม ซึ่งไม่ถูกสร้างใหม่ตอน rerender)
+  // e.repeat = กดปุ่มค้างแล้วคีย์บอร์ดยิงซ้ำเอง → ไม่นับ
   form.addEventListener('keydown', e => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); saveNow(); }
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); if (!e.repeat) saveNow(); }
   });
   build();
 
@@ -737,9 +740,12 @@ export function openBookingForm(existing) {
       class: 'btn primary' + (readOnly ? ' disabled' : ''),
       html: icons.save + (readOnly ? ' แก้ไขได้เฉพาะเจ้าของร้าน' : ' บันทึกการจอง'),
     });
-    saveNow = () => readOnly
-      ? toast('ใบที่บันทึกแล้วแก้ได้เฉพาะเจ้าของร้าน — ถ้าต้องแก้ กรุณาแจ้งเจ้าของร้าน')
-      : doSave(draft, isNew, m);
+    saveNow = async () => {
+      if (readOnly) return toast('ใบที่บันทึกแล้วแก้ได้เฉพาะเจ้าของร้าน — ถ้าต้องแก้ กรุณาแจ้งเจ้าของร้าน');
+      if (saving) return;
+      saving = true;
+      try { await doSave(draft, isNew, m); } finally { saving = false; }
+    };
     saveBtn.onclick = saveNow;
     const isMac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
     const keyHint = readOnly ? null : el('div', { class: 'bf-key', text: `กด ${isMac ? '⌘' : 'Ctrl'} + Enter เพื่อบันทึก` });
