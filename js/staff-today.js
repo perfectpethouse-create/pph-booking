@@ -3,13 +3,14 @@
 // เน้นสิ่งที่คนดูแลสัตว์ต้องรู้: ใครเข้า/ออก/พักอยู่ · น้องชื่ออะไร · ต้องระวังอะไร
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
-import { el, getSettings, escapeHtml } from './ui.js';
+import { el, getSettings, escapeHtml, staffCan } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { resolvePetInfo, worstVaccine } from './pet-info.js';
 import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 import { mountNewsCard } from './announcements.js';
 import { shortDate, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
+import { formForBooking, openGuestCheckin, printRegistration } from './registrations.js';
 
 let _unsub = [];
 let _customers = [];
@@ -17,6 +18,13 @@ let _appts = [];
 let _checkinForms = []; // ใบลงทะเบียนเช็คอิน — ใช้ดึงข้อมูลน้องแม้ยังไม่นำเข้าโปรไฟล์
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
+
+// ห้องที่ต้องดูแลแยกสุนัข/แมว ของรายการจองชุดหนึ่ง
+function roomsByPet(list) {
+  const n = { dog: 0, cat: 0 };
+  list.forEach(b => b.lineItems.forEach(li => { n[li.petType === 'cat' ? 'cat' : 'dog'] += Number(li.rooms) || 0; }));
+  return n;
+}
 
 export function renderStaffToday(container) {
   _unsub.forEach(u => u()); _unsub = [];
@@ -33,15 +41,48 @@ export function renderStaffToday(container) {
   // การ์ด "ข่าวสารร้าน" บนสุด — ให้พี่เลี้ยงเห็นประกาศ/โปรฯ ก่อนเริ่มงาน (หน้าแรกของพี่เลี้ยง)
   // ใช้ร่วมกันทั้งคอมและมือถือ จึงอยู่นอกกล่องของทั้งสองแบบ
   const newsMount = el('div', { style: 'margin-bottom:16px' });
+  // แถบเตือน "พรุ่งนี้ยังไม่ลงทะเบียน" — พี่เลี้ยงต้องรู้ข้อมูลน้องภายในคืนก่อนเข้าพัก
+  const regAlert = el('div');
   const statGrid = el('div', { class: 'd-stats today-full' });
   // คอม: 2 คอลัมน์แบบแดชบอร์ด — ซ้าย = ห้องพัก (การ์ดน้อง) · ขวา = คิว Grooming / ออกกำลังกาย
   const body = el('div', { class: 'd-grid today-full' });
   const mbody = el('div', { class: 'mtoday' });
-  container.append(newsMount, statGrid, body, mbody);
+  container.append(newsMount, regAlert, statGrid, body, mbody);
   _unsub.push(mountNewsCard(newsMount));
   let mtab = 'hotel'; // แท็บโซนที่เลือกบนมือถือ — ต้องอยู่รอดตอนข้อมูลเรียลไทม์เข้ามาใหม่
 
   let _bookings = [];
+  // ลงทะเบียนเช็คอินแล้วหรือยัง — สูตรเดียวกับหน้าปฏิทิน (ผูกกับใบจอง หรือเบอร์ตรง ±2 วัน)
+  const isRegistered = (b) => !!formForBooking(b, _checkinForms);
+  // เจ้าของร้านปิดสวิตช์ "ข้อมูลลงทะเบียน" ของพี่เลี้ยงได้ → เหลือแค่ป้ายสถานะ ไม่มีทางเข้าไปดูใบ
+  const canReg = () => staffCan('registrations');
+  // ลงทะเบียนแล้ว → เปิดใบลงทะเบียน · ยังไม่ลงทะเบียน → แผ่นส่งลิงก์ให้ลูกค้า
+  const openReg = (b) => openGuestCheckin(b, { forms: _checkinForms, bookings: _bookings, customers: _customers }, null);
+  // ชื่อลูกค้าบนการ์ด แตะแล้วเปิดใบลงทะเบียน (ปุ่มจริง กด Enter ได้)
+  const nameBtn = (b, child) => {
+    if (!canReg()) return child;
+    const btn = el('button', { type: 'button', class: 'st-open', 'aria-label': `ดูใบลงทะเบียนของ ${b.customerName || 'ลูกค้า'}` }, [child]);
+    btn.onclick = () => openReg(b);
+    return btn;
+  };
+  // ป้ายสถานะลงทะเบียน + ปุ่มลัด (ใช้ทั้งการ์ดคอมและมือถือ)
+  function regBits(b) {
+    const f = formForBooking(b, _checkinForms);
+    const tag = f ? el('span', { class: 'pill green', text: 'ลงทะเบียนแล้ว' }) : el('span', { class: 'pill yellow', text: 'ยังไม่ลงทะเบียน' });
+    if (!canReg()) return { tag, btn: null };
+    const mk = (cls, html, fn) => { const x = el('button', { type: 'button', class: 'btn ' + cls, html }); x.onclick = fn; return x; };
+    const btn = f
+      ? el('div', { class: 'st-regacts' }, [
+          mk('', `${icons.inbox} ดูใบลงทะเบียน`, () => openReg(b)),
+          mk('primary', `${icons.print} พิมพ์ให้ลูกค้าเซ็น`, () => printRegistration(f)),
+        ])
+      : mk('st-sendreg', 'ส่งลิงก์ลงทะเบียนให้ลูกค้า', () => openReg(b));
+    return { tag, btn };
+  }
+
+  // ปุ่มลัดไปหน้า "ข้อมูลลงทะเบียนเช็คอิน" ทั้งหมด
+  const regLink = () => canReg() ? el('a', { class: 'st-alert-link', href: '#registrations', text: 'เปิดหน้าข้อมูลลงทะเบียนทั้งหมด →' }) : null;
+
   const draw = () => {
     const today = todayISO();
     const tomorrow = addDaysISO(today, 1);
@@ -52,18 +93,32 @@ export function renderStaffToday(container) {
     const checkoutTomorrow = active.filter(b => b.checkOut === tomorrow);
     const staying = active.filter(b => b.checkIn <= today && today < b.checkOut);
 
-    // นับจำนวนห้องแยกสุนัข/แมวที่ต้องดูแลวันนี้
-    const perPet = { dog: 0, cat: 0 };
-    staying.forEach(b => b.lineItems.forEach(li => {
-      perPet[li.petType || 'dog'] += Number(li.rooms) || 0;
-    }));
+    const perPet = roomsByPet(staying);
+    const perPetTmr = roomsByPet(checkinTomorrow);
+    const unregTmr = checkinTomorrow.filter(b => !isRegistered(b));
+
+    // ลำดับความสำคัญของพี่เลี้ยง: 1) พรุ่งนี้ใครเข้า (ต้องรู้ข้อมูลน้องภายในคืนนี้) 2) งานวันนี้
+    regAlert.innerHTML = '';
+    if (checkinTomorrow.length) {
+      regAlert.appendChild(unregTmr.length
+        ? el('div', { class: 'st-alert' }, [
+            el('b', { text: `พรุ่งนี้ (${shortDate(tomorrow)}) ยังไม่ลงทะเบียน ${unregTmr.length} จาก ${checkinTomorrow.length} บ้าน` }),
+            el('span', { text: `${unregTmr.map(b => b.customerName || '-').join(', ')} · ส่งลิงก์ให้ลูกค้ากรอกภายในคืนนี้ จะได้รู้ข้อมูลน้องก่อนมาถึง` }),
+            regLink(),
+          ].filter(Boolean))
+        : el('div', { class: 'st-alert ok' }, [
+            el('b', { text: `พรุ่งนี้ (${shortDate(tomorrow)}) เข้าพัก ${checkinTomorrow.length} บ้าน · ลงทะเบียนครบแล้ว` }),
+            el('span', { text: 'แตะชื่อลูกค้าเพื่อดูใบลงทะเบียน หรือพิมพ์ให้ลูกค้าเซ็น' }),
+            regLink(),
+          ].filter(Boolean)));
+    }
 
     statGrid.innerHTML = '';
     [
-      ['hero', icons.login, 'วันนี้', checkinToday.length, 'เข้าพักวันนี้ · เตรียมรับน้อง'],
+      ['hero', icons.calendar, 'พรุ่งนี้', checkinTomorrow.length, `เข้าพักพรุ่งนี้ · ลงทะเบียนแล้ว ${checkinTomorrow.length - unregTmr.length}/${checkinTomorrow.length}`],
+      ['blue', icons.login, 'วันนี้', checkinToday.length, 'เข้าพักวันนี้'],
       ['orange', icons.logout, null, checkoutToday.length, 'ออกวันนี้'],
-      ['blue', icons.dog, null, `${perPet.dog} ห้อง`, 'สุนัขที่ดูแล'],
-      ['purple', icons.cat, null, `${perPet.cat} ห้อง`, 'แมวที่ดูแล'],
+      ['purple', icons.paw, null, `${perPet.dog + perPet.cat} ห้อง`, `ดูแลอยู่ · สุนัข ${perPet.dog} แมว ${perPet.cat}`],
     ].forEach(([tone, ico, tag, n, l]) => statGrid.appendChild(
       el('div', { class: `d-stat ${tone}` }, [
         el('div', { class: 'd-stat-h' }, [
@@ -86,10 +141,10 @@ export function renderStaffToday(container) {
     body.innerHTML = '';
     body.append(
       el('div', { class: 'd-col' }, [
-        section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', icons.login),
+        section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมรับน้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', icons.calendar, { reg: true, hl: true }),
+        section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', icons.login, { reg: true }),
         section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', icons.logout),
         section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', icons.home, { sortByCheckout: true, leaveTag: true }),
-        section(`พรุ่งนี้เข้าพัก · ${formatDateTH(tomorrow)} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', icons.calendar),
         section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar),
       ]),
       el('div', { class: 'd-col' }, [
@@ -100,7 +155,7 @@ export function renderStaffToday(container) {
       ]),
     );
 
-    drawMobile({ checkinToday, checkoutToday, staying, checkinTomorrow, checkoutTomorrow, perPet,
+    drawMobile({ checkinToday, checkoutToday, staying, checkinTomorrow, checkoutTomorrow, perPet, perPetTmr, unregTmr,
       groomToday, groomTomorrow, exToday, exTomorrow, tomorrow });
   };
 
@@ -108,19 +163,21 @@ export function renderStaffToday(container) {
   // ใช้รายการชุดเดียวกับฝั่งคอมที่ draw() คำนวณไว้ ไม่มีตรรกะคัดกรองใหม่
   function drawMobile(d) {
     mbody.innerHTML = '';
+    // การ์ดหลัก = พรุ่งนี้ (เตรียมรับน้อง) · แถวล่าง = งานวันนี้
     mbody.appendChild(el('div', { class: 'm-hero' }, [
       el('div', { class: 'm-hero-top' }, [
-        el('span', { text: 'น้องที่ต้องดูแลวันนี้' }),
-        el('b', { text: `สุนัข ${d.perPet.dog} · แมว ${d.perPet.cat} ห้อง` }),
+        el('span', { text: `พรุ่งนี้เข้าพัก · ${shortDate(d.tomorrow)}` }),
+        el('b', { text: `สุนัข ${d.perPetTmr.dog} · แมว ${d.perPetTmr.cat} ห้อง` }),
       ]),
       el('div', { class: 'm-nums' }, [
-        el('div', {}, [el('b', { text: String(d.checkinToday.length) }), el('span', { text: 'เข้าพัก' })]),
-        el('div', {}, [el('b', { text: String(d.checkoutToday.length) }), el('span', { text: 'กลับบ้าน' })]),
-        el('div', {}, [el('b', { text: String(d.staying.length) }), el('span', { text: 'พักอยู่' })]),
+        el('div', {}, [el('b', { text: String(d.checkinTomorrow.length) }), el('span', { text: 'บ้านเข้าพัก' })]),
+        el('div', {}, [el('b', { text: String(d.checkinTomorrow.length - d.unregTmr.length) }), el('span', { text: 'ลงทะเบียนแล้ว' })]),
+        el('div', {}, [el('b', { text: String(d.unregTmr.length) }), el('span', { text: 'ยังไม่ลงทะเบียน' })]),
       ]),
+      el('div', { class: 'm-hero-sub', text: `วันนี้: เข้า ${d.checkinToday.length} · กลับบ้าน ${d.checkoutToday.length} · พักอยู่ ${d.staying.length} (สุนัข ${d.perPet.dog} · แมว ${d.perPet.cat} ห้อง)` }),
     ]));
 
-    const hotelN = d.checkinToday.length + d.checkoutToday.length + d.staying.length;
+    const hotelN = d.checkinTomorrow.length + d.checkinToday.length + d.checkoutToday.length + d.staying.length;
     const tabs = [
       ['hotel', 'ห้องพัก', hotelN],
       ['grooming', 'Grooming', d.groomToday.length],
@@ -136,10 +193,10 @@ export function renderStaffToday(container) {
 
     const tmr = shortDate(d.tomorrow);
     if (mtab === 'hotel') {
-      mSec('เช็คอินวันนี้ · เตรียมรับน้อง', d.checkinToday, 'ไม่มีน้องเข้าพักวันนี้');
+      mSec(`พรุ่งนี้เข้าพัก · ${tmr} · เตรียมรับน้อง`, d.checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก', { reg: true });
+      mSec('เช็คอินวันนี้ · เตรียมรับน้อง', d.checkinToday, 'ไม่มีน้องเข้าพักวันนี้', { reg: true });
       mSec('เช็คเอาท์วันนี้ · เตรียมส่งน้องกลับ', d.checkoutToday, 'ไม่มีน้องออกวันนี้');
       mSec('กำลังพักอยู่', d.staying, 'ยังไม่มีน้องพักอยู่', { sortByCheckout: true, leaveTag: true });
-      mSec(`พรุ่งนี้เข้าพัก · ${tmr}`, d.checkinTomorrow, 'พรุ่งนี้ไม่มีน้องเข้าพัก');
       mSec(`พรุ่งนี้เช็คเอาท์ · ${tmr}`, d.checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก');
     } else if (mtab === 'grooming') {
       mQueue('คิววันนี้', d.groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน');
@@ -165,7 +222,9 @@ export function renderStaffToday(container) {
     ordered.forEach(b => {
       const info = resolvePetInfo(b, _customers, _checkinForms);
       const vac = worstVaccine(info.pets);
+      const reg = opts.reg ? regBits(b) : {};
       const tags = [
+        reg.tag,
         vac === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
           : vac === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' }) : null,
         (opts.leaveTag && b.checkOut === tomorrow) ? el('span', { class: 'pill yellow', text: 'ออกพรุ่งนี้' }) : null,
@@ -181,7 +240,7 @@ export function renderStaffToday(container) {
         el('div', { class: 'm-care-top' }, [
           el('span', { class: 'm-pet' + (isCat(b) ? ' cat' : ''), html: isCat(b) ? icons.cat : icons.dog }),
           el('div', { class: 'm-tx' }, [
-            el('b', { text: b.customerName || '-' }),
+            nameBtn(b, el('b', { text: b.customerName || '-' })),
             el('small', { text: `${roomsOf(b)} · ${rangeOf(b)}` }),
             times ? el('small', { text: times }) : null,
           ].filter(Boolean)),
@@ -204,6 +263,7 @@ export function renderStaffToday(container) {
         card.appendChild(el('div', { class: 'm-care-foot', text: 'ข้อมูลจากใบลงทะเบียนเช็คอิน (ยังไม่นำเข้าโปรไฟล์)' }));
       }
       if (b.notes) card.appendChild(el('div', { class: 'm-care-foot', text: `หมายเหตุการจอง: ${b.notes}` }));
+      if (reg.btn) card.appendChild(reg.btn);
       mbody.appendChild(card);
     });
   }
@@ -267,8 +327,10 @@ export function renderStaffToday(container) {
 
   // สีของการ์ดมาจากโซนที่ครอบอยู่ ส่วนไอคอนบอกว่าเป็นงานประเภทไหน
   // opts.sortByCheckout = เรียงตามใกล้ออกก่อน · opts.leaveTag = โชว์ป้าย "ออกพรุ่งนี้" (ใช้ในกล่องกำลังพัก)
+  // opts.reg = ป้าย/ปุ่มลงทะเบียน · opts.hl = การ์ดเด่น (พรุ่งนี้เข้าพัก)
   function section(title, list, emptyText, ico, opts = {}) {
     const card = stCard(ico, title, list.length);
+    if (opts.hl) card.classList.add('st-card--hl');
     if (!list.length) { card.appendChild(el('p', { class: 'muted st-empty', text: emptyText })); return card; }
     const s = getSettings();
     const tomorrow = addDaysISO(todayISO(), 1);
@@ -285,7 +347,9 @@ export function renderStaffToday(container) {
       }));
       // ป้ายท้ายชื่อ: ธงวัคซีน · ออกพรุ่งนี้ · สถานะเช็คอิน (เรื่องที่ต้องระวัง/รู้ก่อน)
       const vac = worstVaccine(pets);
+      const reg = opts.reg ? regBits(b) : {};
       const tags = [
+        reg.tag,
         vac === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
           : vac === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' }) : null,
         (opts.leaveTag && b.checkOut === tomorrow) ? el('span', { class: 'pill yellow', text: 'ออกพรุ่งนี้' }) : null,
@@ -295,7 +359,7 @@ export function renderStaffToday(container) {
       const box = el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [
-            el('strong', { text: b.customerName || '-' }),
+            nameBtn(b, el('strong', { text: b.customerName || '-' })),
             el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: b.phone || '' }),
           ]),
           tags.length ? el('div', { class: 'row', style: 'gap:4px;flex-wrap:wrap' }, tags) : null,
@@ -320,6 +384,7 @@ export function renderStaffToday(container) {
       }
 
       if (b.notes) box.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px', text: `หมายเหตุการจอง: ${b.notes}` }));
+      if (reg.btn) box.appendChild(reg.btn);
       card.appendChild(box);
     });
     return card;

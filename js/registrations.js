@@ -540,12 +540,10 @@ function openDetail(f) {
   const m = openModal(wrap);
   fillBookingSection(bookingSlot, f, m);
 
-  const storedOpts = () => ({ signOwner: f.signOwner, signStaff: f.signStaff, intakePhoto: f.intakePhoto, signedAt: f.signedAt });
-  const pdfName = () => `ใบยืนยันเข้าพัก-${bookingRef(f)}`;
-  printBtn.onclick = () => printSheet(buildRegSheet(f, d, storedOpts()), { filename: pdfName() });
+  printBtn.onclick = () => printRegistration(f);
   pdfBtn.onclick = () => {
     toast('เลือกปลายทาง "บันทึกเป็น PDF" ในหน้าต่างที่เปิดขึ้น');
-    printSheet(buildRegSheet(f, d, storedOpts()), { filename: pdfName() });
+    printRegistration(f);
   };
   signBtn.onclick = () => { m.close(); openSignPad(f, d); };
   importBtn.onclick = async () => {
@@ -556,6 +554,12 @@ function openDetail(f) {
     if (!await confirmDialog('ลบใบลงทะเบียนนี้?', { danger: true, okText: 'ลบ' })) return;
     await remove('checkinForms', f.id); m.close(); toast('ลบแล้ว');
   };
+}
+
+// พิมพ์ใบยืนยันเข้าพัก (ให้ลูกค้าเซ็นรับทราบ) — ใช้ทั้งในหน้ารายละเอียดและปุ่มลัดหน้างานวันนี้
+export function printRegistration(f) {
+  const opts = { signOwner: f.signOwner, signStaff: f.signStaff, intakePhoto: f.intakePhoto, signedAt: f.signedAt };
+  printSheet(buildRegSheet(f, parseRaw(f), opts), { filename: `ใบยืนยันเข้าพัก-${bookingRef(f)}` });
 }
 
 // ── ใบยืนยันข้อมูลการเข้าพัก (พิมพ์ให้ลูกค้า + พี่เลี้ยงเซ็นตอนรับเข้า) ──
