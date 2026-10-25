@@ -1018,6 +1018,8 @@ body.modal-open { overflow: hidden; }
   .intake-bar,
   .intake-exit { display: none !important; }
   body.printing-intake #intake-host { position: static; background: #fff; overflow: visible; }
+  /* พิมพ์จากหน้าต่างรายละเอียด body ยังติด modal-open (overflow:hidden) → Safari/iPad ตัดเหลือหน้าแรกหรือว่าง */
+  html, body.printing-intake { overflow: visible !important; height: auto !important; }
   .intake-sheet {
     max-width: none; margin: 0; padding: 0; box-shadow: none;
     font-size: 11px; line-height: 1.4;
