@@ -8,7 +8,8 @@ import { computeBooking, todayISO, formatDateTH, formatBaht, nightsBetween, each
 import { PET_TYPES, capacityOf } from './config-shop.js';
 import { openBookingForm } from './bookings.js';
 import { icons } from './icons.js';
-import { formForBooking, openGuestCheckin, parseRaw, mapFormToPets } from './registrations.js';
+import { openGuestCheckin, parseRaw, mapFormToPets } from './registrations.js';
+import { regStateOf } from './pet-info.js';
 import { MONTHS, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
@@ -219,14 +220,16 @@ export function renderCalendar(container) {
 
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); mobile.draw(); }));
   _unsub.push(listen('checkinForms', arr => { reg.forms = arr; mobile.draw(); }, { orderBy: null }));
-  _unsub.push(listen('customers', arr => { reg.customers = arr; }));
+  // ลูกค้าใช้ตัดสินป้าย "มีข้อมูลจากครั้งก่อน" (น้องในโปรไฟล์) → วาดแถวแขกใหม่เมื่อโหลดเสร็จ
+  _unsub.push(listen('customers', arr => { reg.customers = arr; mobile.draw(); }));
 }
 
 // แขกที่พัก → ข้อมูลเช็คอิน (ต้องรู้ว่าหมาหรือแมว) · ยังไม่ลงทะเบียน → แผ่นส่งลิงก์ให้ลูกค้า
 // เจ้าของร้านมีปุ่ม "เปิดใบจอง" ในแผ่นนั้นด้วย (พี่เลี้ยงไม่เห็นใบจอง — มีราคา/ส่วนลด)
 const canSeeReg = () => !isStaff() || staffCan('registrations');
 function openGuest(b, getBookings, reg) {
-  openGuestCheckin(b, { forms: reg.forms, bookings: getBookings(), customers: reg.customers },
+  const known = regStateOf(b, reg.customers, reg.forms).state === 'previous';
+  openGuestCheckin(b, { forms: reg.forms, bookings: getBookings(), customers: reg.customers, known },
     isStaff() ? null : () => openBookingForm(b));
 }
 
@@ -341,8 +344,9 @@ function buildMobileCalendar(getBookings, reg) {
       const tag = b.checkIn === selected ? el('span', { class: 'pill green', text: 'เข้า' })
         : b.checkOut === selected ? el('span', { class: 'pill yellow', text: 'ออก' }) : null;
       // ชนิดสัตว์จากใบลงทะเบียน (ถ้ามี) แม่นกว่าห้องที่จอง · ยังไม่ลงทะเบียน = ป้ายเตือนให้ส่งลิงก์
-      const f = formForBooking(b, reg.forms);
-      const pets = f ? mapFormToPets(parseRaw(f)) : [];
+      const rs = regStateOf(b, reg.customers, reg.forms);
+      const f = rs.form;
+      const pets = f ? mapFormToPets(parseRaw(f)) : rs.state === 'previous' ? rs.info.pets : [];
       const cat = pets.length ? pets.every(p => p.species === 'cat') : isCat(b);
       const petTxt = pets.length ? [['dog', 'สุนัข'], ['cat', 'แมว']].map(([k, t]) => {
         const n = pets.filter(p => p.species === k).length; return n ? `${t} ${n}` : '';
@@ -352,7 +356,8 @@ function buildMobileCalendar(getBookings, reg) {
         el('div', { class: 'm-tx' }, [
           el('b', { text: b.customerName || '-' }),
           el('small', { text: `${roomsOf(b)} · ${rangeOf(b)}` }),
-          el('small', { class: f ? 'm-reg ok' : 'm-reg', text: f ? `ลงทะเบียนแล้ว${petTxt ? ' · ' + petTxt : ''}` : 'ยังไม่ลงทะเบียน · แตะเพื่อส่งลิงก์' }),
+          el('small', { class: rs.state === 'none' ? 'm-reg' : 'm-reg ok', text: rs.state === 'none' ? 'ยังไม่ลงทะเบียน · แตะเพื่อส่งลิงก์'
+            : `${f ? 'ลงทะเบียนแล้ว' : 'มีข้อมูลจากครั้งก่อน'}${petTxt ? ' · ' + petTxt : ''}` }),
         ]),
         tag,
       ]);

@@ -212,14 +212,17 @@ function matchBooking(f) {
 }
 // ── กลับด้าน: ใบจอง → ใบลงทะเบียนของการเข้าพักครั้งนั้น ──
 // ผูกไว้แล้ว (bookingId) ก่อน → ไม่งั้นเบอร์ตรง + วันเข้าพักคลาดไม่เกิน 2 วัน (เกณฑ์เดียวกับ matchBooking)
+// เบอร์/วันเข้าพักของใบ: ฟิลด์บนสุดก่อน แล้วค่อยดูใน raw (บางใบมีแค่ใน raw.owner/raw.stay)
+const formPhones = (f) => { const o = parseRaw(f).owner || {}; return [f.phone, o.phone].map(x => regNorm(String(x ?? ''))).filter(Boolean); };
+const formCheckIn = (f) => f.checkIn || parseRaw(f).stay?.checkin || '';
 export function formForBooking(b, forms) {
   const linked = forms.find(f => f.bookingId === b.id);
   if (linked) return linked;
-  const ph = regNorm(b.phone);
+  const ph = regNorm(String(b.phone ?? ''));
   if (!ph) return null;
   return forms
-    .filter(f => !f.bookingId && regNorm(f.phone) === ph)
-    .map(f => ({ f, d: Math.abs(regDayDiff(b.checkIn, f.checkIn) ?? 99) }))
+    .filter(f => !f.bookingId && formPhones(f).includes(ph))
+    .map(f => ({ f, d: Math.abs(regDayDiff(b.checkIn, formCheckIn(f)) ?? 99) }))
     .filter(x => x.d <= 2)
     .sort((x, y) => x.d - y.d)[0]?.f || null;
 }
@@ -227,33 +230,48 @@ export function formForBooking(b, forms) {
 // แตะชื่อแขก (ปฏิทินห้องว่าง) → ใบลงทะเบียน (รู้ว่าหมา/แมว สุขภาพ อาหาร)
 // ยังไม่ลงทะเบียน → แผ่นส่งลิงก์ checkin.html ให้ลูกค้า (LINE/แชร์/คัดลอก) + ใบครั้งก่อนถ้ามี
 // onOpenBooking: ปุ่ม "เปิดใบจอง" (ส่งมาเฉพาะเจ้าของร้าน)
-export function openGuestCheckin(b, { forms, bookings, customers }, onOpenBooking) {
-  // หน้ารายละเอียดใช้ข้อมูลของโมดูลนี้ (ส่วน "ใบจองที่เชื่อมโยง" + ปุ่มนำเข้าโปรไฟล์)
-  // เปิดจากหน้าอื่นที่ยังไม่เคยเข้าหน้าลงทะเบียน ต้องส่งมาให้ — ไม่งั้นนำเข้าแล้วได้โปรไฟล์ลูกค้าซ้ำ
+// ใบลงทะเบียนล่าสุดของลูกค้ารายนี้ (ทุกการเข้าพัก) — ไว้ใช้ข้อมูลครั้งก่อนเมื่อรอบนี้ยังไม่กรอก
+export function latestFormOf(b, forms) {
+  const ph = regNorm(String(b.phone ?? ''));
+  if (!ph) return null;
+  return forms.filter(f => formPhones(f).includes(ph))
+    .sort((x, y) => String(y.submittedAt || '').localeCompare(String(x.submittedAt || '')))[0] || null;
+}
+
+// เปิดรายละเอียดใบจากหน้าอื่น — หน้ารายละเอียดใช้ข้อมูลของโมดูลนี้ (ส่วน "ใบจองที่เชื่อมโยง" + ปุ่มนำเข้าโปรไฟล์)
+// ถ้ายังไม่เคยเข้าหน้าลงทะเบียน ต้องส่งมาให้ — ไม่งั้นนำเข้าแล้วได้โปรไฟล์ลูกค้าซ้ำ
+export function openFormDetail(f, { bookings, customers }) {
   if (!_bookingsLoaded) { _bookings = bookings; _bookingsLoaded = true; }
   if (!_customers.length) _customers = customers;
+  openDetail(f);
+}
+
+// known = รู้ข้อมูลน้องแล้วจากโปรไฟล์ (regStateOf 'previous') → ข้อความไม่เร่งให้ตามลูกค้า
+export function openGuestCheckin(b, { forms, bookings, customers, known }, onOpenBooking) {
   const f = formForBooking(b, forms);
-  if (f) return openDetail(f);
+  if (f) return openFormDetail(f, { bookings, customers });
+  if (!_bookingsLoaded) { _bookings = bookings; _bookingsLoaded = true; }
+  if (!_customers.length) _customers = customers;
 
   const link = 'https://perfectbkk.com/checkin.html' + (b.id ? '?b=' + encodeURIComponent(b.id) : '');
   const msg = `สวัสดีค่ะ คุณ${String(b.customerName || '').replace(/^คุณ\s*/, '')} รบกวนกรอกใบลงทะเบียนเข้าพักของน้องก่อนวันเข้าพัก ${formatDateTH(b.checkIn)} นะคะ\n${link}`;
-  const ph = regNorm(b.phone);
-  const prev = ph ? forms.filter(x => regNorm(x.phone) === ph)
-    .sort((x, y) => String(y.submittedAt || '').localeCompare(String(x.submittedAt || '')))[0] : null;
+  const prev = latestFormOf(b, forms);
 
-  const lineBtn = el('a', { class: 'btn primary block', href: 'https://line.me/R/msg/text/?' + encodeURIComponent(msg), target: '_blank', rel: 'noopener', text: 'ส่งลิงก์ทาง LINE' });
+  const lineBtn = el('a', { class: 'btn block' + ((prev || known) ? '' : ' primary'), href: 'https://line.me/R/msg/text/?' + encodeURIComponent(msg), target: '_blank', rel: 'noopener', text: 'ส่งลิงก์ทาง LINE' });
   const copyBtn = el('button', { class: 'btn block', html: icons.copy + ' คัดลอกข้อความ + ลิงก์' });
   copyBtn.onclick = () => copyText(msg);
   const shareBtn = navigator.share ? el('button', { class: 'btn block', html: icons.share + ' แชร์ทางแอปอื่น' }) : null;
   if (shareBtn) shareBtn.onclick = () => navigator.share({ text: msg }).catch(() => {});
-  const prevBtn = prev ? el('button', { class: 'btn ghost block', text: `ดูใบลงทะเบียนครั้งก่อน (${formatDateTH(prev.checkIn) || 'ไม่ระบุวัน'})` }) : null;
+  const prevBtn = prev ? el('button', { class: 'btn primary block', text: `ดูใบลงทะเบียนครั้งก่อน (${formatDateTH(formCheckIn(prev)) || 'ไม่ระบุวัน'})` }) : null;
   const bookBtn = onOpenBooking ? el('button', { class: 'btn ghost block', text: 'เปิดใบจอง' }) : null;
 
+  // เคยลงทะเบียนครั้งก่อน / มีในโปรไฟล์ → ข้อมูลน้องมีอยู่แล้ว ส่งลิงก์เป็นแค่ทางเลือก (ให้ลูกค้าอัปเดต)
   const m = openModal(el('div', { class: 'reg-missing' }, [
-    el('h2', { text: 'ยังไม่ลงทะเบียนเช็คอิน' }),
-    el('p', { class: 'muted', style: 'margin-top:-6px', text:
-      `${b.customerName || '-'} · เข้าพัก ${formatDateTH(b.checkIn)} — ยังไม่มีใบลงทะเบียน จึงยังไม่รู้ข้อมูลน้อง (หมา/แมว สุขภาพ อาหาร) ส่งลิงก์ให้ลูกค้ากรอกก่อนวันเข้าพัก` }),
-    el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-top:14px' }, [lineBtn, copyBtn, shareBtn, prevBtn, bookBtn].filter(Boolean)),
+    el('h2', { text: (prev || known) ? 'ยังไม่ลงทะเบียนรอบนี้' : 'ยังไม่ลงทะเบียนเช็คอิน' }),
+    el('p', { class: 'muted', style: 'margin-top:-6px', text: (prev || known)
+      ? `${b.customerName || '-'} · เข้าพัก ${formatDateTH(b.checkIn)} — ${prev ? 'มีใบลงทะเบียนครั้งก่อนอยู่แล้ว ดูข้อมูลน้องจากใบเดิมได้' : 'มีข้อมูลน้องในโปรไฟล์ลูกค้าแล้ว (แสดงบนการ์ด)'} ถ้าข้อมูลน้องเปลี่ยน (สุขภาพ อาหาร วัคซีน) ค่อยส่งลิงก์ให้ลูกค้ากรอกใหม่`
+      : `${b.customerName || '-'} · เข้าพัก ${formatDateTH(b.checkIn)} — ยังไม่มีใบลงทะเบียน จึงยังไม่รู้ข้อมูลน้อง (หมา/แมว สุขภาพ อาหาร) ส่งลิงก์ให้ลูกค้ากรอกก่อนวันเข้าพัก` }),
+    el('div', { style: 'display:flex;flex-direction:column;gap:8px;margin-top:14px' }, (prev ? [prevBtn, lineBtn, copyBtn, shareBtn, bookBtn] : [lineBtn, copyBtn, shareBtn, bookBtn]).filter(Boolean)),
   ]));
   if (prevBtn) prevBtn.onclick = () => { m.close(); openDetail(prev); };
   if (bookBtn) bookBtn.onclick = () => { m.close(); onOpenBooking(); };

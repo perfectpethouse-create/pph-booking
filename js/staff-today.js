@@ -5,12 +5,13 @@
 import { listen } from './db.js';
 import { el, getSettings, escapeHtml, staffCan } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
-import { resolvePetInfo, worstVaccine } from './pet-info.js';
+import { resolvePetInfo, worstVaccine, regStateOf } from './pet-info.js';
 import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 import { mountNewsCard } from './announcements.js';
 import { shortDate, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
-import { formForBooking, openGuestCheckin, printRegistration } from './registrations.js';
+import { openGuestCheckin, openFormDetail, printRegistration } from './registrations.js';
+import { buildIntakeSheet, printSheet } from './intake-form.js';
 
 let _unsub = [];
 let _customers = [];
@@ -52,12 +53,18 @@ export function renderStaffToday(container) {
   let mtab = 'hotel'; // แท็บโซนที่เลือกบนมือถือ — ต้องอยู่รอดตอนข้อมูลเรียลไทม์เข้ามาใหม่
 
   let _bookings = [];
-  // ลงทะเบียนเช็คอินแล้วหรือยัง — สูตรเดียวกับหน้าปฏิทิน (ผูกกับใบจอง หรือเบอร์ตรง ±2 วัน)
-  const isRegistered = (b) => !!formForBooking(b, _checkinForms);
+  // สถานะลงทะเบียน — สูตรเดียวกับหน้าปฏิทิน (regStateOf) · 'previous' = รู้ข้อมูลน้องจากครั้งก่อนแล้ว ไม่ต้องตาม
+  const regOf = (b) => regStateOf(b, _customers, _checkinForms);
+  const isRegistered = (b) => regOf(b).state !== 'none';
+  const ctx = () => ({ bookings: _bookings, customers: _customers });
   // เจ้าของร้านปิดสวิตช์ "ข้อมูลลงทะเบียน" ของพี่เลี้ยงได้ → เหลือแค่ป้ายสถานะ ไม่มีทางเข้าไปดูใบ
   const canReg = () => staffCan('registrations');
-  // ลงทะเบียนแล้ว → เปิดใบลงทะเบียน · ยังไม่ลงทะเบียน → แผ่นส่งลิงก์ให้ลูกค้า
-  const openReg = (b) => openGuestCheckin(b, { forms: _checkinForms, bookings: _bookings, customers: _customers }, null);
+  // ลงทะเบียนแล้ว → เปิดใบลงทะเบียน · มีแค่ใบครั้งก่อน → เปิดใบนั้น · ยังไม่มีเลย → แผ่นส่งลิงก์ให้ลูกค้า
+  const openReg = (b) => {
+    const r = regOf(b);
+    if (r.state === 'previous' && r.prev) return openFormDetail(r.prev, ctx());
+    openGuestCheckin(b, { forms: _checkinForms, ...ctx(), known: r.state === 'previous' }, null);
+  };
   // ชื่อลูกค้าบนการ์ด แตะแล้วเปิดใบลงทะเบียน (ปุ่มจริง กด Enter ได้)
   const nameBtn = (b, child) => {
     if (!canReg()) return child;
@@ -67,17 +74,21 @@ export function renderStaffToday(container) {
   };
   // ป้ายสถานะลงทะเบียน + ปุ่มลัด (ใช้ทั้งการ์ดคอมและมือถือ)
   function regBits(b) {
-    const f = formForBooking(b, _checkinForms);
-    const tag = f ? el('span', { class: 'pill green', text: 'ลงทะเบียนแล้ว' }) : el('span', { class: 'pill yellow', text: 'ยังไม่ลงทะเบียน' });
+    const r = regOf(b);
+    const tag = r.state === 'this' ? el('span', { class: 'pill green', text: 'ลงทะเบียนแล้ว' })
+      : r.state === 'previous' ? el('span', { class: 'pill green', text: 'มีข้อมูลจากครั้งก่อน' })
+      : el('span', { class: 'pill yellow', text: 'ยังไม่ลงทะเบียน' });
     if (!canReg()) return { tag, btn: null };
     const mk = (cls, html, fn) => { const x = el('button', { type: 'button', class: 'btn ' + cls, html }); x.onclick = fn; return x; };
-    const btn = f
-      ? el('div', { class: 'st-regacts' }, [
-          mk('', `${icons.inbox} ดูใบลงทะเบียน`, () => openReg(b)),
-          mk('primary', `${icons.print} พิมพ์ให้ลูกค้าเซ็น`, () => printRegistration(f)),
-        ])
-      : mk('st-sendreg', 'ส่งลิงก์ลงทะเบียนให้ลูกค้า', () => openReg(b));
-    return { tag, btn };
+    if (r.state === 'none') return { tag, btn: mk('st-sendreg', 'ส่งลิงก์ลงทะเบียนให้ลูกค้า', () => openReg(b)) };
+    // ใบของรอบนี้ → พิมพ์ใบยืนยัน · ข้อมูลครั้งก่อนจากโปรไฟล์ → พิมพ์ใบรับฝาก (วันที่ของรอบนี้ + ข้อมูลน้องจากโปรไฟล์)
+    // ใบครั้งก่อนที่ยังไม่นำเข้าโปรไฟล์ไม่มีปุ่มพิมพ์ — ใบนั้นเป็นวันเข้าพักเก่า ไม่ควรให้ลูกค้าเซ็น
+    const print = r.state === 'this' ? () => printRegistration(r.form)
+      : r.info.source.startsWith('profile') ? () => printSheet(buildIntakeSheet(b, _customers), { filename: `ใบรับฝาก-${b.customerName || ''}` })
+      : null;
+    const view = (r.state === 'this' || r.prev) ? mk('', `${icons.inbox} ${r.state === 'this' ? 'ดูใบลงทะเบียน' : 'ดูใบครั้งก่อน'}`, () => openReg(b)) : null;
+    const acts = [view, print && mk('primary', `${icons.print} พิมพ์ให้ลูกค้าเซ็น`, print)].filter(Boolean);
+    return { tag, btn: acts.length ? el('div', { class: 'st-regacts' + (acts.length === 1 ? ' one' : '') }, acts) : null };
   }
 
   // ปุ่มลัดไปหน้า "ข้อมูลลงทะเบียนเช็คอิน" ทั้งหมด

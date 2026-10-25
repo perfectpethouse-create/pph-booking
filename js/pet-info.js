@@ -4,7 +4,7 @@
 // เพื่อให้ทั้งสองหน้าเห็นข้อมูลน้องชุดเดียวกันเสมอ — ไม่แตกต่างกันอีก
 // ═══════════════════════════════════════════════════════════════
 import { matchCustomer, vaccineStatus } from './customers.js';
-import { parseRaw, mapFormToPets } from './registrations.js';
+import { parseRaw, mapFormToPets, formForBooking, latestFormOf } from './registrations.js';
 
 const norm = (t) => String(t ?? '').replace(/\D/g, '');
 
@@ -45,6 +45,17 @@ export function resolvePetInfo(b, customers = [], checkinForms = []) {
 
   if (custPets) return { customer, pets: custPets, source: 'profile-sparse' };
   return { customer, pets: [], source: customer ? 'profile-empty' : 'none' };
+}
+
+// สถานะลงทะเบียนของใบจอง (หน้างานวันนี้ + ปฏิทิน ใช้สูตรเดียวกัน):
+//   'this'     = มีใบลงทะเบียนของการเข้าพักรอบนี้
+//   'previous' = รอบนี้ยังไม่กรอก แต่รู้ข้อมูลน้องแล้วจากโปรไฟล์/ใบครั้งก่อน → ไม่ต้องตามลูกค้า
+//   'none'     = ยังไม่รู้ข้อมูลน้องเลย → ต้องส่งลิงก์
+export function regStateOf(b, customers = [], forms = []) {
+  const form = formForBooking(b, forms);
+  if (form) return { state: 'this', form };
+  const info = resolvePetInfo(b, customers, forms);
+  return { state: info.pets.length ? 'previous' : 'none', form: null, prev: latestFormOf(b, forms), info };
 }
 
 // ธงวัคซีนรวมของน้องชุดหนึ่ง: 'expired' (หมดอายุ) | 'soon' (ใกล้หมด) | null
