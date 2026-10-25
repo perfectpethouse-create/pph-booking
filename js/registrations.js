@@ -4,7 +4,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, escapeHtml, getSettings } from './ui.js';
-import { formatDateTH, todayISO, computeBooking, formatBaht } from './calc.js';
+import { formatDateTH, todayISO, computeBooking, formatBaht, addDaysISO } from './calc.js';
 import { icons, brandLogo } from './icons.js';
 import { printSheet } from './intake-form.js';
 import { INTAKE_TERMS, INTAKE_CONSENT } from './config-shop.js';
@@ -537,6 +537,10 @@ function openDetail(f) {
     wrap.appendChild(box);
   });
 
+  // เอกสาร & ลายเซ็นที่ลูกค้าแนบมาจากลิงก์ (checkin.html)
+  const docs = onlineDocsBox(f);
+  if (docs) wrap.appendChild(docs);
+
   if (d.consent?.agreed) {
     wrap.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text: `ยอมรับเงื่อนไขแล้ว · ลงชื่อ: ${d.consent.signName || '-'} · ส่งเมื่อ ${d.submittedAt || '-'}` }));
   }
@@ -548,7 +552,7 @@ function openDetail(f) {
   }
 
   // ปุ่ม
-  const signBtn = el('button', { class: 'btn', html: icons.check + ' เซ็นบนจอ' });
+  const signBtn = el('button', { class: 'btn', html: icons.check + (f.signedOnlineAt ? ' เซ็นฝั่งพี่เลี้ยง' : ' เซ็นบนจอ') });
   const pdfBtn = el('button', { class: 'btn', html: icons.download + ' บันทึก PDF' });
   const printBtn = el('button', { class: 'btn', html: icons.print + ' พิมพ์ใบยืนยัน' });
   const importBtn = el('button', { class: 'btn primary', html: icons.users + ' นำเข้าลูกค้า & สัตว์เลี้ยง' });
@@ -572,6 +576,50 @@ function openDetail(f) {
     if (!await confirmDialog('ลบใบลงทะเบียนนี้?', { danger: true, okText: 'ลบ' })) return;
     await remove('checkinForms', f.id); m.close(); toast('ลบแล้ว');
   };
+}
+
+// ── รูปบัตร/รูปน้อง/ลายเซ็นจากลิงก์ลงทะเบียน ──
+const petPhotosOf = (f) => Array.isArray(f.petPhotos) ? f.petPhotos.filter(Boolean) : [];
+const signedOnlineText = (f) => f.signedOnlineAt ? new Date(f.signedOnlineAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+
+// กล่องในหน้ารายละเอียด — แตะรูปเพื่อดูเต็มจอ
+function onlineDocsBox(f) {
+  const pets = petPhotosOf(f);
+  if (!f.idPhoto && !pets.length && !f.signOwner && !f.idPhotoPurgedAt) return null;
+  const zoom = (src, alt) => { const b = el('button', { type: 'button', class: 'reg-thumb', 'aria-label': `ดู${alt}เต็มจอ` }, [el('img', { src, alt })]);
+    b.onclick = () => openModal(el('img', { src, alt, class: 'reg-full' })); return b; };
+  const box = el('div', { class: 'lineitem' }, [
+    el('div', { class: 'li-head' }, [el('strong', { text: 'เอกสาร & ลายเซ็น (ลูกค้าแนบทางออนไลน์)' }),
+      f.signedOnlineAt ? el('span', { class: 'pill green', text: 'เซ็นออนไลน์แล้ว' }) : null].filter(Boolean)),
+  ]);
+  const thumbs = [
+    f.idPhoto ? zoom(f.idPhoto, 'รูปบัตรประชาชน') : null,
+    ...pets.map((src, i) => zoom(src, `รูปน้องรูปที่ ${i + 1}`)),
+  ].filter(Boolean);
+  if (thumbs.length) box.appendChild(el('div', { class: 'reg-thumbs' }, thumbs));
+  if (f.idPhotoPurgedAt) box.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px', text: 'ลบสำเนาบัตรประชาชนแล้ว (ครบ 90 วันหลังเช็คเอาท์)' }));
+  if (f.signOwner) box.appendChild(el('div', { class: 'reg-sig' }, [
+    el('img', { src: f.signOwner, alt: 'ลายเซ็นเจ้าของ' }),
+    el('small', { text: f.signedOnlineAt ? `เซ็นเมื่อ ${signedOnlineText(f)}` : '' }),
+  ]));
+  return box;
+}
+
+// ลบเฉพาะรูปบัตรของใบที่เช็คเอาท์เกิน 90 วัน (PDPA) — ลายเซ็น/รูปน้อง/ข้อมูลเก็บเป็นประวัติ
+// ทำงานเบื้องหลังเมื่อมีคนเปิดแอป (แบบเดียวกับการเก็บกวาด roomHolds ใน public-availability.js)
+export const ID_PHOTO_KEEP_DAYS = 90;
+export function idPhotoExpired(f, today = todayISO()) {
+  const out = f.checkOut || parseRaw(f).stay?.checkout || '';
+  return !!(f.idPhoto && out && addDaysISO(out, ID_PHOTO_KEEP_DAYS) < today);
+}
+let _cleanupStarted = false;
+export function startIdPhotoCleanup() {
+  if (_cleanupStarted) return;
+  _cleanupStarted = true;
+  listen('checkinForms', arr => {
+    arr.filter(f => idPhotoExpired(f)).forEach(f =>
+      save('checkinForms', { id: f.id, idPhoto: '', idPhotoPurgedAt: Date.now() }).catch(e => console.warn('ลบรูปบัตรไม่สำเร็จ', e)));
+  }, { orderBy: null });
 }
 
 // พิมพ์ใบยืนยันเข้าพัก (ให้ลูกค้าเซ็นรับทราบ) — ใช้ทั้งในหน้ารายละเอียดและปุ่มลัดหน้างานวันนี้
@@ -656,6 +704,25 @@ function buildRegSheet(f, d, opts = {}) {
     sheet.appendChild(box);
   });
 
+  // ── รูปน้อง & บัตรประชาชน (ลูกค้าแนบจากลิงก์) · บัตรมีลายน้ำกันนำสำเนาไปใช้ที่อื่น ──
+  const onlinePets = petPhotosOf(f);
+  if (f.idPhoto || onlinePets.length || f.idPhotoPurgedAt) {
+    const cell = (src, cap, wm) => el('div', { class: 'reg-print-ph' + (wm ? ' id' : '') }, [
+      el('img', { src, alt: cap }),
+      wm ? el('div', { class: 'reg-wm' }, [el('span', { html: `ใช้เพื่อการเข้าพักครั้งนี้เท่านั้น<br>${escapeHtml(ref)}` })]) : null,
+      el('div', { class: 'cap', text: cap }),
+    ].filter(Boolean));
+    const firstPet = pets.length === 1 ? (pets[0].name || 'รูปน้อง') : 'รูปน้อง';
+    sheet.appendChild(el('div', { class: 'intake-box' }, [
+      el('h3', { class: 'reg-print-h' }, [el('span', { text: 'รูปน้อง & บัตรประชาชน' }), el('small', { text: 'แนบโดยลูกค้าทางออนไลน์' })]),
+      el('div', { class: 'reg-print-photos' }, [
+        f.idPhoto ? cell(f.idPhoto, 'บัตรประชาชนผู้ฝาก', true)
+          : f.idPhotoPurgedAt ? el('div', { class: 'intake-photo-blank', text: 'ลบสำเนาบัตรแล้ว (ครบ 90 วัน)' }) : null,
+        ...onlinePets.slice(0, 3).map(src => cell(src, firstPet)),
+      ].filter(Boolean)),
+    ]));
+  }
+
   // ── เช็คลิสต์รับเข้า (พนักงานกรอกตอนลูกค้ามาถึงจริง) ──
   const checkBox = el('div', { class: 'intake-box' }, [el('h3', { text: 'บันทึกตอนรับเข้า (เจ้าหน้าที่กรอก)' })]);
   checkBox.appendChild(el('div', { class: 'intake-check-fill' }, [
@@ -697,22 +764,31 @@ function buildRegSheet(f, d, opts = {}) {
   termsBox.appendChild(el('ul', {}, INTAKE_CONSENT.map(t => el('li', { text: t }))));
   sheet.appendChild(termsBox);
 
+  if (f.signedOnlineAt) {
+    sheet.appendChild(el('div', { class: 'reg-print-accept', text:
+      `ลูกค้ายอมรับกฎระเบียบและนโยบายการเข้าพักทางออนไลน์แล้ว เมื่อ ${signedOnlineText(f)}${f.consentPdpa ? ' · ยินยอมให้เก็บสำเนาบัตร (ลบอัตโนมัติ 90 วันหลังเช็คเอาท์)' : ''}` }));
+  }
+
   // ── ข้อความยืนยันเหนือช่องเซ็น ──
   sheet.appendChild(el('p', { class: 'intake-confirm', text:
     'ข้าพเจ้าได้ตรวจสอบข้อมูลข้างต้นแล้ว และยืนยันว่าข้อมูลทั้งหมดถูกต้องตรงตามความเป็นจริง' }));
 
   // ── ช่องเซ็น 2 ฝ่าย (ฝังภาพลายเซ็นถ้าเซ็นบนจอมาแล้ว) ──
   const signedDate = opts.signedAt ? formatDateTH(new Date(opts.signedAt).toISOString().slice(0, 10)) : null;
-  const signBlock = (img, label) => el('div', { class: 'intake-sign' }, [
+  // ลูกค้าเซ็นออนไลน์ → วันที่ฝั่งเจ้าของคือเวลาที่เซ็นในลิงก์ ไม่ใช่เวลาที่พี่เลี้ยงเซ็น
+  const signBlock = (img, label, date, badge) => el('div', { class: 'intake-sign' }, [
     img
       ? el('div', { class: 'sign-line has-img' }, [el('img', { class: 'sign-img', src: img, alt: label })])
       : el('div', { class: 'sign-line' }),
     el('div', { class: 'sign-label', text: label }),
-    el('div', { class: 'sign-date', text: signedDate ? `วันที่ ${signedDate}` : 'วันที่ ......... / ......... / .........' }),
+    badge ? el('div', { class: 'reg-sign-badge', text: badge })
+      : el('div', { class: 'sign-date', text: date ? `วันที่ ${date}` : 'วันที่ ......... / ......... / .........' }),
   ]);
+  const ownerOnline = !!(f.signedOnlineAt && opts.signOwner === f.signOwner);
   sheet.appendChild(el('div', { class: 'intake-signs' }, [
-    signBlock(opts.signOwner, 'ลงชื่อเจ้าของสัตว์เลี้ยง'),
-    signBlock(opts.signStaff, 'ลงชื่อพี่เลี้ยง / เจ้าหน้าที่ผู้รับเข้า'),
+    signBlock(opts.signOwner, `ลงชื่อเจ้าของสัตว์เลี้ยง${owner.fullname ? ` (${owner.fullname})` : ''}`,
+      ownerOnline ? null : (opts.signOwner ? signedDate : null), ownerOnline ? `เซ็นออนไลน์ ${signedOnlineText(f)}` : null),
+    signBlock(opts.signStaff, 'ลงชื่อพี่เลี้ยง / เจ้าหน้าที่ผู้รับเข้า', opts.signStaff ? signedDate : null),
   ]));
 
   sheet.appendChild(el('div', { class: 'intake-foot', text:
@@ -787,16 +863,24 @@ function openSignPad(f, d) {
   wrap.appendChild(el('div', { style: 'margin-top:12px' }, [photoBtn, photoInput, photoPreview]));
 
   // ลายเซ็น 2 ช่อง
+  // ลูกค้าเซ็นออนไลน์มาแล้ว → แสดงลายเซ็นเดิม ไม่ให้เซ็นทับ เหลือช่องพี่เลี้ยงช่องเดียว
+  const ownerOnline = !!(f.signOwner && f.signedOnlineAt);
   const ownerCanvas = el('canvas', { class: 'sign-pad' });
   const staffCanvas = el('canvas', { class: 'sign-pad' });
-  const ownerPad = attachSignaturePad(ownerCanvas);
+  const ownerPad = ownerOnline ? { initSize() {}, dataURL: () => null, clear() {} } : attachSignaturePad(ownerCanvas);
   const staffPad = attachSignaturePad(staffCanvas);
   const clearBtn = (pad) => { const b = el('button', { class: 'btn', type: 'button', style: 'padding:3px 10px;font-size:12px', text: 'ล้าง' }); b.onclick = () => pad.clear(); return b; };
   wrap.appendChild(el('div', { class: 'sign-pad-grid' }, [
-    el('div', { class: 'sign-pad-col' }, [
-      el('div', { class: 'sign-pad-head' }, [el('span', { text: 'ลายเซ็นเจ้าของสัตว์เลี้ยง' }), clearBtn(ownerPad)]),
-      el('div', { class: 'sign-pad-wrap' }, [ownerCanvas]),
-    ]),
+    ownerOnline
+      ? el('div', { class: 'sign-pad-col' }, [
+          el('div', { class: 'sign-pad-head' }, [el('span', { text: 'ลายเซ็นเจ้าของสัตว์เลี้ยง' }), el('span', { class: 'pill green', text: 'เซ็นออนไลน์แล้ว' })]),
+          el('div', { class: 'sign-pad-wrap sign-pad-done' }, [el('img', { src: f.signOwner, alt: 'ลายเซ็นเจ้าของ (ออนไลน์)' })]),
+          el('small', { class: 'muted', text: `เซ็นเมื่อ ${signedOnlineText(f)}` }),
+        ])
+      : el('div', { class: 'sign-pad-col' }, [
+          el('div', { class: 'sign-pad-head' }, [el('span', { text: 'ลายเซ็นเจ้าของสัตว์เลี้ยง' }), clearBtn(ownerPad)]),
+          el('div', { class: 'sign-pad-wrap' }, [ownerCanvas]),
+        ]),
     el('div', { class: 'sign-pad-col' }, [
       el('div', { class: 'sign-pad-head' }, [el('span', { text: 'ลายเซ็นพี่เลี้ยง / เจ้าหน้าที่' }), clearBtn(staffPad)]),
       el('div', { class: 'sign-pad-wrap' }, [staffCanvas]),

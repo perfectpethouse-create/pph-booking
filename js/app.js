@@ -19,6 +19,7 @@ import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { renderBackup } from './backup.js';
 import { startAvailabilityPublisher } from './public-availability.js';
+import { startIdPhotoCleanup } from './registrations.js';
 import { applyTheme, currentTheme, themePicker } from './theme.js';
 import { openBookingForm } from './bookings.js';
 import { openAppointmentForm } from './appointments.js';
@@ -101,6 +102,8 @@ function showApp(user) {
   document.getElementById('who-email').textContent = user.email || '';
   // ส่งห้องว่าง (ไม่มีข้อมูลลูกค้า) ให้หน้าจองออนไลน์ perfectbkk.com/booking.html
   startAvailabilityPublisher();
+  // ลบรูปบัตรประชาชนที่เช็คเอาท์เกิน 90 วัน (PDPA)
+  startIdPhotoCleanup();
   loginScreen.classList.add('hidden');
   appEl.classList.remove('hidden');
 

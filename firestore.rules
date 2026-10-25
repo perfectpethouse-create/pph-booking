@@ -24,6 +24,7 @@ service cloud.firestore {
 
     // ── กล่องรับใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html ──
     // ลูกค้า (ไม่ล็อกอิน) "ส่งเข้า" ได้อย่างเดียว — อ่าน/แก้/ลบได้เฉพาะพนักงานที่ล็อกอิน
+    // ⚠️ มีรูปบัตรประชาชน (idPhoto) + ลายเซ็น — ห้ามเปิด read ให้คนไม่ล็อกอิน · แอปลบ idPhoto เองเมื่อเช็คเอาท์เกิน 90 วัน
     match /checkinForms/{doc} {
       allow create: if true;
       allow read, update, delete: if signedIn();

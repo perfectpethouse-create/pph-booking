@@ -75,12 +75,14 @@ export function renderStaffToday(container) {
   // ป้ายสถานะลงทะเบียน + ปุ่มลัด (ใช้ทั้งการ์ดคอมและมือถือ)
   function regBits(b) {
     const r = regOf(b);
+    // ลูกค้าเซ็นออนไลน์แล้ว → พี่เลี้ยงแค่เซ็นฝั่งตัวเองแล้วพิมพ์
+    const tag2 = r.state === 'this' && r.form.signedOnlineAt ? el('span', { class: 'pill green', text: 'เซ็นออนไลน์แล้ว' }) : null;
     const tag = r.state === 'this' ? el('span', { class: 'pill green', text: 'ลงทะเบียนแล้ว' })
       : r.state === 'previous' ? el('span', { class: 'pill green', text: 'มีข้อมูลจากครั้งก่อน' })
       : el('span', { class: 'pill yellow', text: 'ยังไม่ลงทะเบียน' });
-    if (!canReg()) return { tag, btn: null };
+    if (!canReg()) return { tag, tag2, btn: null };
     const mk = (cls, html, fn) => { const x = el('button', { type: 'button', class: 'btn ' + cls, html }); x.onclick = fn; return x; };
-    if (r.state === 'none') return { tag, btn: mk('st-sendreg', 'ส่งลิงก์ลงทะเบียนให้ลูกค้า', () => openReg(b)) };
+    if (r.state === 'none') return { tag, tag2, btn: mk('st-sendreg', 'ส่งลิงก์ลงทะเบียนให้ลูกค้า', () => openReg(b)) };
     // ใบของรอบนี้ → พิมพ์ใบยืนยัน · ข้อมูลครั้งก่อนจากโปรไฟล์ → พิมพ์ใบรับฝาก (วันที่ของรอบนี้ + ข้อมูลน้องจากโปรไฟล์)
     // ใบครั้งก่อนที่ยังไม่นำเข้าโปรไฟล์ไม่มีปุ่มพิมพ์ — ใบนั้นเป็นวันเข้าพักเก่า ไม่ควรให้ลูกค้าเซ็น
     const print = r.state === 'this' ? () => printRegistration(r.form)
@@ -88,7 +90,7 @@ export function renderStaffToday(container) {
       : null;
     const view = (r.state === 'this' || r.prev) ? mk('', `${icons.inbox} ${r.state === 'this' ? 'ดูใบลงทะเบียน' : 'ดูใบครั้งก่อน'}`, () => openReg(b)) : null;
     const acts = [view, print && mk('primary', `${icons.print} พิมพ์ให้ลูกค้าเซ็น`, print)].filter(Boolean);
-    return { tag, btn: acts.length ? el('div', { class: 'st-regacts' + (acts.length === 1 ? ' one' : '') }, acts) : null };
+    return { tag, tag2, btn: acts.length ? el('div', { class: 'st-regacts' + (acts.length === 1 ? ' one' : '') }, acts) : null };
   }
 
   // ปุ่มลัดไปหน้า "ข้อมูลลงทะเบียนเช็คอิน" ทั้งหมด
@@ -235,7 +237,7 @@ export function renderStaffToday(container) {
       const vac = worstVaccine(info.pets);
       const reg = opts.reg ? regBits(b) : {};
       const tags = [
-        reg.tag,
+        reg.tag, reg.tag2,
         vac === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
           : vac === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' }) : null,
         (opts.leaveTag && b.checkOut === tomorrow) ? el('span', { class: 'pill yellow', text: 'ออกพรุ่งนี้' }) : null,
@@ -360,7 +362,7 @@ export function renderStaffToday(container) {
       const vac = worstVaccine(pets);
       const reg = opts.reg ? regBits(b) : {};
       const tags = [
-        reg.tag,
+        reg.tag, reg.tag2,
         vac === 'expired' ? el('span', { class: 'pill red', text: 'วัคซีนหมดอายุ' })
           : vac === 'soon' ? el('span', { class: 'pill yellow', text: 'วัคซีนใกล้หมด' }) : null,
         (opts.leaveTag && b.checkOut === tomorrow) ? el('span', { class: 'pill yellow', text: 'ออกพรุ่งนี้' }) : null,
