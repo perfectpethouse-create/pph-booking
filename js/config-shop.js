@@ -420,7 +420,12 @@ export const APPOINTMENT_TYPES = [
   { id: 'exercise', label: 'โซนออกกำลังกาย' },
 ];
 
-export const APPOINTMENT_STATUSES = ['จองแล้ว', 'มาแล้ว', 'เสร็จแล้ว', 'ยกเลิก'];
+export const APPOINTMENT_STATUSES = ['จองแล้ว', 'มาแล้ว', 'เสร็จแล้ว', 'ไม่มา', 'ยกเลิก'];
+// คิวที่นับเป็นยอดขาย — ไม่นับยกเลิก และไม่นับลูกค้าไม่มา (no-show)
+export const apptCounts = a => !!a.date && a.status !== 'ยกเลิก' && a.status !== 'ไม่มา';
+
+// ลูกค้ารู้จักร้านจากช่องทางไหน (ใบจองห้อง + คิวบริการ · ฟิลด์ heardFrom) — วัดว่าการตลาดช่องไหนได้ลูกค้าจริง
+export const HEARD_FROM = ['Facebook', 'Instagram', 'TikTok', 'LINE', 'Google / เว็บไซต์', 'เพื่อนแนะนำ', 'ผ่านหน้าร้าน', 'ลูกค้าเก่า', 'อื่นๆ'];
 
 // [LEGACY] ราคาแบบเดิม (ไซส์ × ระดับ) — คงไว้เพื่อ "อ่านใบเก่า" ที่บันทึกด้วย exSize+level
 // ก่อนเปลี่ยนมาเป็นราคาต่อโซน ราคาเดียวทุกไซส์ (ดู EXERCISE_ZONES ด้านล่าง)

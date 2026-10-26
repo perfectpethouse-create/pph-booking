@@ -4,12 +4,12 @@
 //
 // กติกาการนับยึดตามรายงานรายเดือนเดิม (ตัวเลขต้องตรงกับตารางด้านล่าง):
 //  · โรงแรม = grandTotal ของใบจองที่ไม่ยกเลิก อิง "วัน Check-in"
-//  · บริการ = ราคาคิว Grooming/ออกกำลังกายที่ไม่ยกเลิก อิง "วันนัด"
+//  · บริการ = ราคาคิว Grooming/ออกกำลังกาย ที่ไม่ยกเลิกและลูกค้าไม่ได้ "ไม่มา" อิง "วันนัด"
 //  · ห้อง-คืน/อัตราเข้าพัก = คืนที่นอนจริงรายวัน (eachDate ไม่นับวันเช็คเอาท์)
 // ส่วนคำนวณ (buildSalesData) ไม่แตะ DOM — ทดสอบด้วย node ได้
 // ═══════════════════════════════════════════════════════════════
 import { eachDate, addDaysISO, formatBaht } from './calc.js';
-import { capacityOf } from './config-shop.js';
+import { capacityOf, apptCounts } from './config-shop.js';
 
 const MS_DAY = 86400000;
 export const AHEAD_WEEKS = 8;
@@ -30,7 +30,7 @@ const diffDays = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 
 // bookings = ผ่าน computeBooking แล้ว · today = 'YYYY-MM-DD'
 export function buildSalesData({ bookings, appts, settings, month, today }) {
   const active = bookings.filter(b => b.depositStatus !== 'ยกเลิก' && b.checkIn);
-  const svcAct = appts.filter(a => a.status !== 'ยกเลิก' && a.date);
+  const svcAct = appts.filter(apptCounts);
   const todayMk = today.slice(0, 7);
 
   // ยอดของเดือน mk ตั้งแต่วันที่ 1 ถึงวันที่ upTo (รวม)

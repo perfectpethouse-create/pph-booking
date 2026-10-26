@@ -12,6 +12,7 @@ import { mountNewsCard } from './announcements.js';
 import { shortDate, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
 import { openGuestCheckin, openFormDetail, printRegistration } from './registrations.js';
 import { buildIntakeSheet, printSheet } from './intake-form.js';
+import { apptStatusControl } from './appointments.js';
 
 let _unsub = [];
 let _customers = [];
@@ -298,7 +299,7 @@ export function renderStaffToday(container) {
           el('small', { text: `${detail} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.` }),
           a.notes ? el('small', { text: a.notes.split('\n')[0] }) : null,
         ].filter(Boolean)),
-        el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
+        apptStatusControl(a),
       ]);
     })));
   }
@@ -326,7 +327,7 @@ export function renderStaffToday(container) {
             el('strong', { text: `${a.time || '—'} · ${a.petName || a.customerName || '-'}${petCountOf(a) > 1 ? ` (${petCountOf(a)} ตัว)` : ''}` }),
             el('span', { class: 'muted', style: 'font-size:12px;margin-left:8px', text: a.customerName || '' }),
           ]),
-          el('span', { class: 'pill ' + (a.status === 'เสร็จแล้ว' ? 'green' : 'grey'), text: a.status || 'จองแล้ว' }),
+          apptStatusControl(a),
         ]),
         el('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap;margin-top:4px' }, [
           el('span', { class: 'pet-chip pet-' + (a.petType || 'dog'), html: `${PET_ICONS[a.petType] || icons.paw} ${escapeHtml(detail)}` }),

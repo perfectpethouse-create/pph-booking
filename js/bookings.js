@@ -9,7 +9,7 @@ import {
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
   DAYCARE_SIZES, daycarePrice,
   longStayPct, VIP_HIGH_SEASON,
-  PAYMENT_METHODS, DEFAULT_DEPOSIT_METHOD,
+  PAYMENT_METHODS, DEFAULT_DEPOSIT_METHOD, HEARD_FROM,
 } from './config-shop.js';
 import { buildCustomerCard, downloadCardPNG, copySummaryText, copyText, shareCard } from './summary-card.js';
 import { openIntakeForm } from './intake-form.js';
@@ -787,7 +787,11 @@ export function openBookingForm(existing) {
       el('h2', { text: isNew ? 'เพิ่มการจอง' : 'แก้ไขการจอง' }),
       el('div', { class: 'bf-main' }, [
         bfGroup('ลูกค้า', null,
-          el('div', { class: 'row' }, [nameField, phoneField]), custCard, vaccineBanner),
+          el('div', { class: 'row' }, [nameField, phoneField]), custCard, vaccineBanner,
+          el('div', { class: 'field bf-heard', style: 'margin:12px 0 0' }, [
+            el('label', { text: 'รู้จักร้านจากช่องทางไหน (ไม่บังคับ)' }),
+            chipGroup(HEARD_FROM.map(x => [x, x]), draft.heardFrom || '', 'รู้จักร้านจากช่องทางไหน', v => { draft.heardFrom = v; }),
+          ])),
         bfGroup('วันเข้าพัก', nightsBadge,
           el('div', { class: 'row' }, [inDateField, outDateField]),
           el('div', { class: 'bf-chips bf-quick' }, [...dayChips, nightChips.length ? el('span', { class: 'bf-sep' }) : null, ...nightChips].filter(Boolean)),

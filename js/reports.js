@@ -9,7 +9,7 @@
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
 import { computeBooking, formatBaht, eachDate, todayISO } from './calc.js';
-import { capacityOf, PAYMENT_METHODS, petCountOf, APPOINTMENT_TYPES } from './config-shop.js';
+import { capacityOf, PAYMENT_METHODS, petCountOf, APPOINTMENT_TYPES, apptCounts } from './config-shop.js';
 import { icons } from './icons.js';
 import { buildSalesData, renderSalesDash, hideTip, shiftMonth, thMonthLong } from './sales-dash.js';
 
@@ -58,7 +58,7 @@ export function renderReports(container) {
       if (b.checkOut) eachDate(b.checkIn, b.checkOut, iso => monthSet.add(iso.slice(0, 7)));
     });
     // รวมเดือนที่มีคิวบริการด้วย — เดือนที่มีแต่ Grooming/ออกกำลังกาย (ไม่มีจองห้อง) ต้องเลือกได้
-    const apptActive = _appts.filter(a => a.status !== 'ยกเลิก' && a.date);
+    const apptActive = _appts.filter(apptCounts);
     apptActive.forEach(a => monthSet.add(a.date.slice(0, 7)));
     const today = todayISO(), todayMk = today.slice(0, 7);
     monthSet.add(todayMk);
@@ -111,8 +111,9 @@ export function renderReports(container) {
       g.queues += 1; g.pets += petCountOf(a); g.revenue += Number(a.price) || 0;
     });
     const svcPets = apptInMonth.reduce((sum, a) => sum + petCountOf(a), 0);
-    const svcDone = apptInMonth.filter(a => a.status === 'เสร็จแล้ว').length;
+    const svcDone = apptInMonth.filter(a => a.status === 'เสร็จแล้ว' || a.status === 'มาแล้ว').length;
     const svcCancelled = _appts.filter(a => a.status === 'ยกเลิก' && a.date && a.date.slice(0, 7) === cur).length;
+    const svcNoShow = _appts.filter(a => a.status === 'ไม่มา' && a.date && a.date.slice(0, 7) === cur).length;
 
     // ── อัตราเข้าพัก: นับคืนที่นอนจริงในเดือนนี้ (กระจายรายวัน) ──
     const s = getSettings();
@@ -211,8 +212,9 @@ export function renderReports(container) {
         el('td', { class: 'num' }, [el('strong', { text: String(svcPets) })]),
         el('td', { class: 'num' }, [el('strong', { text: formatBaht(serviceRevenue) })]),
       ]),
-      note(`* นับจากคิวที่ไม่ถูกยกเลิก · อ้างเดือนของวันนัด · เสร็จแล้ว ${svcDone} คิว`
+      note(`* นับจากคิวที่ไม่ถูกยกเลิก · อ้างเดือนของวันนัด · มาแล้ว/เสร็จแล้ว ${svcDone} คิว`
         + `${svcCancelled ? ` · ยกเลิก ${svcCancelled} คิว (ไม่นับในยอด)` : ''}`
+        + `${svcNoShow ? ` · ลูกค้าไม่มา ${svcNoShow} คิว (ไม่นับในยอด)` : ''}`
         + ' · บริการจ่ายจบครั้งเดียว จึงไม่แยกช่องทางรับเงิน'),
     ] : [note('ยังไม่มีคิวบริการในเดือนนี้')]));
 

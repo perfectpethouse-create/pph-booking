@@ -1998,6 +1998,9 @@ body.modal-open { overflow: hidden; }
 .d-appt:hover { border-color: var(--cat); }
 .d-appt b { font-weight: 600; }
 .d-appt.done { opacity: .7; }
+.d-appt.noshow { opacity: .55; }
+.d-appt.noshow b { text-decoration: line-through; }
+.d-appt.noshow .d-ap { color: #B8321F; font-weight: 600; font-size: 12.5px; }
 .d-atag { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 6px; white-space: nowrap; background: var(--cat-tint); color: var(--cat); }
 .slot-board--grooming .d-atag { color: #5B3FD6; }
 .slot-board--exercise .d-atag { color: #0A6F78; }
@@ -2415,3 +2418,18 @@ body.modal-open { overflow: hidden; }
 /* สถานะลงทะเบียนเช็คอินของแขก (ปฏิทินมือถือ) */
 .m-reg { color: #9A5A00 !important; font-weight: 600; }
 .m-reg.ok { color: #1E7A37 !important; }
+
+/* ═══ สถานะคิว (มาแล้ว / ไม่มา) — appointments.js apptStatusControl ═══ */
+.ap-st { display: inline-flex; gap: 6px; flex-shrink: 0; }
+.ap-st .btn.sm { min-height: 34px; padding: 0 12px; font-size: 13px; }
+.ap-st .ap-st-no { color: #B8321F; }
+.ap-pend { margin-bottom: 16px; }
+.ap-pend-h { margin-bottom: 6px; }
+.ap-pend-h h2 { font-size: 16px; }
+.ap-pend-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; cursor: pointer; }
+.ap-pend-row + .ap-pend-row { border-top: 1px solid var(--hairline-soft); }
+.ap-pend-tx { min-width: 0; }
+.ap-pend-tx b { display: block; font-size: 14px; }
+.ap-pend-tx small { font-size: 12.5px; color: var(--muted); }
+.ap-pend-f { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--hairline-soft); }
+.mappt .ap-pend { margin: 0 0 14px; padding: 14px 16px; border-radius: 20px; background: var(--card); box-shadow: var(--shadow); }

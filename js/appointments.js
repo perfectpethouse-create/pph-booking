@@ -10,7 +10,7 @@ import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser, isStaff, escapeHtml, bfGroup, chipGroup } from './ui.js';
 import { formatBaht, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import {
-  APPOINTMENT_TYPES, APPOINTMENT_STATUSES,
+  APPOINTMENT_TYPES, APPOINTMENT_STATUSES, HEARD_FROM,
   EXERCISE_SIZES, EXERCISE_ZONES, EXERCISE_SLOTS, EXERCISE_CAPACITY, EXERCISE_DURATION_MIN,
   GROOMING_SIZES, COAT_TYPES, GROOMING_SLOTS, GROOMING_CUT_LAST_SLOT,
   groomingDurationLabel,
@@ -58,6 +58,64 @@ export function countInSlot(list, { type, date, time, excludeId }) {
     a.type === type && a.date === date && a.time === time &&
     a.status !== 'ยกเลิก' && a.id !== excludeId
   ).reduce((sum, a) => sum + petCountOf(a), 0);
+}
+
+// ── สถานะคิว: คิววันนี้/ที่ผ่านมาที่ยัง "จองแล้ว" มีปุ่ม มาแล้ว / ไม่มา ──
+// สถานะอื่นแสดงเป็นป้าย (กดผิด แก้ได้ที่หน้าแก้คิว) · คิวไม่มาไม่ถูกนับเป็นยอดขาย (apptCounts)
+const isPendingStatus = (a, today = todayISO()) => (a.status || 'จองแล้ว') === 'จองแล้ว' && !!a.date && a.date <= today;
+async function setApptStatus(a, status) {
+  await save('appointments', { id: a.id, status, statusAt: Date.now() });
+  toast(status === 'ไม่มา' ? `บันทึก "ไม่มา" · ${a.petName || a.customerName || ''}` : `บันทึก "มาแล้ว" · ${a.petName || a.customerName || ''}`);
+}
+export function apptStatusControl(a) {
+  if (isPendingStatus(a)) {
+    const mk = (label, status, cls) => {
+      const b = el('button', { type: 'button', class: 'btn sm ' + cls, text: label });
+      b.onclick = async (e) => { e.stopPropagation(); b.disabled = true; await setApptStatus(a, status); };
+      return b;
+    };
+    return el('span', { class: 'ap-st' }, [mk('มาแล้ว', 'มาแล้ว', 'primary'), mk('ไม่มา', 'ไม่มา', 'ghost ap-st-no')]);
+  }
+  const st = a.status || 'จองแล้ว';
+  const tone = st === 'ไม่มา' || st === 'ยกเลิก' ? 'red' : st === 'มาแล้ว' || st === 'เสร็จแล้ว' ? 'green' : 'grey';
+  return el('span', { class: 'pill ' + tone, text: st });
+}
+// การ์ด "ค้างอัปเดตสถานะ" — คิวที่ถึงวันแล้วแต่ยังไม่ได้กดว่ามา/ไม่มา (ใหม่สุดก่อน)
+function pendingStatusCard(type) {
+  const list = _appts.filter(a => isPendingStatus(a) && (!type || a.type === type))
+    .sort((x, y) => (y.date + (y.time || '')).localeCompare(x.date + (x.time || '')));
+  if (!list.length) return null;
+  const SHOW = 8;
+  const rows = list.slice(0, SHOW).map(a => {
+    const row = el('div', { class: 'ap-pend-row', role: 'button', tabindex: '0' }, [
+      el('div', { class: 'ap-pend-tx' }, [
+        el('b', { text: `${a.petName || a.customerName || '-'}${petCountOf(a) > 1 ? ` ×${petCountOf(a)}` : ''}` }),
+        el('small', { text: `${formatDateTH(a.date).slice(0, 5)} ${a.time || ''} · ${a.type === 'exercise' ? 'ออกกำลังกาย' : 'Grooming'} · ${a.customerName || ''}` }),
+      ]),
+      apptStatusControl(a),
+    ]);
+    row.onclick = () => openAppointmentForm(a);
+    return row;
+  });
+  const old = list.filter(a => a.date < addDaysISO(todayISO(), -7));
+  const bulk = old.length ? el('button', { type: 'button', class: 'btn sm ghost', text: `ทำเครื่องหมาย "มาแล้ว" คิวที่เกิน 7 วัน (${old.length})` }) : null;
+  if (bulk) bulk.onclick = async () => {
+    if (!await confirmDialog(`ทำเครื่องหมาย "มาแล้ว" ให้ ${old.length} คิวที่ผ่านมาเกิน 7 วัน?\nคิวไหนลูกค้าไม่มา ให้กด "ไม่มา" ทีละคิวก่อน`, { okText: 'ยืนยัน' })) return;
+    bulk.disabled = true;
+    for (const a of old) await save('appointments', { id: a.id, status: 'มาแล้ว', statusAt: Date.now(), statusBulk: true });
+    toast(`อัปเดตแล้ว ${old.length} คิว`);
+  };
+  return el('div', { class: 'd-card ap-pend' }, [
+    el('div', { class: 'ap-pend-h' }, [
+      el('div', {}, [el('h2', { text: `ค้างอัปเดตสถานะ · ${list.length} คิว` }),
+        el('div', { class: 'd-date', text: 'ถึงวันนัดแล้ว ยังไม่ได้บอกว่าลูกค้ามาหรือไม่มา · คิวที่ "ไม่มา" จะไม่นับเป็นยอดขาย' })]),
+    ]),
+    ...rows,
+    list.length > SHOW || bulk ? el('div', { class: 'ap-pend-f' }, [
+      list.length > SHOW ? el('span', { class: 'd-date', text: `และอีก ${list.length - SHOW} คิว` }) : el('span'),
+      bulk,
+    ].filter(Boolean)) : null,
+  ].filter(Boolean));
 }
 
 // น้องเปล่า 1 ตัวตามประเภทโซน — ใช้ตอนเริ่มการ์ดใหม่/กด "เพิ่มน้อง"
@@ -161,6 +219,7 @@ export function renderAppointments(container) {
   todayBtn.onclick = () => { dateInput.value = todayISO(); draw(); };
 
   const board = el('div', {});
+  const pending = el('div', {});
   const subtitle = el('div', { class: 'd-date' });
 
   // มือถือ = ไทม์ไลน์แบบแอป (.mappt) · คอม = บอร์ดเต็ม (.appt-full) — สลับด้วย CSS
@@ -173,6 +232,7 @@ export function renderAppointments(container) {
       el('div', { class: 'd-datenav' }, [prevBtn, dateInput, nextBtn]),
       todayBtn, typeFilter, el('span', { class: 'd-sp' }), addBtn,
     ]),
+    pending,
     board,
   ]));
 
@@ -184,6 +244,9 @@ export function renderAppointments(container) {
     board.className = mode === 'day' && !only ? 'd-zgrid' : 'd-zstack';
     subtitle.textContent = mode === 'day' ? 'ตารางคิวรายวัน' : 'ภาพรวม 7 วัน — กดวันที่เพื่อดูรอบเวลา';
     const types = only ? APPOINTMENT_TYPES.filter(t => t.id === only) : APPOINTMENT_TYPES;
+    const pend = pendingStatusCard(only);
+    pending.innerHTML = '';
+    if (pend) pending.appendChild(pend);
     types.forEach(t => board.appendChild(
       mode === 'week'
         ? buildWeekBoard(t, date, (d) => { dateInput.value = d; setMode('day'); })
@@ -218,6 +281,8 @@ function buildMobileQueue() {
       return b;
     }));
     node.appendChild(seg);
+    const pend = pendingStatusCard(type);
+    if (pend) node.appendChild(pend);
 
     // หัวเดือน + ลูกศรเลื่อนทีละสัปดาห์ (ตอบลูกค้าที่ถามคิวล่วงหน้าหลายวัน)
     const ws = dateOf(weekStart);
@@ -286,7 +351,7 @@ function buildMobileQueue() {
                 el('b', { text: pets.length > 1 ? `${first} ×${pets.length}` : first }),
                 el('small', { text: `${detail} · ${a.customerName || ''}` }),
               ]),
-              a.status === 'เสร็จแล้ว' ? el('span', { class: 'pill green', text: 'เสร็จ' }) : null,
+              apptStatusControl(a),
             ]);
             row.onclick = () => openAppointmentForm(a);
             return row;
@@ -408,12 +473,12 @@ function buildSlotBoard(type, date) {
           (a.type === 'grooming' && a.source === 'exercise-addon') ? 'เสริมจากเล่น' : null,
         ].filter(Boolean);
         const chip = el('button', {
-          class: 'd-appt' + (a.status === 'เสร็จแล้ว' ? ' done' : ''),
+          class: 'd-appt' + (a.status === 'เสร็จแล้ว' || a.status === 'มาแล้ว' ? ' done' : a.status === 'ไม่มา' ? ' noshow' : ''),
           title: `${a.customerName || ''} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
         }, [
           el('b', { text: pcount > 1 ? `${firstName} ×${pcount} ตัว` : firstName }),
           ...tags.map(t => el('span', { class: 'd-atag', text: t })),
-          a.status === 'เสร็จแล้ว' ? el('span', { class: 'd-ap', text: 'เสร็จแล้ว' })
+          ['เสร็จแล้ว', 'มาแล้ว', 'ไม่มา'].includes(a.status) ? el('span', { class: 'd-ap', text: a.status })
             : Number(a.price) > 0 ? el('span', { class: 'd-ap', text: formatBaht(a.price) }) : null,
         ].filter(Boolean));
         chip.onclick = () => openAppointmentForm(a);
@@ -767,7 +832,11 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         bfGroup('บริการ', null, typeCards),
         bfGroup('วันและรอบ', slotBadge, el('div', { class: 'ap-date' }, [dateInp, dayChips]), slotsWrap),
         bfGroup('ลูกค้า', null,
-          el('div', { class: 'row' }, [labeled('เบอร์โทร', phoneInp), labeled('ชื่อลูกค้า', nameInp)]), custCard),
+          el('div', { class: 'row' }, [labeled('เบอร์โทร', phoneInp), labeled('ชื่อลูกค้า', nameInp)]), custCard,
+          el('div', { class: 'field bf-heard', style: 'margin:12px 0 0' }, [
+            el('label', { text: 'รู้จักร้านจากช่องทางไหน (ไม่บังคับ)' }),
+            chipGroup(HEARD_FROM.map(x => [x, x]), draft.heardFrom || '', 'รู้จักร้านจากช่องทางไหน', v => { draft.heardFrom = v; }),
+          ])),
         bfGroup('น้อง', null, ...draft.pets.map(petRow), addPetBtn),
         bfGroup('หมายเหตุ', null, statusRow, el('div', { class: 'field', style: 'margin:0' }, [notesInp])),
       ]),
