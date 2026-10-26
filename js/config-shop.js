@@ -109,6 +109,18 @@ export const GROOMING_SIZES = {
   ],
 };
 
+// น้ำหนัก → ไซส์ Grooming (ตามป้ายด้านบน) · ขอบบนนับเป็นไซส์เล็ก เช่น 5 กก. = S, 10 กก. = M
+// ยกเว้น XS ที่ป้ายเขียน "<2" → 2 กก. พอดีเป็น S · เกินขอบสุดท้าย = ไซส์ใหญ่สุด
+const GROOM_SIZE_MAX = { dog: [2, 5, 10, 15, 20, 30, 40, 50], cat: [2, 3, 5, 7, 9, 11, 13, 15] };
+export function groomSizeFromWeight(petType, kg) {
+  const w = parseFloat(String(kg ?? '').replace(',', '.'));
+  const list = GROOMING_SIZES[petType], caps = GROOM_SIZE_MAX[petType];
+  if (!list || !caps || !(w > 0)) return '';
+  const i = caps.findIndex((c, j) => (j === 0 ? w < c : w <= c));
+  return list[i < 0 ? list.length - 1 : i].id;
+}
+export const groomSizeLabel = (petType, id) => (GROOMING_SIZES[petType] || []).find(x => x.id === id)?.label || id || '-';
+
 export const COAT_TYPES = {
   dog: [
     { id: 'short',   label: 'ขนสั้น' },

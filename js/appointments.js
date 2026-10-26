@@ -6,14 +6,14 @@
 //   ส่วนนี้เป็น "รอบเวลา" (วัน + เวลาเริ่ม + ความยาวรอบ จ่ายจบครั้งเดียว)
 //   ยัดสองอย่างรวมกันจะทำให้ calc/calendar/reports เต็มไปด้วย if แยกประเภท
 // ═══════════════════════════════════════════════════════════════
-import { listen, save, remove } from './db.js';
+import { listen, save, remove, getAll } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser, isStaff, escapeHtml, bfGroup, chipGroup } from './ui.js';
 import { formatBaht, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import {
   APPOINTMENT_TYPES, APPOINTMENT_STATUSES, HEARD_FROM,
   EXERCISE_SIZES, EXERCISE_ZONES, EXERCISE_SLOTS, EXERCISE_CAPACITY, EXERCISE_DURATION_MIN,
   GROOMING_SIZES, COAT_TYPES, GROOMING_SLOTS, GROOMING_CUT_LAST_SLOT,
-  groomingDurationLabel,
+  groomingDurationLabel, groomSizeFromWeight, groomSizeLabel,
   DEFAULT_GROOMING_CAPACITY,
   PET_TYPES,
   GROOMING_SERVICES, groomServiceOf, groomServiceLabel, groomingDuration,
@@ -71,7 +71,12 @@ export function apptStatusControl(a) {
   if (isPendingStatus(a)) {
     const mk = (label, status, cls) => {
       const b = el('button', { type: 'button', class: 'btn sm ' + cls, text: label });
-      b.onclick = async (e) => { e.stopPropagation(); b.disabled = true; await setApptStatus(a, status); };
+      b.onclick = async (e) => {
+        e.stopPropagation();
+        // Grooming มาแล้ว → ชั่งน้ำหนักก่อน ให้ได้ไซส์/ราคาจริง (ลูกค้ามักกะน้ำหนักตอนจอง)
+        if (status === 'มาแล้ว' && a.type === 'grooming') return openWeighIn(a);
+        b.disabled = true; await setApptStatus(a, status);
+      };
       return b;
     };
     return el('span', { class: 'ap-st' }, [mk('มาแล้ว', 'มาแล้ว', 'primary'), mk('ไม่มา', 'ไม่มา', 'ghost ap-st-no')]);
@@ -80,6 +85,108 @@ export function apptStatusControl(a) {
   const tone = st === 'ไม่มา' || st === 'ยกเลิก' ? 'red' : st === 'มาแล้ว' || st === 'เสร็จแล้ว' ? 'green' : 'grey';
   return el('span', { class: 'pill ' + tone, text: st });
 }
+// ── ชั่งน้ำหนักตอนน้องมาถึง (Grooming) ──
+// กรอกน้ำหนักจริง → เลือกไซส์+คิดราคาใหม่ให้ → บันทึก "มาแล้ว" + จำน้ำหนักลงโปรไฟล์น้อง
+// ราคาตอนจองเก็บไว้ที่ priceBooked (ครั้งแรกที่ชั่ง) ไว้ดูส่วนต่าง
+const kgOf = v => { const n = parseFloat(String(v ?? '').replace(',', '.')); return n > 0 ? n : null; };
+const normName = t => String(t || '').trim().toLowerCase();
+const phone9 = t => String(t || '').replace(/\D/g, '').slice(-9);
+function findCustomer(custs, a) {
+  const p = phone9(a.phone);
+  return custs.find(c => p.length === 9 && phone9(c.phone) === p) || custs.find(c => a.customerName && c.name === a.customerName) || null;
+}
+// น้ำหนักในโปรไฟล์ของน้องชื่อนี้ (ถ้ามี) — ใช้เติมช่องชั่ง และเติมไซส์ตอนจองครั้งถัดไป
+export function profileWeightOf(cust, petName) {
+  const p = (cust?.pets || []).find(x => normName(x.name) && normName(x.name) === normName(petName));
+  return p ? kgOf(p.weight) : null;
+}
+async function saveProfileWeights(a, pets) {
+  const custs = await getAll('customers');
+  const c = findCustomer(custs, a);
+  if (!c) return false; // ลูกค้ายังไม่มีโปรไฟล์ — น้ำหนักยังอยู่ในคิวนี้ ครั้งหน้าเติมจาก "ใช้ข้อมูลเดิม" ได้
+  const list = (c.pets || []).map(p => ({ ...p }));
+  let changed = false;
+  pets.forEach(pt => {
+    if (!pt.weightKg || !normName(pt.petName)) return;
+    const hit = list.find(p => normName(p.name) === normName(pt.petName));
+    if (hit) { if (kgOf(hit.weight) !== pt.weightKg) { hit.weight = String(pt.weightKg); hit.weightAt = todayISO(); changed = true; } }
+    else { list.push({ name: pt.petName.trim(), species: pt.petType === 'cat' ? 'cat' : 'dog', breed: '', weight: String(pt.weightKg), weightAt: todayISO(), healthNotes: '', vaccineNotes: '' }); changed = true; }
+  });
+  if (changed) await save('customers', { id: c.id, pets: list });
+  return changed;
+}
+async function openWeighIn(a) {
+  const s = getSettings();
+  const custs = await getAll('customers');
+  const cust = findCustomer(custs, a);
+  const pets = petsOf(a).map(p => ({ ...p }));
+  const booked = Number(a.priceBooked ?? a.price) || 0;
+  const inputs = pets.map(p => {
+    const pre = kgOf(p.weightKg) ?? profileWeightOf(cust, p.petName);
+    return el('input', { type: 'text', inputmode: 'decimal', value: pre != null ? String(pre) : '', placeholder: 'เช่น 6.2', 'aria-label': `น้ำหนัก ${p.petName || 'น้อง'} (กก.)` });
+  });
+  const lines = pets.map(() => el('div', { class: 'wi-res' }));
+  const total = el('div', { class: 'wi-total' });
+  const calc = () => {
+    const next = pets.map((p, i) => {
+      const w = kgOf(inputs[i].value);
+      const size = w ? groomSizeFromWeight(p.petType || 'dog', w) || p.size : p.size;
+      return { ...p, size, weightKg: w || p.weightKg || null };
+    });
+    next.forEach((p, i) => {
+      const w = kgOf(inputs[i].value);
+      const was = pets[i].size;
+      lines[i].innerHTML = '';
+      lines[i].append(
+        el('span', { text: w ? `ไซส์ ${groomSizeLabel(p.petType || 'dog', p.size)}` : `ยังไม่ได้กรอก · ใช้ไซส์ที่จอง ${groomSizeLabel(p.petType || 'dog', was)}` }),
+        el('b', { text: formatBaht(petPrice(p, 'grooming', s)) }),
+      );
+      lines[i].classList.toggle('chg', !!w && p.size !== was);
+    });
+    const price = next.reduce((sum, p) => sum + petPrice(p, 'grooming', s), 0);
+    const diff = price - booked;
+    total.innerHTML = '';
+    total.append(
+      el('span', { text: `ราคาตอนจอง ${formatBaht(booked)}` }),
+      el('b', { text: `ราคาจริง ${formatBaht(price)}` + (diff ? ` (${diff > 0 ? '+' : '−'}${formatBaht(Math.abs(diff))})` : ' · เท่าเดิม') }),
+    );
+    return { next, price };
+  };
+  inputs.forEach(i => { i.oninput = calc; });
+  const saveBtn = el('button', { type: 'button', class: 'btn primary', text: 'บันทึก · มาแล้ว' });
+  const skipBtn = el('button', { type: 'button', class: 'btn ghost', text: 'มาแล้ว · ไม่ได้ชั่ง' });
+  const body = el('div', { class: 'wi' }, [
+    el('h2', { text: 'ชั่งน้ำหนักน้อง' }),
+    el('p', { class: 'd-date', text: `${a.customerName || ''} · ${formatDateTH(a.date)} ${a.time || ''} · ราคาคิดตามไซส์จากน้ำหนักจริง` }),
+    ...pets.map((p, i) => el('div', { class: 'wi-pet' }, [
+      el('div', { class: 'wi-h' }, [
+        el('b', { text: p.petName || `น้องตัวที่ ${i + 1}` }),
+        el('small', { text: `${p.petType === 'cat' ? 'แมว' : 'สุนัข'} · ${groomServiceLabel(groomServiceOf(p))} · จองไว้ไซส์ ${groomSizeLabel(p.petType || 'dog', p.size)}` }),
+      ]),
+      el('label', { class: 'wi-in' }, [inputs[i], el('span', { text: 'กก.' })]),
+      lines[i],
+    ])),
+    total,
+    el('div', { class: 'wi-acts' }, [skipBtn, saveBtn]),
+  ]);
+  calc();
+  const m = openModal(body);
+  setTimeout(() => inputs[0]?.focus(), 50);
+  skipBtn.onclick = async () => { skipBtn.disabled = true; await setApptStatus(a, 'มาแล้ว'); m.close(); };
+  saveBtn.onclick = async () => {
+    if (!inputs.some(i => kgOf(i.value))) return toast('กรอกน้ำหนักอย่างน้อย 1 ตัว หรือกด "ไม่ได้ชั่ง"');
+    saveBtn.disabled = true;
+    const { next, price } = calc();
+    const rec = { id: a.id, pets: next, price, status: 'มาแล้ว', statusAt: Date.now(), weighedAt: Date.now(), priceBooked: booked };
+    if (next.length === 1) rec.size = next[0].size; // ใบตัวเดียวอ่านไซส์จากฟิลด์บนสุดด้วย
+    await save('appointments', rec);
+    let saved = false;
+    try { saved = await saveProfileWeights(a, next); } catch { /* บันทึกโปรไฟล์ไม่สำเร็จ ไม่กระทบคิว */ }
+    toast(`บันทึกแล้ว · ${formatBaht(price)}${saved ? ' · จำน้ำหนักในโปรไฟล์แล้ว' : ''}`);
+    m.close();
+  };
+}
+
 // การ์ด "ค้างอัปเดตสถานะ" — คิวที่ถึงวันแล้วแต่ยังไม่ได้กดว่ามา/ไม่มา (ใหม่สุดก่อน)
 function pendingStatusCard(type) {
   const list = _appts.filter(a => isPendingStatus(a) && (!type || a.type === type))
@@ -661,6 +768,12 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
               draft.pets[0].petName = c.pets[0].name || '';
               if (!isEx && c.pets[0].species === 'cat') { draft.pets[0].petType = 'cat'; draft.pets[0].size = ''; }
             }
+            // ไซส์ตามน้ำหนักที่ชั่งล่าสุด (ในคิวก่อน หรือในโปรไฟล์น้อง) — แทนไซส์ที่ลูกค้าเคยกะไว้
+            if (isNew && !isEx) draft.pets.forEach(pt => {
+              const w = kgOf(pt.weightKg) ?? profileWeightOf(c, pt.petName);
+              const sz = w && groomSizeFromWeight(pt.petType || 'dog', w);
+              if (sz) { pt.size = sz; pt.weightKg = w; }
+            });
             // รอบที่เลือกไว้อาจใช้ไม่ได้กับบริการครั้งก่อน (เช่นมีตัดขน แต่เลือกรอบ 19:00)
             if (draft.time && !slotsFor(draft.type, cardService(draft)).includes(draft.time)) draft.time = '';
             usedPrev = true;
@@ -737,6 +850,16 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         // ตัดขนอย่างเดียวไม่ต้องเลือกลักษณะขน เพราะราคาคิดจากไซส์อย่างเดียว
         if (pet.groomService !== 'cut') {
           body.push(sub('ลักษณะขน'), chipGroup((COAT_TYPES[pet.petType] || []).map(x => [x.id, x.label]), pet.coatType, 'ลักษณะขน', v => { pet.coatType = v; rerender(); }));
+        }
+        // น้ำหนักจริงล่าสุดของน้องตัวนี้ → บอกไซส์ที่ควรเป็น (กดใช้ได้ถ้ายังไม่ตรง)
+        const kg = kgOf(pet.weightKg) ?? profileWeightOf(findCustomer(custs, draft), pet.petName);
+        const kgSize = kg && groomSizeFromWeight(pet.petType || 'dog', kg);
+        if (kgSize) {
+          const use = pet.size === kgSize ? null : el('button', { type: 'button', class: 'bf-chip on', text: `ใช้ไซส์ ${kgSize.toUpperCase()}` });
+          if (use) use.onclick = () => { pet.size = kgSize; pet.weightKg = kg; rerender(); };
+          body.push(el('div', { class: 'ap-note ap-kg' }, [
+            el('span', { text: `น้ำหนักที่ชั่งล่าสุด ${kg} กก. → ${groomSizeLabel(pet.petType || 'dog', kgSize)}` }), use,
+          ].filter(Boolean)));
         }
         body.push(sub('ขนาด · ราคาตามบริการที่เลือก'),
           sizeGrid(GROOMING_SIZES[pet.petType] || [], pet.size, id => petPrice({ ...pet, size: id }, 'grooming', s), id => { pet.size = id; rerender(); }));
