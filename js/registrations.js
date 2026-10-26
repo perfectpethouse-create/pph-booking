@@ -158,41 +158,6 @@ function effectiveBucket(f, today) {
   if (s === 'checkedin') return f.checkOut === today ? 'today' : 'staying';
   return stayBucket(f, today);
 }
-// บันทึกสถานะใหม่ (setDoc merge → อัปเดตเฉพาะฟิลด์นี้ · listener realtime วาดใหม่ให้เอง)
-async function setStay(f, status) {
-  const stamp = status === 'checkedin' ? { checkedInAt: Date.now() }
-    : status === 'checkedout' ? { checkedOutAt: Date.now() }
-      : status === 'cancelled' ? { cancelledAt: Date.now() } : {};
-  await save('checkinForms', { id: f.id, stayStatus: status, ...stamp });
-  toast(status === 'checkedin' ? `เช็คอิน ${f.name || ''} แล้ว`
-    : status === 'checkedout' ? `เช็คเอาท์ ${f.name || ''} แล้ว`
-      : status === 'cancelled' ? 'ทำเครื่องหมายยกเลิกแล้ว' : 'คืนสถานะแล้ว');
-}
-async function cancelStay(f) {
-  if (!await confirmDialog(`ยกเลิกการเข้าพักของ ${f.name || 'รายการนี้'}?`, { okText: 'ยกเลิกการเข้าพัก' })) return;
-  await setStay(f, 'cancelled');
-}
-// แถวปุ่มเปลี่ยนสถานะบนการ์ด (stopPropagation กันชนกับคลิกเปิดรายละเอียด)
-function stayActions(f) {
-  const stay = getStay(f);
-  const mk = (label, cls, handler) => {
-    const b = el('button', { class: 'btn sm ' + cls, type: 'button', text: label });
-    b.onclick = (e) => { e.stopPropagation(); handler(); };
-    return b;
-  };
-  let btns = [];
-  if (stay === 'waiting') {
-    btns = [mk('เช็คอิน', 'primary', () => setStay(f, 'checkedin')), mk('ยกเลิก', 'ghost', () => cancelStay(f))];
-  } else if (stay === 'checkedin') {
-    btns = [mk('เช็คเอาท์', 'primary', () => setStay(f, 'checkedout')), mk('ยกเลิก', 'ghost', () => cancelStay(f))];
-  } else if (stay === 'checkedout') {
-    btns = [mk('ย้อนเป็นพักอยู่', 'ghost', () => setStay(f, 'checkedin'))];
-  } else if (stay === 'cancelled') {
-    btns = [mk('คืนสถานะ', 'ghost', () => setStay(f, 'waiting'))];
-  }
-  return btns.length ? el('div', { class: 'reg-acts', style: 'margin-top:10px;display:flex;gap:8px;flex-wrap:wrap' }, btns) : null;
-}
-
 // ── จับคู่ใบเช็คอิน ↔ ใบจอง (bookings) ด้วย เบอร์โทร + วันเข้าพัก ──
 // ref ใช้จับคู่ไม่ได้ (เป็น timestamp ตอนส่งฟอร์ม ไม่ใช่รหัสจองเดิม) จึงใช้กุญแจธรรมชาติ
 // คืน { kind: linked|exact|near|none, booking?, candidates? }
@@ -412,7 +377,6 @@ export function renderRegistrations(container) {
       ].filter(Boolean)),
       el('div', { class: 'muted', style: 'font-size:13px;margin-top:4px', text:
         `เข้าพัก ${formatDateTH(f.checkIn)} → ${formatDateTH(f.checkOut)} · สัตว์ ${f.petCount || '?'} ตัว · ส่งเมื่อ ${f.submittedAt ? new Date(f.submittedAt).toLocaleString('th-TH') : '-'}` }),
-      stayActions(f),
     ]);
     card.onclick = () => openDetail(f);
     return card;
