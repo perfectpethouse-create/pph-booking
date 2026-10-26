@@ -1745,9 +1745,12 @@ body.modal-open { overflow: hidden; }
   padding: 8px 10px; border-radius: 10px; box-shadow: var(--shadow-modal); opacity: 0; transition: opacity .12s; white-space: nowrap; }
 .sd-tip b { font-variant-numeric: tabular-nums; }
 .sd-tk { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; }
+/* มีแถบเมนูด้านข้างกินที่ ~260px → เนื้อหาแคบกว่าจอ จึงเรียงเป็นแถวเดียวตั้งแต่จอ 1100px ลงมา */
+@media (max-width: 1100px) {
+  .sd-pace { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .sd-row3 { grid-template-columns: minmax(0, 1fr); }
+}
 @media (max-width: 860px) {
-  .sd-pace { grid-template-columns: 1fr; gap: 10px; }
-  .sd-row3 { grid-template-columns: 1fr; }
   .sd-num { font-size: 40px; }
   .sd-pace-chart { min-height: 210px; }
 }

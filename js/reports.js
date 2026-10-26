@@ -40,9 +40,14 @@ export function renderReports(container) {
   let _bookings = [];
   let _appts = []; // คิว Grooming/ออกกำลังกาย (รายได้บริการ)
   let redrawCharts = null;
-  const onResize = () => redrawCharts && redrawCharts();
-  window.addEventListener('resize', onResize);
-  _unsub.push(() => { window.removeEventListener('resize', onResize); hideTip(); });
+  // วาดกราฟใหม่เมื่อช่องกราฟเปลี่ยนความกว้าง (หมุนจอ / ย่อหน้าต่าง / เลย์เอาต์สลับ 1↔2 คอลัมน์)
+  // ดูที่ช่องกราฟเอง ไม่ใช่ทั้งหน้า — หน้ากว้างคงที่ได้แม้คอลัมน์ข้างในเปลี่ยน
+  const lastW = new WeakMap();
+  const ro = new ResizeObserver(entries => {
+    const changed = entries.some(e => { const w = Math.round(e.contentRect.width); const was = lastW.get(e.target); lastW.set(e.target, w); return was !== undefined && was !== w; });
+    if (changed && redrawCharts) redrawCharts();
+  });
+  _unsub.push(() => { ro.disconnect(); hideTip(); });
 
   const draw = () => {
     const active = _bookings.filter(b => b.depositStatus !== 'ยกเลิก' && b.checkIn);
@@ -75,6 +80,8 @@ export function renderReports(container) {
     const data = buildSalesData({ bookings: _bookings, appts: _appts, settings: getSettings(), month: cur, today });
     redrawCharts = renderSalesDash(dash, data, { onSelect: mk => { monthSel.value = mk; draw(); } });
     redrawCharts();
+    ro.disconnect();
+    dash.querySelectorAll('.sd-pace-r, .sd-trend').forEach(n => ro.observe(n));
 
     // ── เงิน: อิงเดือนของ check-in ──
     // นับตาม "สถานะที่รับจริง" ไม่ใช่ตัวเลขตามสูตร:

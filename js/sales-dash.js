@@ -146,6 +146,8 @@ export const pctChange = (cur, base) => (base > 0 ? (cur - base) / base * 100 : 
 
 // ═════════════ ส่วนแสดงผล ═════════════
 const NS = 'http://www.w3.org/2000/svg';
+// แดชบอร์ดแสดงเป็นบาทเต็ม (ยอดรวมจากส่วนลด % อาจมีเศษสตางค์) · ตารางรายละเอียดด้านล่างยังแสดงละเอียดเหมือนเดิม
+const baht = n => formatBaht(Math.round(n));
 const C_HOTEL = '#D9600F', C_SVC = '#2F6DB5', C_PREV = '#BDB2A6'; // ผ่าน validate_palette (CVD ΔE 22.9)
 const svgEl = (tag, attrs, parent) => {
   const n = document.createElementNS(NS, tag);
@@ -155,7 +157,7 @@ const svgEl = (tag, attrs, parent) => {
 };
 const svgText = (parent, attrs, text) => { const t = svgEl('text', attrs, parent); t.textContent = text; return t; };
 const kTick = v => (v >= 1000 ? `${Math.round(v / 1000)}K` : String(v));
-const kBaht = v => (v >= 1000 ? `฿${(v / 1000).toFixed(1)}K` : formatBaht(v));
+const kBaht = v => (v >= 1000 ? `฿${(v / 1000).toFixed(1)}K` : baht(v));
 // ปลายแท่งมน 4px ฐานเหลี่ยม
 const barPath = (x, y, w, h, r = 4) => {
   r = Math.max(0, Math.min(r, h, w / 2));
@@ -216,12 +218,12 @@ function paceSection(d) {
   const left = h('div', 'sd-pace-total');
   left.append(
     h('div', 'sd-lbl', d.isCurrent ? `ยอดขาย 1–${d.cut} ${thMonthShort(d.month)} (ถึงวันนี้)` : `ยอดขายทั้งเดือน ${thMonthLong(d.month)}`),
-    h('div', 'sd-num', formatBaht(d.now.total)),
+    h('div', 'sd-num', baht(d.now.total)),
   );
   const v = h('p', 'sd-verdict');
   const pPrev = pctChange(d.now.total, d.prev.total), pYoy = pctChange(d.now.total, d.yoy.total);
   // ไม่มีข้อมูลฐานให้เทียบ (เดือนก่อน/ปีก่อนเป็น 0) → ไม่พูดถึงช่วงนั้น
-  if (pPrev != null) v.append(deltaSpan(pPrev), ` จาก${d.isCurrent ? 'ช่วงเดียวกันของ' : ''}เดือนก่อน (${formatBaht(d.prev.total)})`);
+  if (pPrev != null) v.append(deltaSpan(pPrev), ` จาก${d.isCurrent ? 'ช่วงเดียวกันของ' : ''}เดือนก่อน (${baht(d.prev.total)})`);
   if (pYoy != null) v.append(pPrev != null ? ' และ ' : '', deltaSpan(pYoy), ` จาก ${thMonthShortY(d.yoyMk)}`);
   if (pPrev == null && pYoy == null) v.append('ยังไม่มีข้อมูลเดือนก่อนหรือปีก่อนให้เทียบ');
   const line = verdictLine(d);
@@ -234,7 +236,7 @@ function paceSection(d) {
     splitCell(C_HOTEL, 'โรงแรม', d.now.hotel, pctChange(d.now.hotel, d.prev.hotel),
       [`${d.now.bookings} การจอง`, `เข้าพัก ${d.occupancy.toFixed(1)}% · ${d.roomNights} ห้อง-คืน`]),
     splitCell(C_SVC, 'บริการ', d.now.svc, pctChange(d.now.svc, d.prev.svc),
-      [`อาบน้ำตัดขน ${d.now.groom} · โซนเล่น ${d.now.exercise} คิว`, queues ? `เฉลี่ย ${formatBaht(Math.round(d.now.svc / queues))} / คิว` : 'ยังไม่มีคิว']),
+      [`อาบน้ำตัดขน ${d.now.groom} · โซนเล่น ${d.now.exercise} คิว`, queues ? `เฉลี่ย ${baht(Math.round(d.now.svc / queues))} / คิว` : 'ยังไม่มีคิว']),
   );
   left.append(split);
 
@@ -264,7 +266,7 @@ function splitCell(color, label, amount, p, metas) {
   const c = h('div');
   const k = h('div', 'sd-k'); k.innerHTML = `<i class="sd-key" style="background:${color}"></i>`; k.append(label);
   const m = h('div', 'sd-m'); m.append(deltaSpan(p), ' · ' + metas[0]); m.append(document.createElement('br'), metas[1]);
-  c.append(k, h('div', 'sd-v', formatBaht(amount)), m);
+  c.append(k, h('div', 'sd-v', baht(amount)), m);
   return c;
 }
 
@@ -304,8 +306,8 @@ function drawPace(d) {
     const i = Math.max(0, Math.min(nDays - 1, Math.round((e.clientX - r.left - L) / (W - L - R) * (nDays - 1))));
     cross.setAttribute('x1', x(i)); cross.setAttribute('x2', x(i)); cross.style.opacity = '1';
     showTip(e, `<div>วันที่ ${i + 1}</div>`
-      + (d.paceNow[i] != null ? `<div>${tk(C_HOTEL)}${thMonthShort(d.month)} <b>${formatBaht(d.paceNow[i])}</b></div>` : '')
-      + (d.pacePrev[i] != null ? `<div>${tk(C_PREV)}${thMonthShort(d.prevMk)} <b>${formatBaht(d.pacePrev[i])}</b></div>` : ''));
+      + (d.paceNow[i] != null ? `<div>${tk(C_HOTEL)}${thMonthShort(d.month)} <b>${baht(d.paceNow[i])}</b></div>` : '')
+      + (d.pacePrev[i] != null ? `<div>${tk(C_PREV)}${thMonthShort(d.prevMk)} <b>${baht(d.pacePrev[i])}</b></div>` : ''));
   };
   hit.addEventListener('pointermove', onMove);
   hit.addEventListener('pointerleave', () => { cross.style.opacity = '0'; hideTip(); });
@@ -338,7 +340,7 @@ function drawTrend(d, onSelect) {
   const peak = Math.max(...d.trend.map(m => m.hotel + m.svc));
   d.trend.forEach((m, i) => {
     const cx = L + band * i + band / 2, x0 = cx - bw / 2, tot = m.hotel + m.svc;
-    const g = svgEl('g', { class: 'sd-col', tabindex: 0, role: 'button', 'aria-label': `${thMonthLong(m.mk)} ${formatBaht(tot)}` }, svg);
+    const g = svgEl('g', { class: 'sd-col', tabindex: 0, role: 'button', 'aria-label': `${thMonthLong(m.mk)} ${baht(tot)}` }, svg);
     if (i === selI) svgEl('rect', { x: L + band * i + 2, y: T - 18, width: band - 4, height: H - T - B + 18, rx: 10, class: 'sd-sel' }, g);
     const yH = y(m.hotel), yT = y(tot);
     if (m.hotel > 0) svgEl('path', { d: m.svc > 0 ? `M${x0},${y(0)}V${yH}H${x0 + bw}V${y(0)}Z` : barPath(x0, yH, bw, y(0) - yH), fill: C_HOTEL }, g);
@@ -351,7 +353,7 @@ function drawTrend(d, onSelect) {
       svgText(g, { x: last ? cx + bw / 2 + 2 : cx, y: yT - 6, 'text-anchor': last ? 'end' : 'middle', class: 'sd-val' }, kBaht(tot));
     }
     svgEl('rect', { x: L + band * i, y: T - 18, width: band, height: H - T - B + 18, fill: 'transparent' }, g);
-    const tipHtml = `<div><b>${thMonthLong(m.mk)}</b> · ${formatBaht(tot)}</div><div>${tk(C_HOTEL)}โรงแรม <b>${formatBaht(m.hotel)}</b></div><div>${tk(C_SVC)}บริการ <b>${formatBaht(m.svc)}</b></div>`;
+    const tipHtml = `<div><b>${thMonthLong(m.mk)}</b> · ${baht(tot)}</div><div>${tk(C_HOTEL)}โรงแรม <b>${baht(m.hotel)}</b></div><div>${tk(C_SVC)}บริการ <b>${baht(m.svc)}</b></div>`;
     g.addEventListener('pointermove', e => showTip(e, tipHtml));
     g.addEventListener('pointerleave', hideTip);
     const pick = () => { hideTip(); if (onSelect && m.mk !== d.month) onSelect(m.mk); };
@@ -377,7 +379,7 @@ function aheadSection(d) {
     list.append(row);
   });
   const mini = h('div', 'sd-mini');
-  [[String(a.nights60), 'ห้อง-คืนที่จองแล้ว (60 วัน)'], [formatBaht(a.money60), 'ยอดจองที่เข้าพักใน 60 วัน'], [String(a.appts14), 'คิวบริการที่นัดไว้ (14 วัน)']]
+  [[String(a.nights60), 'ห้อง-คืนที่จองแล้ว (60 วัน)'], [baht(a.money60), 'ยอดจองที่เข้าพักใน 60 วัน'], [String(a.appts14), 'คิวบริการที่นัดไว้ (14 วัน)']]
     .forEach(([n, l]) => { const c = h('div'); c.append(h('b', '', n), l); mini.append(c); });
   sec.append(ph, list, mini);
   return sec;
@@ -409,7 +411,7 @@ function customerSection(d) {
     });
     sec.append(ul);
   };
-  list('ลูกค้าประจำ (12 เดือน)', c.regulars, { sub: r => ` · ${r.visits} ครั้ง`, cls: 'amt', val: r => formatBaht(r.spend) });
+  list('ลูกค้าประจำ (12 เดือน)', c.regulars, { sub: r => ` · ${r.visits} ครั้ง`, cls: 'amt', val: r => baht(r.spend) });
   list(`หายไปนานเกิน ${LAPSED_DAYS} วัน · ทักกลับได้`, c.lapsed, { sub: r => ` · เคยมา ${r.visits} ครั้ง`, cls: 'ago', val: r => `${r.days} วัน` });
   return sec;
 }
