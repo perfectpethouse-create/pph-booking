@@ -8,31 +8,41 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, getSettings } from './ui.js';
-import { computeBooking, formatBaht, eachDate } from './calc.js';
+import { computeBooking, formatBaht, eachDate, todayISO } from './calc.js';
 import { capacityOf, PAYMENT_METHODS, petCountOf, APPOINTMENT_TYPES } from './config-shop.js';
 import { icons } from './icons.js';
+import { buildSalesData, renderSalesDash, hideTip, shiftMonth, thMonthLong } from './sales-dash.js';
 
 let _unsub = [];
 
 export function renderReports(container) {
   _unsub.forEach(u => u()); _unsub = [];
 
-  const monthSel = el('select', { style: 'max-width:200px' });
-  const summary = el('div', { class: 'd-stats rep-kpis' });
+  // เลือกเดือนด้วยลูกศร ‹ › หรือแตะแท่งในกราฟ 12 เดือน (แทน dropdown เดิม)
+  const monthSel = { value: '' };
+  const prevBtn = el('button', { type: 'button', 'aria-label': 'เดือนก่อน', text: '‹' });
+  const nextBtn = el('button', { type: 'button', 'aria-label': 'เดือนถัดไป', text: '›' });
+  const monthLbl = el('b', { 'aria-live': 'polite' });
+  const dash = el('div', { class: 'sd-dash' });
   const detail = el('div', {});
+  // ตารางรายเดือนชุดเดิม พับเก็บไว้ใต้แดชบอร์ด · เปิดค้างไว้ตามที่ผู้ใช้กด (คงอยู่ข้ามการวาดใหม่)
+  const detailSum = el('summary', {});
+  const detailBox = el('details', { class: 'panel sd-detail' }, [detailSum, detail]);
 
-  // มือถือ: การ์ดสรุปใหญ่ด้านบน (.rep-hero แสดงเฉพาะจอแคบ) · ตาราง/ตัวเลขชุดเดิมทั้งหมดอยู่ใต้การ์ด
-  const hero = el('div', { class: 'rep-hero' });
   const page = el('div', { class: 'rep-page' });
   container.appendChild(page);
   page.appendChild(el('div', { class: 'page-title' }, [
-    el('div', {}, [el('h1', { text: 'รายงานรายเดือน' }), el('div', { class: 'd-date rep-sub', text: 'สรุปยอดขาย · รายได้ · อัตราเข้าพัก' })]),
-    monthSel,
+    el('div', {}, [el('h1', { text: 'แดชบอร์ดยอดขาย' }), el('div', { class: 'd-date rep-sub', text: 'โรงแรม + อาบน้ำตัดขน · อัปเดตตามข้อมูลการจองล่าสุด' })]),
+    el('div', { class: 'sd-month', role: 'group', 'aria-label': 'เลือกเดือน' }, [prevBtn, monthLbl, nextBtn]),
   ]));
-  page.append(hero, summary, detail);
+  page.append(dash, detailBox);
 
   let _bookings = [];
   let _appts = []; // คิว Grooming/ออกกำลังกาย (รายได้บริการ)
+  let redrawCharts = null;
+  const onResize = () => redrawCharts && redrawCharts();
+  window.addEventListener('resize', onResize);
+  _unsub.push(() => { window.removeEventListener('resize', onResize); hideTip(); });
 
   const draw = () => {
     const active = _bookings.filter(b => b.depositStatus !== 'ยกเลิก' && b.checkIn);
@@ -45,11 +55,26 @@ export function renderReports(container) {
     // รวมเดือนที่มีคิวบริการด้วย — เดือนที่มีแต่ Grooming/ออกกำลังกาย (ไม่มีจองห้อง) ต้องเลือกได้
     const apptActive = _appts.filter(a => a.status !== 'ยกเลิก' && a.date);
     apptActive.forEach(a => monthSet.add(a.date.slice(0, 7)));
-    const months = [...monthSet].sort().reverse();
-    const cur = monthSel.value || months[0] || '';
-    monthSel.innerHTML = '';
-    months.forEach(mk => monthSel.appendChild(el('option', { value: mk, text: thMonth(mk) })));
-    if (cur) monthSel.value = cur;
+    const today = todayISO(), todayMk = today.slice(0, 7);
+    monthSet.add(todayMk);
+    const months = [...monthSet].sort();
+    // เริ่มที่เดือนนี้ · เลื่อนได้ตั้งแต่เดือนแรกที่มีข้อมูลถึงเดือนสุดท้ายที่มีการจอง
+    const cur = monthSel.value || todayMk;
+    monthSel.value = cur;
+    monthLbl.textContent = thMonthLong(cur);
+    prevBtn.disabled = cur <= months[0];
+    nextBtn.disabled = cur >= months[months.length - 1];
+    detailSum.innerHTML = '';
+    detailSum.append(
+      el('div', {}, [el('h2', { text: `รายละเอียดเดือน ${thMonth(cur)}` }),
+        el('div', { class: 'sd-sub', text: 'อัตราเข้าพักแยกห้อง · รายได้บริการ · การเงินและช่องทางรับเงิน' })]),
+      el('span', { class: 'sd-chev', 'aria-hidden': 'true' }),
+    );
+
+    // ── แดชบอร์ดด้านบน (คำนวณใน sales-dash.js ด้วยกติกาเดียวกับตารางด้านล่าง) ──
+    const data = buildSalesData({ bookings: _bookings, appts: _appts, settings: getSettings(), month: cur, today });
+    redrawCharts = renderSalesDash(dash, data, { onSelect: mk => { monthSel.value = mk; draw(); } });
+    redrawCharts();
 
     // ── เงิน: อิงเดือนของ check-in ──
     // นับตาม "สถานะที่รับจริง" ไม่ใช่ตัวเลขตามสูตร:
@@ -104,44 +129,6 @@ export function renderReports(container) {
     const totalCapacity = roomTypes.reduce((sum, rt) => sum + capacityOf(capacity, rt), 0);
     const capacityNights = totalCapacity * daysInMonth; // ห้อง-คืนที่ขายได้ทั้งเดือน
     const occupancy = capacityNights > 0 ? (totalRoomNights / capacityNights) * 100 : 0;
-
-    // การ์ดสรุปบนมือถือ — ใช้ตัวเลขชุดเดียวกับกล่องสถิติด้านล่าง ไม่มีการคำนวณใหม่
-    const recvPct = revenue > 0 ? Math.min(100, Math.round(received / revenue * 100)) : 0;
-    hero.innerHTML = '';
-    hero.append(
-      el('div', { class: 'rep-hero-top' }, [el('span', { text: `ยอดขายทั้งร้าน · ${thMonth(cur)}` })]),
-      el('div', { class: 'rep-hero-n', text: formatBaht(revenue + serviceRevenue) }),
-      el('div', { class: 'rep-hero-split' }, [
-        el('div', {}, [el('span', { text: 'ห้องพัก' }), el('b', { text: formatBaht(revenue) })]),
-        el('div', {}, [el('span', { text: 'บริการ' }), el('b', { text: formatBaht(serviceRevenue) })]),
-        el('div', {}, [el('span', { text: 'เข้าพัก' }), el('b', { text: `${occupancy.toFixed(1)}%` })]),
-      ]),
-      el('div', { class: 'm-occ' }, [
-        el('div', { class: 'm-bar' }, [el('i', { style: `width:${recvPct}%` })]),
-        el('div', { class: 'm-occ-lb' }, [
-          el('span', { text: `รับแล้ว ${formatBaht(received)}` }),
-          el('span', { text: `ค้าง ${formatBaht(balance)}` }),
-        ]),
-      ]),
-    );
-
-    // ── การ์ด KPI 4 ใบ (ตาม reports-mockup) — ใบแรกสีหลัก · ตัวเลขอื่นย้ายไปอยู่ในการ์ดด้านล่างครบทุกตัว ──
-    summary.innerHTML = '';
-    [
-      ['hero', icons.chart, thShort(cur), formatBaht(revenue + serviceRevenue), 'ยอดขายทั้งร้าน · ห้องพัก + บริการ'],
-      ['blue', icons.bookings, null, String(inMonth.length), 'การจองห้องพัก'],
-      ['green', icons.home, 'เข้าพัก', `${occupancy.toFixed(1)}%`, 'อัตราเข้าพักเฉลี่ย'],
-      ['red', icons.alert, balance > 0 ? 'ค้าง' : null, formatBaht(balance), 'ยอดค้างรับ (ห้องพัก)'],
-    ].forEach(([tone, ico, tag, n, l]) => summary.appendChild(
-      el('div', { class: `d-stat ${tone}` }, [
-        el('div', { class: 'd-stat-h' }, [
-          el('span', { class: 'd-stat-i', html: ico }),
-          tag ? el('span', { class: 'd-stat-tag', text: tag }) : null,
-        ].filter(Boolean)),
-        el('div', { class: 'd-stat-n', text: n }),
-        el('div', { class: 'd-stat-l', text: l }),
-      ])
-    ));
 
     detail.innerHTML = '';
     const left = el('div', { class: 'd-col' });
@@ -270,7 +257,9 @@ export function renderReports(container) {
     }
   };
 
-  monthSel.onchange = draw;
+  const step = n => { monthSel.value = shiftMonth(monthSel.value, n); draw(); };
+  prevBtn.onclick = () => step(-1);
+  nextBtn.onclick = () => step(1);
   _unsub.push(listen('bookings', arr => { _bookings = arr.map(computeBooking); draw(); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
 }
@@ -280,13 +269,6 @@ function thMonth(mk) {
   const [y, m] = mk.split('-');
   const d = new Date(Number(y), Number(m) - 1, 1);
   return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' });
-}
-
-// "ต.ค. 69" — ป้ายเดือนบนการ์ด KPI
-function thShort(mk) {
-  if (!mk) return '';
-  const [y, m] = mk.split('-');
-  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('th-TH', { month: 'short', year: '2-digit' });
 }
 
 // "฿248.6k" — ตัวเลขกลางโดนัท (พื้นที่แคบ) · ยอดเต็มอยู่ในคำอธิบายข้างๆ เสมอ
