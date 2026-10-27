@@ -12,9 +12,13 @@ import { runCheckin, runCollectBalance, runCheckout, runMarkDeposit } from './bo
 import { openBookingCockpit } from './booking-cockpit.js';
 import { mountNewsCard } from './announcements.js';
 import { createMobileHome } from './dashboard-mobile.js';
+import { checkoutNoticeControl, noticeMapOf } from './summary-card.js';
+import { resolvePetInfo } from './pet-info.js';
 
 let _unsub = [];
 let _appts = [];
+let _forms = []; // ใบลงทะเบียน — ชื่อ/ชนิดน้องในข้อความแจ้งเช็คเอาท์ (กรณียังไม่มีโปรไฟล์)
+let _notices = {}; // บ้านที่แจ้งเรื่องเช็คเอาท์พรุ่งนี้แล้ว (checkoutNotices)
 let _customers = []; // สำหรับธงวัคซีนในกล่อง "กำลังพักอยู่"
 
 export function renderDashboard(container) {
@@ -70,6 +74,7 @@ export function renderDashboard(container) {
   _unsub.push(listen('checkinForms', forms => {
     const n = forms.filter(f => (f.status || 'new') === 'new').length;
     _newForms = n; pushMobile();
+    _forms = forms;
     regBanner.innerHTML = '';
     if (!n) { regBanner.classList.add('hidden'); return; }
     regBanner.classList.remove('hidden');
@@ -82,9 +87,11 @@ export function renderDashboard(container) {
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(_bookings); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(_bookings); }));
   _unsub.push(listen('customers', arr => { _customers = arr; draw(_bookings); }));
+  _unsub.push(listen('checkoutNotices', arr => { _notices = noticeMapOf(arr); draw(_bookings); }, { orderBy: null }));
 
   function pushMobile() {
-    mobile.update({ bookings: _bookings, appts: _appts, newRequests: _newReqs, newForms: _newForms });
+    mobile.update({ bookings: _bookings, appts: _appts, newRequests: _newReqs, newForms: _newForms,
+      notices: _notices, customers: _customers, forms: _forms });
   }
 
   function draw(bookings) {
@@ -155,7 +162,7 @@ export function renderDashboard(container) {
       section('ค้างชำระ / ยังไม่จ่ายครบ', unpaid, 'ไม่มียอดค้าง', 'ค้าง', owedOf, icons.banknote, 'pay'),
       // ── ดูล่วงหน้า: เตรียมงานพรุ่งนี้ ──
       section(`พรุ่งนี้เข้าพัก · ${tmr} — เตรียมห้อง`, checkinTomorrow, 'พรุ่งนี้ไม่มีลูกค้าเข้าพัก', 'เก็บเพิ่ม', owedOf, icons.calendar),
-      section(`พรุ่งนี้เช็คเอาท์ · ${tmr} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', 'ยอดค้าง', owedOf, icons.calendar),
+      section(`พรุ่งนี้เช็คเอาท์ · ${tmr} — เตรียมเก็บยอด`, checkoutTomorrow, 'พรุ่งนี้ไม่มีลูกค้าออก', 'ยอดค้าง', owedOf, icons.calendar, 'notice'),
       notRecorded.length ? section('ยังไม่ลงระบบ', notRecorded, '', 'ยอดรวม', b => b.grandTotal, icons.alert) : null,
     ].filter(Boolean));
 
@@ -276,6 +283,8 @@ export function renderDashboard(container) {
       }
     } else if (mode === 'pay') {
       td.appendChild(payNowBtn(b));
+    } else if (mode === 'notice') {
+      td.appendChild(checkoutNoticeControl(b, resolvePetInfo(b, _customers, _forms).pets, _notices[b.id]));
     }
     return td;
   }

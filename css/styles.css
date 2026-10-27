@@ -1364,6 +1364,8 @@ body.modal-open { overflow: hidden; }
   .m-list { background: var(--card); border-radius: 22px; box-shadow: var(--shadow); overflow: hidden; }
   .m-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; min-height: 68px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .m-row + .m-row { border-top: 1px solid var(--hairline-soft); }
+  .m-row-notice { margin: -4px 0 0; padding: 0 14px 12px 66px; }
+  .m-row-notice + .m-row { border-top: 1px solid var(--hairline-soft); }
   .m-row:active { background: var(--bg); }
   .m-pet { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex-shrink: 0; background: var(--accent-tint); color: var(--accent-dark); }
   .m-pet.cat { background: var(--orange-tint); color: #A15C00; }
@@ -2460,3 +2462,7 @@ body.modal-open { overflow: hidden; }
 .wi-total b { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
 .wi-acts { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 .ap-kg { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+
+/* แจ้งเช็คเอาท์พรุ่งนี้: ป้ายสถานะ + ปุ่มคัดลอก (หน้างานวันนี้ / แดชบอร์ด) */
+.co-notice { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+td .co-notice { justify-content: flex-end; margin-top: 0; }

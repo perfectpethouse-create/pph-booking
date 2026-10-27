@@ -1,13 +1,16 @@
 // ═══════════════════════════════════════════════════════════════
 // summary-card.js — การ์ด "สรุปการเข้าพัก" สำหรับส่งลูกค้า + ดาวน์โหลด PNG
 // ═══════════════════════════════════════════════════════════════
-import { el, toast, getSettings } from './ui.js';
+import { el, toast, getSettings, currentUser } from './ui.js';
+import { save } from './db.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import {
   PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, exerciseZoneLabel, GROOMING_SIZES, COAT_TYPES,
   groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice,
   addonIsSet, addonHasBath, exerciseAddOnPrice, exerciseGroomTime,
+  DAYCARE_SIZES, DAYCARE_PRICES, DAYCARE_FIRST3H, DAYCARE_EXTRA_HOUR, DAYCARE_AFTER_20, LATE_CHECKOUT_GRACE_MIN,
 } from './config-shop.js';
+import { longDate } from './mobile-kit.js';
 import { icons, brandLogo } from './icons.js';
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id; }
@@ -353,3 +356,54 @@ export function buildAppointmentText(a) {
   if (s?.shopInfo?.phone) L.push(`📞 โทรสอบถาม ${s.shopInfo.phone}`);
   return L.join('\n');
 }
+
+// ── ข้อความแจ้งเช็คเอาท์พรุ่งนี้ (พี่เลี้ยงคัดลอกไปวางใน LINE หลังส่งรายงานช่วงสุดท้ายของวัน) ──
+// ลูกค้ามักไม่ได้อ่านเวลาเช็คเอาท์ มารับเกินแล้วโดนคิด Day care → แจ้งเงื่อนไข+ราคาล่วงหน้าให้แฟร์
+// แสดงเฉพาะตารางของชนิดสัตว์ที่บ้านนั้นพัก · ราคาอ่านจาก config (ไม่พิมพ์ตัวเลขซ้ำ)
+// pets = [{ name, species }] จาก resolvePetInfo — ชนิดสัตว์รวมจากห้องที่จองและโปรไฟล์น้อง (กันใบจองระบุชนิดผิด)
+export function buildCheckoutNoticeText(b, pets = []) {
+  const s = getSettings();
+  const time = b.checkOutTime || '14:00';
+  const m = +time.slice(0, 2) * 60 + +time.slice(3, 5) + LATE_CHECKOUT_GRACE_MIN;
+  const grace = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  const kinds = [...new Set([...(b.lineItems || []).map(li => li.petType || 'dog'), ...pets.map(p => p.species)])]
+    .filter(k => DAYCARE_SIZES[k]).sort((x, y) => (x === 'dog' ? -1 : 1) - (y === 'dog' ? -1 : 1));
+  const L = [`🐾 แจ้งเตือนเช็คเอาท์พรุ่งนี้ — ${s?.shopInfo?.name || 'Perfect Pet House'}`];
+  const names = pets.map(p => p.name).filter(Boolean);
+  L.push(`${b.customerName || 'คุณลูกค้า'}${names.length ? ` · น้อง${names.join(', ')}` : ''}`);
+  L.push(`📅 เช็คเอาท์ ${longDate(b.checkOut)} เวลา ${time} น. (ผ่อนผันได้ถึง ${grace} น.)`);
+  L.push('');
+  L.push(`หากมารับหลัง ${grace} น. จะมีค่าบริการ Day care นับตั้งแต่ ${time} น. (คิดต่อตัว)`);
+  (kinds.length ? kinds : ['dog']).forEach(k => {
+    L.push(`${k === 'cat' ? '🐱 แมว' : '🐶 สุนัข'}  3 ชม.แรก / เหมาเต็มวัน`);
+    DAYCARE_SIZES[k].forEach(z => L.push(` ${z.label} ${DAYCARE_FIRST3H[k][z.id]} / ${DAYCARE_PRICES[k][z.id]} บาท`));
+  });
+  L.push(`• ชั่วโมงถัดไป +${DAYCARE_EXTRA_HOUR} บาท (เศษของชั่วโมงคิดเป็น 1 ชั่วโมง)`);
+  L.push(`• รับหลัง 20:00–21:00 น. คิดเหมาเต็มวัน + ${DAYCARE_AFTER_20} บาท/ตัว · หลัง 21:00 น. กรุณารับวันถัดไป`);
+  L.push('');
+  L.push('สะดวกมารับน้องกี่โมงคะ? แจ้งเวลาไว้ได้เลย ทีมงานจะเตรียมน้องให้พร้อมค่ะ 🙏');
+  return L.join('\n');
+}
+
+// ปุ่มคัดลอกข้อความแจ้งเช็คเอาท์ + ป้าย "แจ้งแล้ว" — กดคัดลอก = บันทึกว่าแจ้งแล้วในตัว (กันลืม/กันส่งซ้ำ)
+// เก็บแยกใน checkoutNotices เพราะพี่เลี้ยงแก้ใบจอง (bookings) ไม่ได้ตาม firestore.rules
+export function checkoutNoticeControl(b, pets, notice) {
+  const hm = notice?.sentAt ? new Date(notice.sentAt).toTimeString().slice(0, 5) : '';
+  const who = String(notice?.sentBy || '').split('@')[0];
+  const btn = el('button', { class: 'btn ghost sm', type: 'button', html: icons.copy });
+  btn.append(notice ? 'คัดลอกอีกครั้ง' : 'คัดลอกข้อความแจ้งเช็คเอาท์');
+  btn.onclick = async (e) => {
+    e.stopPropagation();
+    await copyText(buildCheckoutNoticeText(b, pets));
+    if (!notice) save('checkoutNotices', { id: b.id, bookingId: b.id, sentAt: Date.now(), sentBy: currentUser()?.email || '' })
+      .catch(() => toast('บันทึกสถานะ "แจ้งแล้ว" ไม่สำเร็จ — ข้อความคัดลอกแล้ว'));
+  };
+  return el('div', { class: 'co-notice' }, [
+    notice ? el('span', { class: 'pill green', text: `แจ้งแล้ว ${hm}${who ? ' · ' + who : ''}` })
+      : el('span', { class: 'pill yellow', text: 'ยังไม่แจ้งเวลาเช็คเอาท์' }),
+    btn,
+  ]);
+}
+
+// ฟัง checkoutNotices แบบไม่เรียง (doc ที่ save ด้วย id ไม่มี createdAt → query orderBy จะมองไม่เห็น)
+export const noticeMapOf = arr => Object.fromEntries(arr.map(n => [n.bookingId || n.id, n]));

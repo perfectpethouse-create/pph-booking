@@ -40,6 +40,7 @@ const LS = {
   appointments: 'pph_appointments', // นัดหมายรายรอบ: Grooming / โซนออกกำลังกาย
   announcements: 'pph_announcements', // ข่าวสารร้าน (ประกาศ/โปรโมชั่นภายในสำหรับพนักงาน)
   announcementReads: 'pph_announcement_reads', // สถานะ "ใครอ่านข่าวแล้ว" (พี่เลี้ยงเขียนของตัวเอง)
+  checkoutNotices: 'pph_checkout_notices', // แจ้งลูกค้าเรื่องเช็คเอาท์พรุ่งนี้แล้ว (doc id = booking id)
   settings: 'pph_settings',
   user: 'pph_mock_user',
 };

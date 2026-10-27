@@ -13,10 +13,12 @@ import { shortDate, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
 import { openGuestCheckin, openFormDetail, printRegistration } from './registrations.js';
 import { buildIntakeSheet, printSheet } from './intake-form.js';
 import { apptStatusControl } from './appointments.js';
+import { checkoutNoticeControl, noticeMapOf } from './summary-card.js';
 
 let _unsub = [];
 let _customers = [];
 let _appts = [];
+let _notices = {}; // checkoutNotices: บ้านที่แจ้งเรื่องเช็คเอาท์พรุ่งนี้แล้ว (booking id → บันทึก)
 let _checkinForms = []; // ใบลงทะเบียนเช็คอิน — ใช้ดึงข้อมูลน้องแม้ยังไม่นำเข้าโปรไฟล์
 
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
@@ -159,7 +161,7 @@ export function renderStaffToday(container) {
         section('เช็คอินวันนี้ — เตรียมรับน้อง', checkinToday, 'ไม่มีน้องเข้าพักวันนี้', icons.login, { reg: true }),
         section('เช็คเอาท์วันนี้ — เตรียมส่งน้องกลับ', checkoutToday, 'ไม่มีน้องออกวันนี้', icons.logout),
         section('กำลังพักอยู่', staying, 'ยังไม่มีน้องพักอยู่', icons.home, { sortByCheckout: true, leaveTag: true }),
-        section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar),
+        section(`พรุ่งนี้เช็คเอาท์ · ${formatDateTH(tomorrow)} — เตรียมส่งน้องกลับ`, checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', icons.calendar, { notice: true }),
       ]),
       el('div', { class: 'd-col' }, [
         apptSection('คิว Grooming วันนี้', groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน', icons.star),
@@ -211,7 +213,7 @@ export function renderStaffToday(container) {
       mSec('เช็คอินวันนี้ · เตรียมรับน้อง', d.checkinToday, 'ไม่มีน้องเข้าพักวันนี้', { reg: true });
       mSec('เช็คเอาท์วันนี้ · เตรียมส่งน้องกลับ', d.checkoutToday, 'ไม่มีน้องออกวันนี้');
       mSec('กำลังพักอยู่', d.staying, 'ยังไม่มีน้องพักอยู่', { sortByCheckout: true, leaveTag: true });
-      mSec(`พรุ่งนี้เช็คเอาท์ · ${tmr}`, d.checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก');
+      mSec(`พรุ่งนี้เช็คเอาท์ · ${tmr}`, d.checkoutTomorrow, 'พรุ่งนี้ไม่มีน้องออก', { notice: true });
     } else if (mtab === 'grooming') {
       mQueue('คิววันนี้', d.groomToday, 'วันนี้ยังไม่มีคิวอาบน้ำ-ตัดขน');
       mQueue(`คิวพรุ่งนี้ · ${tmr}`, d.groomTomorrow, 'พรุ่งนี้ยังไม่มีคิวอาบน้ำ-ตัดขน');
@@ -278,6 +280,7 @@ export function renderStaffToday(container) {
       }
       if (b.notes) card.appendChild(el('div', { class: 'm-care-foot', text: `หมายเหตุการจอง: ${b.notes}` }));
       if (reg.btn) card.appendChild(reg.btn);
+      if (opts.notice) card.appendChild(checkoutNoticeControl(b, info.pets, _notices[b.id]));
       mbody.appendChild(card);
     });
   }
@@ -399,6 +402,7 @@ export function renderStaffToday(container) {
 
       if (b.notes) box.appendChild(el('div', { class: 'muted', style: 'font-size:12px;margin-top:6px', text: `หมายเหตุการจอง: ${b.notes}` }));
       if (reg.btn) box.appendChild(reg.btn);
+      if (opts.notice) box.appendChild(checkoutNoticeControl(b, pets, _notices[b.id]));
       card.appendChild(box);
     });
     return card;
@@ -408,6 +412,7 @@ export function renderStaffToday(container) {
   _unsub.push(listen('bookings', raw => { _bookings = raw.map(computeBooking); draw(); }));
   _unsub.push(listen('appointments', arr => { _appts = arr; draw(); }));
   _unsub.push(listen('checkinForms', arr => { _checkinForms = arr; draw(); }, { orderBy: null }));
+  _unsub.push(listen('checkoutNotices', arr => { _notices = noticeMapOf(arr); draw(); }, { orderBy: null }));
 }
 
 // การ์ดหัวข้อแบบเดียวกับแดชบอร์ดคอม (ชิปไอคอน + ชื่อ + จำนวน) · เนื้อหาเดิมต่อท้ายในการ์ด

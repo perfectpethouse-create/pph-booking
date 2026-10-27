@@ -10,6 +10,8 @@ import { capacityOf, groomServiceOf, groomServiceLabel, exerciseZoneLabel } from
 import { icons, brandLogo } from './icons.js';
 import { runCheckin, runCheckout, runCollectBalance, runMarkDeposit } from './booking-actions.js';
 import { openBookingCockpit } from './booking-cockpit.js';
+import { checkoutNoticeControl } from './summary-card.js';
+import { resolvePetInfo } from './pet-info.js';
 
 const go = (r) => window.__go && window.__go(r);
 const range = rangeOf;
@@ -30,7 +32,7 @@ export function createMobileHome() {
 
   function draw() {
     if (!last) return;
-    const { bookings, appts, newRequests, newForms } = last;
+    const { bookings, appts, newRequests, newForms, notices = {}, customers = [], forms = [] } = last;
     const today = todayISO();
     const active = bookings.filter(b => b.depositStatus !== 'ยกเลิก');
     const ins = (d) => active.filter(b => b.checkIn === d);
@@ -125,6 +127,22 @@ export function createMobileHome() {
 
     node.appendChild(sectionHead(isToday ? 'เช็คเอาท์วันนี้' : `เช็คเอาท์ ${shortDate(day)}`, outList.length));
     node.appendChild(outList.length ? list(outList, b => checkoutAction(b, isToday)) : empty('ไม่มีลูกค้าออก'));
+
+    // ── พรุ่งนี้เช็คเอาท์: คัดลอกข้อความแจ้งเวลา/ค่าเกินเวลา + ป้ายแจ้งแล้ว (เหมือนแดชบอร์ดคอม/หน้างานวันนี้) ──
+    const tmrOuts = isToday ? outs(next) : [];
+    if (tmrOuts.length) {
+      const sent = tmrOuts.filter(b => notices[b.id]).length;
+      node.appendChild(sectionHead(`พรุ่งนี้เช็คเอาท์ · แจ้งแล้ว ${sent}/${tmrOuts.length}`, tmrOuts.length));
+      const box = list(tmrOuts, b => payPill(b));
+      // ปุ่มอยู่ใต้แถว (แถวแคบเกินจะวางป้าย+ปุ่มด้านขวา)
+      [...box.children].forEach((row, i) => {
+        const b = tmrOuts[i];
+        const ctrl = checkoutNoticeControl(b, resolvePetInfo(b, customers, forms).pets, notices[b.id]);
+        ctrl.classList.add('m-row-notice');
+        row.after(ctrl);
+      });
+      node.appendChild(box);
+    }
 
     // ── เรื่องเงิน/งานค้างทั้งร้าน (ไม่ขึ้นกับวันที่เลือก) — เกณฑ์เดียวกับแดชบอร์ดคอม ──
     const unpaid = active.filter(b => b.depositStatus !== 'จ่ายครบแล้ว' && b.grandTotal > 0)
