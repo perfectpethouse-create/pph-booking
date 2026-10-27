@@ -14,21 +14,29 @@ import { eachDate, todayISO, addDaysISO } from './calc.js';
 import { capacityOf, daycareGroupOf, daycarePrice, DAYCARE_SIZES, DEFAULT_DAYCARE_CAPACITY,
   DEFAULT_LONG_STAY_DISCOUNTS, ONLINE_HOLD_HOURS, FIXED_ADDONS,
   GROOMING_SIZES, COAT_TYPES, GROOMING_PRICES, GROOMING_SERVICES, GROOMING_SLOTS, GROOMING_CUT_LAST_SLOT,
-  DEFAULT_GROOMING_CAPACITY, petCountOf } from './config-shop.js';
+  DEFAULT_GROOMING_CAPACITY, apptBlockMin, groomBlockMin, groomCoveredSlots } from './config-shop.js';
 
 const HORIZON_DAYS = 240; // ส่งล่วงหน้า ~8 เดือน
 let _started = false;
 
 // นับการใช้งานต่อวัน — แยกออกมาเป็น pure function เพื่อทดสอบได้
-// คิว Grooming ที่ใช้ไปต่อรอบ (นับตัวน้อง เหมือน countInSlot ในหน้า Grooming)
+// คิว Grooming ที่ใช้ไปต่อรอบ (เหมือน countInSlot ในหน้า Grooming)
 //   + คำขอ Grooming จากหน้าจองออนไลน์ที่ยังไม่จัดการ (กันคิวไว้จนพนักงานยืนยัน/ปล่อยคิว)
 export function buildGroomUsed(appointments, requests, today = todayISO()) {
   const used = {};
-  const add = (d, t, n) => { if (!d || !t || d < today) return; (used[d] = used[d] || {})[t] = (used[d][t] || 0) + n; };
+  // คิวกันเวลาต่อเนื่อง → นับ 1 ในทุกรอบที่คิวกิน (หน้าเว็บจึงเห็นรอบที่ทับเป็นเต็มเอง)
+  const add = (d, t, min) => {
+    if (!d || !t || d < today) return;
+    const day = (used[d] = used[d] || {});
+    groomCoveredSlots(t, min).forEach(x => { day[x] = (day[x] || 0) + 1; });
+  };
   (appointments || []).filter(a => a.type === 'grooming' && a.status !== 'ยกเลิก')
-    .forEach(a => add(a.date, a.time, petCountOf(a)));
+    .forEach(a => add(a.date, a.time, apptBlockMin(a)));
   (requests || []).filter(r => (r.status || 'new') === 'new' && r.payloadJson).forEach(r => {
-    try { const o = JSON.parse(r.payloadJson); if (o.kind === 'groom') add(o.date, o.time, Number(o.pets) || 1); } catch {}
+    try {
+      const o = JSON.parse(r.payloadJson);
+      if (o.kind === 'groom') add(o.date, o.time, groomBlockMin(o.service) * (Number(o.pets) || 1));
+    } catch {}
   });
   return used;
 }

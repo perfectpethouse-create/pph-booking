@@ -507,6 +507,27 @@ export function petDuration(pet, type) {
   return groomingDuration(groomServiceOf(pet));
 }
 
+// ── กันเวลาคิว Grooming ต่อเนื่อง (ยืนยันกับเจ้าของร้าน 27 ต.ค. 2569) ──
+// กันต่อตัว: อาบน้ำ 1 ชม. · มีตัดขน 2 ชม. · น้องในคิวเดียวกันทำต่อกันทีละตัว (รวมเวลา)
+// คิวกินช่องติดกันใน GROOMING_SLOTS ซึ่งไม่มีรอบพักเที่ยง → งานเลื่อนข้ามพักเองอัตโนมัติ
+// shortcut: สมมติคิวเดียวทำทีละตัว — ถ้าร้านมีช่าง ≥2 ทำพร้อมกัน ต้องแบ่งตัวให้ช่างแต่ละคน
+export function groomBlockMin(service) {
+  return (service === 'cut' || service === 'bathCut' || service === true)
+    ? GROOMING_CUT_MIN : GROOMING_BATH_MIN;
+}
+export const apptBlockMin = a => petsOf(a).reduce((s, p) => s + groomBlockMin(groomServiceOf(p)), 0);
+// รอบที่คิวกิน (นับจากรอบเริ่ม · เลยรอบสุดท้ายก็ตัดทิ้ง) — รอบเริ่มที่ไม่อยู่ในตารางกินแค่ตัวเอง
+export function groomCoveredSlots(time, minutes) {
+  const i = GROOMING_SLOTS.indexOf(time);
+  if (i < 0) return [time];
+  return GROOMING_SLOTS.slice(i, i + Math.max(1, Math.ceil(minutes / 30)));
+}
+// รอบแรกที่ว่างหลังช่วงที่กัน ('' = หมดวัน)
+export function groomFreeAt(time, minutes) {
+  const i = GROOMING_SLOTS.indexOf(time);
+  return i < 0 ? '' : GROOMING_SLOTS[i + Math.max(1, Math.ceil(minutes / 30))] || '';
+}
+
 // ── บริการเสริม (add-on) ของโซนออกกำลังกาย: อาบน้ำ/ตัดขน ต่อจากรอบเล่น ──
 // ราคาใช้เรต Grooming เดิมทั้งดุ้น (โซนนี้รับเฉพาะน้องหมา → petType ล็อก 'dog')
 // น้องเก็บฟิลด์เพิ่ม: addOn ('none'|'bath'|'cut'|'bathCut') · gSize (ไซส์ Grooming) · coatType

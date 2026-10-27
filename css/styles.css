@@ -1479,6 +1479,13 @@ body.modal-open { overflow: hidden; }
     min-height: 54px; padding: 6px 8px 6px 14px; border-radius: 18px;
     border: 1.5px dashed var(--hairline); color: var(--muted); font-size: 13.5px;
   }
+  /* รอบที่คิวก่อนหน้ายังทำไม่เสร็จ — พื้นทึบ (ไม่ใช่เส้นประแบบรอบว่าง) + ขอบซ้ายบอกว่าต่อเนื่องจากข้างบน */
+  .m-slot-cont {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    min-height: 44px; padding: 6px 8px 6px 14px; border-radius: 14px;
+    background: var(--fill); border-left: 3px solid var(--hairline); color: var(--ink-2); font-size: 13px;
+  }
+  .m-slot-cont.full { border-left-color: #E0493D; }
   .m-slot-box { background: var(--card); border-radius: 20px; padding: 12px 14px 8px; box-shadow: var(--shadow); }
   .m-slot-box.full { box-shadow: var(--shadow), inset 0 0 0 1.5px var(--red-tint); }
   .m-capbar { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
@@ -2006,6 +2013,7 @@ body.modal-open { overflow: hidden; }
 .slot-board--exercise .d-atag { color: #0A6F78; }
 .d-ap { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
 .d-appt.done .d-ap { color: #1E7A37; font-weight: 600; font-size: 12.5px; }
+.d-slot-cont { padding: 6px 10px; margin-bottom: 4px; border-radius: 10px; background: var(--fill); border-left: 3px solid var(--hairline); font-size: 12.5px; color: var(--ink-2); }
 .d-slot-free { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; color: var(--muted); }
 .d-slot-add {
   margin-left: auto; width: 32px; height: 32px; border-radius: 9px; border: 1.5px dashed var(--hairline);

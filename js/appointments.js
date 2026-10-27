@@ -18,6 +18,7 @@ import {
   PET_TYPES,
   GROOMING_SERVICES, groomServiceOf, groomServiceLabel, groomingDuration,
   petsOf, petCountOf, petPrice, petDuration,
+  apptBlockMin, groomCoveredSlots, groomFreeAt,
   EXERCISE_ADDON_NONE, EXERCISE_ADDON_OPTIONS, addonIsSet, addonHasBath,
   exerciseGroomTime, addonGroomIssue,
   exerciseAddOnPrice, addonGroomPet,
@@ -53,12 +54,25 @@ export function capacityFor(type, settings) {
 
 // จำนวน "ตัว" ที่จองแล้วในรอบนั้น (ไม่นับใบที่ยกเลิก และไม่นับตัวเองตอนแก้ไข)
 // นับตามจำนวนน้องจริง เพราะ 1 การ์ดอาจมีหลายตัว (petCountOf) — ใบเก่านับเป็น 1
+// Grooming: คิวกินหลายรอบต่อกัน (apptBlockMin) และทำทีละตัว → ทุกรอบที่ถูกกินนับ 1 ต่อคิว
 export function countInSlot(list, { type, date, time, excludeId }) {
+  if (type === 'grooming') return groomCoverAt(list, { date, time, excludeId }).length;
   return list.filter(a =>
     a.type === type && a.date === date && a.time === time &&
     a.status !== 'ยกเลิก' && a.id !== excludeId
   ).reduce((sum, a) => sum + petCountOf(a), 0);
 }
+// คิว Grooming ที่กำลังทำอยู่ในรอบนั้น (รวมคิวที่เริ่มก่อนหน้าแล้วยังไม่เสร็จ)
+export function groomCoverAt(list, { date, time, excludeId }) {
+  return list.filter(a =>
+    a.type === 'grooming' && a.date === date && a.time && a.status !== 'ยกเลิก' && a.id !== excludeId &&
+    groomCoveredSlots(a.time, apptBlockMin(a)).includes(time));
+}
+// ช่วงเวลาที่คิวกัน เช่น "10:00–12:00" (จบ = รอบสุดท้ายที่กิน + 30 นาที · ข้ามพักเที่ยงแล้ว)
+export function groomSpan(a) {
+  return `${a.time}–${addMin(groomCoveredSlots(a.time, apptBlockMin(a)).at(-1), 30)}`;
+}
+const addMin = (t, m) => { const x = +t.slice(0, 2) * 60 + +t.slice(3) + m; return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`; };
 
 // ── สถานะคิว: คิววันนี้/ที่ผ่านมาที่ยัง "จองแล้ว" มีปุ่ม มาแล้ว / ไม่มา ──
 // สถานะอื่นแสดงเป็นป้าย (กดผิด แก้ได้ที่หน้าแก้คิว) · คิวไม่มาไม่ถูกนับเป็นยอดขาย (apptCounts)
@@ -429,13 +443,19 @@ function buildMobileQueue() {
 
     slotsFor(type).forEach(time => {
       const inSlot = dayList.filter(a => a.time === time);
-      const n = inSlot.reduce((sum, a) => sum + petCountOf(a), 0);
+      const n = countInSlot(dayList, { type, date, time });
       const bathOnly = type === 'grooming' && !slotsFor('grooming', true).includes(time);
       const addBtn = el('button', { class: 'm-addq', html: icons.plus + '<span>เพิ่มคิว</span>' });
       addBtn.onclick = () => openAppointmentForm(null, date, { type, time });
+      // รอบที่คิวก่อนหน้ายังทำไม่เสร็จ — บอกว่าต่อจากคิวไหน และว่างอีกทีกี่โมง
+      const cont = type === 'grooming' ? groomCoverAt(dayList, { date, time }).filter(a => a.time !== time) : [];
 
       let box;
-      if (!inSlot.length) {
+      if (!inSlot.length && cont.length) {
+        box = el('div', { class: 'm-slot-cont' + (n >= cap ? ' full' : '') }, [
+          el('span', { text: contText(cont) }), n >= cap ? null : addBtn,
+        ]);
+      } else if (!inSlot.length) {
         box = el('div', { class: 'm-slot-free' }, [
           el('span', { text: `ว่าง ${cap} ที่${bathOnly ? ' · อาบน้ำเท่านั้น' : ''}` }), addBtn,
         ]);
@@ -456,7 +476,7 @@ function buildMobileQueue() {
               el('span', { class: 'm-pet' + (a.petType === 'cat' ? ' cat' : ''), html: a.petType === 'cat' ? icons.cat : icons.dog }),
               el('div', { class: 'm-tx' }, [
                 el('b', { text: pets.length > 1 ? `${first} ×${pets.length}` : first }),
-                el('small', { text: `${detail} · ${a.customerName || ''}` }),
+                el('small', { text: `${a.type === 'grooming' ? groomSpan(a) + ' · ' : ''}${detail} · ${a.customerName || ''}` }),
               ]),
               apptStatusControl(a),
             ]);
@@ -474,6 +494,23 @@ function buildMobileQueue() {
   }
 
   return { node, draw };
+}
+
+// คิว Grooming ที่ draft จะไปทับ (รอบใดรอบหนึ่งในช่วงที่กันเต็มแล้ว) — null = ไม่ทับ
+export function groomClash(list, draft, cap, excludeId) {
+  for (const t of groomCoveredSlots(draft.time, apptBlockMin(draft))) {
+    const busy = groomCoverAt(list, { date: draft.date, time: t, excludeId });
+    if (busy.length >= cap) return busy.find(a => a.time !== draft.time) || busy[0];
+  }
+  return null;
+}
+
+// "ต่อจากคิว 10:00 · ยูจิ ×2 · ว่างอีกที 12:00" — ใช้ทั้งไทม์ไลน์มือถือและบอร์ดคอม
+function contText(cont) {
+  const a = cont[0], pets = petsOf(a);
+  const who = (pets[0]?.petName || a.customerName || '') + (pets.length > 1 ? ` ×${pets.length}` : '');
+  const free = cont.map(x => groomFreeAt(x.time, apptBlockMin(x))).filter(Boolean).sort()[0];
+  return `ต่อจากคิว ${a.time}${who ? ' · ' + who : ''} · ${free ? `ว่างอีกที ${free}` : 'ถึงปิดร้าน'}`;
 }
 
 // ชื่อโซนออกกำลังกายของใบนั้น (สนาม/สระ) — ใบเก่าที่ไม่มี zone แสดงระดับแทน
@@ -505,7 +542,7 @@ function buildWeekBoard(type, startDate, onPickDay) {
     const dow = THAI_DAYS[new Date(date + 'T00:00:00').getDay()];
     const booked = _appts.filter(a => a.type === type.id && a.date === date && a.status !== 'ยกเลิก');
     // นับตามจำนวนตัวจริง (1 การ์ดอาจมีหลายตัว) — ทั้งการวัดความเต็มและรอบที่ยังว่าง
-    const petsIn = t => booked.filter(a => a.time === t).reduce((sum, a) => sum + petCountOf(a), 0);
+    const petsIn = t => countInSlot(booked, { type: type.id, date, time: t });
     const openSlots = slots.filter(t => petsIn(t) < cap).length;
     const total = slots.length;
     // แถบวัดจาก "จำนวนตัวที่รับได้ทั้งวัน" ไม่ใช่จำนวนรอบที่เต็ม
@@ -558,7 +595,8 @@ function buildSlotBoard(type, date) {
 
   slotsFor(type.id).forEach(time => {
     const inSlot = _appts.filter(a => a.type === type.id && a.date === date && a.time === time && a.status !== 'ยกเลิก');
-    const n = inSlot.reduce((sum, a) => sum + petCountOf(a), 0); // นับตัวจริง (การ์ดอาจมีหลายตัว)
+    const n = countInSlot(_appts, { type: type.id, date, time }); // นับตัวจริง + คิว Grooming ก่อนหน้าที่ยังทำอยู่
+    const cont = type.id === 'grooming' ? groomCoverAt(_appts, { date, time }).filter(a => a.time !== time) : [];
     const state = n === 0 ? 'free' : (n >= cap ? 'full' : 'part');
     // รอบดึกที่รับเฉพาะอาบน้ำ — บอกไว้บนช่อง กันพนักงานรับงานตัดขนแล้วมาพบทีหลังว่าจองไม่ได้
     const bathOnly = type.id === 'grooming' && !slotsFor('grooming', true).includes(time);
@@ -566,6 +604,7 @@ function buildSlotBoard(type, date) {
     add.onclick = () => openAppointmentForm(null, date, { type: type.id, time });
 
     const body = el('div', { class: 'd-slot-b' }, [
+      cont.length ? el('div', { class: 'd-slot-cont', text: contText(cont) }) : null,
       ...inSlot.map(a => {
         // 1 การ์ดอาจมีหลายตัว → ป้ายเดียวติด "×N ตัว" · ตัวเลข n/cap ด้านซ้ายนับตัวจริง
         const pets = petsOf(a);
@@ -581,7 +620,7 @@ function buildSlotBoard(type, date) {
         ].filter(Boolean);
         const chip = el('button', {
           class: 'd-appt' + (a.status === 'เสร็จแล้ว' || a.status === 'มาแล้ว' ? ' done' : a.status === 'ไม่มา' ? ' noshow' : ''),
-          title: `${a.customerName || ''} · ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`,
+          title: `${a.customerName || ''} · ${a.type === 'grooming' ? `กันเวลา ${groomSpan(a)}` : `ประมาณ ${Math.round((a.durationMin || 60) / 60)} ชม.`}`,
         }, [
           el('b', { text: pcount > 1 ? `${firstName} ×${pcount} ตัว` : firstName }),
           ...tags.map(t => el('span', { class: 'd-atag', text: t })),
@@ -702,10 +741,12 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         const ok = allowed.includes(t);
         const full = n >= cap;
         const on = t === draft.time;
-        const sub = !ok || (bathOnly && !full) ? 'อาบน้ำเท่านั้น' : full ? 'เต็ม' : cap > 1 ? (n ? `${n}/${cap} ตัว` : `ว่าง ${cap}`) : 'ว่าง';
+        // เริ่มได้แต่ช่วงที่กันจะไปทับคิวถัดไป (น้องหลายตัว/ตัดขน) → บอกไว้ก่อนกด
+        const tight = !full && !isEx && draft.date && !!groomClash(_appts, { ...draft, time: t }, cap, existing?.id);
+        const sub = !ok || (bathOnly && !full) ? 'อาบน้ำเท่านั้น' : full ? 'เต็ม' : tight ? 'ทับคิวถัดไป' : cap > 1 ? (n ? `${n}/${cap} ตัว` : `ว่าง ${cap}`) : 'ว่าง';
         const b = el('button', {
           type: 'button', role: 'radio', 'aria-checked': String(on), disabled: ok ? null : '',
-          class: 'ap-slot' + (on ? ' on' : full ? ' full' : n ? ' part' : '') + (bathOnly ? ' bathonly' : ''),
+          class: 'ap-slot' + (on ? ' on' : full ? ' full' : n || tight ? ' part' : '') + (bathOnly ? ' bathonly' : ''),
           'aria-label': `รอบ ${t} · ${sub}`,
         }, [el('b', { text: t }), el('small', { text: sub })]);
         // รอบเต็มยังกดได้ — ร้านตัดสินใจเองว่าจะรับเกินไหม (ถามยืนยันตอนบันทึก)
@@ -723,6 +764,13 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
           el('div', { class: 'ap-slots-h' }, [el('span', { text: label }), i === 2 ? el('span', { text: `งานตัดขนเริ่มได้ไม่เกิน ${GROOMING_CUT_LAST_SLOT}` }) : null]),
           grid(list));
       });
+      if (draft.time && draft.date) {
+        const clash = groomClash(_appts, draft, cap, existing?.id);
+        slotsWrap.append(el('div', { class: 'ap-note ap-span' + (clash ? ' warn' : '') }, [
+          `คิวนี้กันเวลา ${groomSpan(draft)}`,
+          clash ? ` · ทับคิว ${clash.time} ของ${clash.customerName ? ' ' + clash.customerName : 'คิวอื่น'}` : '',
+        ]));
+      }
     };
     drawSlots();
     const slotBadge = el('span', { class: 'nights-badge', text: isEx ? `รอบละ 50 นาที · ${cap} ตัว` : `ช่างรับรอบละ ${cap} ตัว` });
@@ -903,10 +951,17 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
       let capPill = null;
       if (draft.date && draft.time) {
         // เตือนแต่ไม่บล็อก — ร้านตัดสินใจเองได้ว่าจะรับเกินไหม
-        const willBe = countInSlot(_appts, { type: draft.type, date: draft.date, time: draft.time, excludeId: existing?.id }) + petCountOf(draft);
-        const over = willBe > cap;
-        capPill = el('span', { class: 'ap-cap' + (over ? ' over' : ''), html: (over ? icons.alert : icons.check) + ' ' +
-          (over ? `รอบนี้จะมี ${willBe} ตัว เกินที่รับได้ (${cap})` : `รอบนี้ ${willBe}/${cap} ตัวหลังจอง`) });
+        if (isEx) {
+          const willBe = countInSlot(_appts, { type: draft.type, date: draft.date, time: draft.time, excludeId: existing?.id }) + petCountOf(draft);
+          const over = willBe > cap;
+          capPill = el('span', { class: 'ap-cap' + (over ? ' over' : ''), html: (over ? icons.alert : icons.check) + ' ' +
+            (over ? `รอบนี้จะมี ${willBe} ตัว เกินที่รับได้ (${cap})` : `รอบนี้ ${willBe}/${cap} ตัวหลังจอง`) });
+        } else {
+          // Grooming กันเวลาต่อเนื่อง → เช็คทุกรอบในช่วง ไม่ใช่แค่รอบเริ่ม
+          const clash = groomClash(_appts, draft, cap, existing?.id);
+          capPill = el('span', { class: 'ap-cap' + (clash ? ' over' : ''), html: (clash ? icons.alert : icons.check) + ' ' +
+            (clash ? `ช่วง ${groomSpan(draft)} ทับคิว ${clash.time}` : `กันเวลา ${groomSpan(draft)}`) });
+        }
       }
       sumBox.innerHTML = '';
       sumBox.appendChild(el('div', { class: 'ap-sum' }, [
@@ -1013,9 +1068,16 @@ async function doSave(draft, isNew, modal, existingId, settings) {
 
   // เกินความจุ = เตือนให้ยืนยัน ไม่ห้าม (ร้านอาจรับได้จริงในบางกรณี) — นับตามจำนวนตัว
   const cap = capacityFor(draft.type, settings);
+  const clash = draft.type === 'grooming' ? groomClash(_appts, draft, cap, existingId) : null;
+  if (clash) {
+    const ok = await confirmDialog(
+      `คิวนี้กันเวลา ${groomSpan(draft)} วันที่ ${formatDateTH(draft.date)} ทับคิว ${clash.time}${clash.customerName ? ` ของ ${clash.customerName}` : ''} (ช่างรับได้ ${cap}) — จองเพิ่มเลยไหม?`,
+      { okText: 'จองเพิ่ม' });
+    if (!ok) return;
+  }
   const n = countInSlot(_appts, { type: draft.type, date: draft.date, time: draft.time, excludeId: existingId });
   const add = petCountOf(draft);
-  if (n + add > cap) {
+  if (draft.type !== 'grooming' && n + add > cap) {
     const ok = await confirmDialog(
       `รอบ ${draft.time} วันที่ ${formatDateTH(draft.date)} มีอยู่แล้ว ${n} ตัว จะเพิ่มอีก ${add} (รับได้ ${cap}) — จองเพิ่มเลยไหม?`,
       { okText: 'จองเพิ่ม' });
