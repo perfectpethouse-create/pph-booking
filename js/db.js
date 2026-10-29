@@ -247,6 +247,26 @@ export async function savePublicAnnouncements(items) {
   }, { merge: true });
 }
 
+// ─── ยอดสมาชิก (จำนวนลูกค้าในระบบ) → publicInfo/stats ───
+// หน้าเว็บ perfectbkk.com โชว์เป็นกล่องตัวเลข "สมาชิกที่ไว้ใจให้เราดูแลน้อง" (fw.js อ่านผ่าน REST)
+// เก็บแค่ตัวเลขรวม ไม่มีชื่อ/เบอร์ลูกค้า · นับด้วย count aggregation (ไม่ต้องโหลดลูกค้าทุกคน
+// และนับครบแม้เอกสารเก่าไม่มี createdAt — ต่างจาก listen() ที่เรียงตาม createdAt)
+export async function countCustomers() {
+  if (MODE !== 'firestore') return mockRead('customers').length;
+  const { collection, getCountFromServer } = fb.fsMod;
+  const snap = await getCountFromServer(collection(fb.store, 'customers'));
+  return snap.data().count;
+}
+
+export async function savePublicStats(memberCount) {
+  if (MODE !== 'firestore') return; // โหมดทดลองไม่มีที่ให้เว็บอ่าน
+  const { doc, setDoc } = fb.fsMod;
+  await setDoc(doc(fb.store, 'publicInfo', 'stats'), {
+    memberCount,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+}
+
 // ⚠️ เพิ่ม collection ใหม่ในระบบเมื่อไหร่ ต้องเพิ่มที่นี่ทั้ง exportAll และ importAll ด้วย
 //    (ยกเว้น roomHolds / publicAvailability — เป็นข้อมูลชั่วคราว/คำนวณใหม่ได้ ไม่ต้องสำรอง)
 //    ไม่งั้นเจ้าของร้านสำรองแล้วกู้คืน ข้อมูลชุดนั้นจะหายเงียบๆ โดยไม่มีคำเตือน
