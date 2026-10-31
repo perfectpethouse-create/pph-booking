@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen, save, remove } from './db.js';
 import { el, toast, openModal, confirmDialog, getSettings, currentUser, escapeHtml, isStaff, bfGroup, chipGroup } from './ui.js';
-import { computeBooking, computeAddOn, computeLineItem, formatBaht, nightsBetween, todayISO, addDaysISO, owedOf } from './calc.js';
+import { computeBooking, computeAddOn, computeLineItem, formatBaht, nightsBetween, todayISO, addDaysISO, owedOf, isDaycareOnly, DAYCARE_DEPOSIT_PCT } from './calc.js';
 import {
   PET_TYPES, DEPOSIT_STATUSES, RECORD_STATUSES, VIP_PROMO_PRICE, VIP_CAT_PROMO_PRICE,
   FIXED_ADDONS, GROOMING_SIZES, COAT_TYPES, groomingPrice,
@@ -299,6 +299,21 @@ export function openBookingForm(existing) {
   let saveNow = () => {};
   // กำลังบันทึกอยู่ → กดซ้ำไม่ทำอะไร (ใบใหม่ยังไม่มี id ถ้ายิง save สองครั้งจะได้ใบจองซ้ำ 2 ใบ)
   let saving = false;
+  // ใบใหม่ที่ร้านคีย์เอง: Day Care ล้วนเริ่มมัดจำ 100% · เพิ่มห้องพักกลับมาก็คืน % เดิม
+  // ใบเก่าและคำขอจากเว็บคง % ที่ตกลงกับลูกค้าไว้ · พิมพ์ % เองแล้วระบบไม่ทับ
+  let pctEdited = false;
+  let pctBeforeDaycare = null;
+  const syncDepositPct = () => {
+    if (!isNew || draft.fromWebRequest || pctEdited) return;
+    const daycare = isDaycareOnly(draft);
+    if (daycare && pctBeforeDaycare == null) {
+      pctBeforeDaycare = draft.depositPct;
+      draft.depositPct = DAYCARE_DEPOSIT_PCT;
+    } else if (!daycare && pctBeforeDaycare != null) {
+      draft.depositPct = pctBeforeDaycare;
+      pctBeforeDaycare = null;
+    }
+  };
   // ⌘/Ctrl + Enter = บันทึก (ผูกครั้งเดียวที่ตัวฟอร์ม ซึ่งไม่ถูกสร้างใหม่ตอน rerender)
   // e.repeat = กดปุ่มค้างแล้วคีย์บอร์ดยิงซ้ำเอง → ไม่นับ
   form.addEventListener('keydown', e => {
@@ -309,6 +324,7 @@ export function openBookingForm(existing) {
   function rerender() { form.innerHTML = ''; build(); }
 
   function build() {
+    syncDepositPct();
     // กล่องสรุป (ประกาศก่อน เพื่อให้ handler ทุกตัวเรียก refreshSummary ได้)
     const summaryBox = el('div', { class: 'summary-box owner-only' });
     const stickyTotal = el('span', { class: 'ss-total owner-only' });   // แถบลอยล่าง: ยอดทั้งหมด
@@ -469,7 +485,7 @@ export function openBookingForm(existing) {
       })) : [];
     const inTimeField = field('เวลาเข้า', draft.checkInTime, v => draft.checkInTime = v, { type: 'time' });
     const outTimeField = field('เวลาออก', draft.checkOutTime, v => draft.checkOutTime = v, { type: 'time' });
-    const depPctField = field('มัดจำ (%)', draft.depositPct, v => { draft.depositPct = Number(v) || 0; refreshSummary(); }, { type: 'number', min: 0, max: 100 });
+    const depPctField = field('มัดจำ (%)', draft.depositPct, v => { draft.depositPct = Number(v) || 0; pctEdited = true; refreshSummary(); }, { type: 'number', min: 0, max: 100 });
 
     // ── รายการห้อง ──
     const itemsWrap = el('div', {});
@@ -722,7 +738,8 @@ export function openBookingForm(existing) {
       v => { draft.depositMethod = v; }));
     const recStatus = labeled('สถานะบันทึก', selectEl(RECORD_STATUSES.map(x => [x, x]), draft.recordStatus, v => draft.recordStatus = v));
     // ตัวเลือกที่ไม่ค่อยแตะ → พับไว้ · มีค่าที่ไม่ใช่ค่าเริ่มต้น = เปิดค้าง จะได้ไม่มีส่วนลดซ่อนอยู่โดยไม่เห็น
-    const moreOpen = Number(draft.billDiscountValue) > 0 || Number(draft.depositPct) !== Number(s?.depositPctDefault ?? 50);
+    const defaultPct = isDaycareOnly(draft) ? DAYCARE_DEPOSIT_PCT : (s?.depositPctDefault ?? 50);
+    const moreOpen = Number(draft.billDiscountValue) > 0 || Number(draft.depositPct) !== Number(defaultPct);
     const more = el('details', { class: 'bf-more', open: moreOpen ? '' : null }, [
       el('summary', { text: 'ตัวเลือกเพิ่มเติม · ส่วนลดทั้งบิล · % มัดจำ · สถานะบันทึก' }),
       el('div', { class: 'row' }, [labeled('ส่วนลดทั้งบิล — ชนิด', billDiscType), labeled('ส่วนลดทั้งบิล — จำนวน', billDiscVal)]),

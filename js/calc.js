@@ -92,6 +92,12 @@ export function computeBooking(booking) {
   };
 }
 
+// ใบจอง Day Care ล้วน = ไม่มีห้องพัก + มี Day Care · ร้านเก็บเต็มจำนวน (Day Care ที่พ่วงการพักค้างคืนยังมัดจำตามปกติ)
+export const DAYCARE_DEPOSIT_PCT = 100;
+export function isDaycareOnly(b) {
+  return !(b.lineItems || []).length && (b.addOns || []).some(a => a.kind === 'daycare');
+}
+
 // ยอดที่ร้าน "ยังต้องเก็บจริง" ของใบจอง (ต้องผ่าน computeBooking มาแล้ว)
 // ⚠️ ห้ามใช้ balanceDue ตรงๆ แทน — balanceDue = ยอดรวม−มัดจำ เสมอ แม้ยังไม่โอนมัดจำ/จ่ายครบ/ยกเลิกแล้ว
 //    ยังไม่มัดจำ = ค้างทั้งก้อน · มัดจำแล้ว = ค้างส่วนที่เหลือ · จ่ายครบ/ยกเลิก = 0
