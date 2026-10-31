@@ -1,26 +1,23 @@
 // ═══════════════════════════════════════════════════════════════
 // public-stats.js — ส่ง "ยอดสมาชิก" ให้หน้าเว็บ perfectbkk.com (กล่องตัวเลขใน hero)
 //
-// ทำเบื้องหลังครั้งเดียวต่อการเปิดแอป เมื่อผู้ที่เปิดเป็น "เจ้าของร้าน"
-//   (กฎ Firestore ให้เขียน publicInfo ได้เฉพาะเจ้าของ — พี่เลี้ยงจึงข้ามไปเลย ไม่ยิงให้โดนปฏิเสธ)
-// นับลูกค้าทั้งหมดในระบบ → เขียน publicInfo/stats { memberCount, updatedAt }
-//
-// ⚠️ ตัวเลขบนเว็บ = ยอด ณ ตอนที่เจ้าของเปิดแอปครั้งล่าสุด
-//    ถ้าเว็บยังไม่เคยได้ตัวเลข กล่องบนเว็บจะซ่อนตัวเอง (ไม่โชว์ตัวเลขสมมติ)
+// ทำงานเบื้องหลังเมื่อพนักงาน/เจ้าของเปิดแอป (แบบเดียวกับ public-availability.js):
+//   ฟังลูกค้าทั้งหมด → เขียน publicAvailability/stats { memberCount, updatedAt } เฉพาะตอนยอดเปลี่ยน
+// ลูกค้าถูกเพิ่มผ่านแอปนี้เท่านั้น ยอดบนเว็บจึงตรงกับระบบทันทีที่มีคนเพิ่มลูกค้า
 // ═══════════════════════════════════════════════════════════════
-import { countCustomers, savePublicStats, MODE } from './db.js';
-import { isOwner } from './ui.js';
+import { listen, savePublicStats, MODE } from './db.js';
 
-let _done = false;
+let _started = false;
 
-// เรียกหลังโหลด settings แล้ว (isOwner() ดูจาก staffEmails ใน settings)
-export async function publishMemberCount() {
-  if (_done || MODE !== 'firestore' || !isOwner()) return;
-  _done = true;
-  try {
-    await savePublicStats(await countCustomers());
-  } catch (e) {
-    _done = false; // เปิดแอปรอบหน้าลองใหม่
-    console.warn('[stats] ส่งยอดสมาชิกให้หน้าเว็บไม่สำเร็จ', e);
-  }
+export function startMemberCountPublisher() {
+  if (_started || MODE !== 'firestore') return;
+  _started = true;
+  let last = null;
+  // orderBy: null — นับครบแม้เอกสารเก่าไม่มี createdAt
+  listen('customers', arr => {
+    if (arr.length === last) return;
+    savePublicStats(arr.length)
+      .then(() => { last = arr.length; })
+      .catch(e => console.warn('[stats] ส่งยอดสมาชิกให้หน้าเว็บไม่สำเร็จ', e));
+  }, { orderBy: null });
 }

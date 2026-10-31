@@ -19,7 +19,7 @@ import { renderReports } from './reports.js';
 import { renderSettings } from './settings.js';
 import { renderBackup } from './backup.js';
 import { startAvailabilityPublisher } from './public-availability.js';
-import { publishMemberCount } from './public-stats.js';
+import { startMemberCountPublisher } from './public-stats.js';
 import { startIdPhotoCleanup } from './registrations.js';
 import { applyTheme, currentTheme, themePicker } from './theme.js';
 import { openBookingForm } from './bookings.js';
@@ -103,6 +103,8 @@ function showApp(user) {
   document.getElementById('who-email').textContent = user.email || '';
   // ส่งห้องว่าง (ไม่มีข้อมูลลูกค้า) ให้หน้าจองออนไลน์ perfectbkk.com/booking.html
   startAvailabilityPublisher();
+  // ส่งยอดสมาชิก (ตัวเลขรวม ไม่มีข้อมูลลูกค้า) ให้กล่องตัวเลขบนหน้าเว็บ
+  startMemberCountPublisher();
   // ลบรูปบัตรประชาชนที่เช็คเอาท์เกิน 90 วัน (PDPA)
   startIdPhotoCleanup();
   loginScreen.classList.add('hidden');
@@ -116,8 +118,6 @@ function showApp(user) {
   if (!settingsUnsub) settingsUnsub = listenSettings((s) => {
     setSettingsCache(s);
     applyRoleUI();
-    // ส่งยอดสมาชิกให้หน้าเว็บ — รอ settings ก่อนเพราะต้องรู้ว่าเป็นเจ้าของหรือพี่เลี้ยง
-    publishMemberCount();
     if (firstNavPending) {
       firstNavPending = false;
       navigate(location.hash.replace('#', '') || defaultRoute());

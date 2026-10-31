@@ -247,21 +247,14 @@ export async function savePublicAnnouncements(items) {
   }, { merge: true });
 }
 
-// ─── ยอดสมาชิก (จำนวนลูกค้าในระบบ) → publicInfo/stats ───
+// ─── ยอดสมาชิก (จำนวนลูกค้าในระบบ) → publicAvailability/stats ───
 // หน้าเว็บ perfectbkk.com โชว์เป็นกล่องตัวเลข "สมาชิกที่ไว้ใจให้เราดูแลน้อง" (fw.js อ่านผ่าน REST)
-// เก็บแค่ตัวเลขรวม ไม่มีชื่อ/เบอร์ลูกค้า · นับด้วย count aggregation (ไม่ต้องโหลดลูกค้าทุกคน
-// และนับครบแม้เอกสารเก่าไม่มี createdAt — ต่างจาก listen() ที่เรียงตาม createdAt)
-export async function countCustomers() {
-  if (MODE !== 'firestore') return mockRead('customers').length;
-  const { collection, getCountFromServer } = fb.fsMod;
-  const snap = await getCountFromServer(collection(fb.store, 'customers'));
-  return snap.data().count;
-}
-
+// เก็บแค่ตัวเลขรวม ไม่มีชื่อ/เบอร์ลูกค้า · อยู่ใน publicAvailability เพราะพนักงานทุกคนที่ล็อกอินเขียนได้
+// (publicInfo เขียนได้เฉพาะเจ้าของ — ลูกค้าที่พี่เลี้ยงเพิ่มจะไม่ขึ้นเว็บจนกว่าเจ้าของเปิดแอป)
 export async function savePublicStats(memberCount) {
   if (MODE !== 'firestore') return; // โหมดทดลองไม่มีที่ให้เว็บอ่าน
   const { doc, setDoc } = fb.fsMod;
-  await setDoc(doc(fb.store, 'publicInfo', 'stats'), {
+  await setDoc(doc(fb.store, 'publicAvailability', 'stats'), {
     memberCount,
     updatedAt: new Date().toISOString(),
   }, { merge: true });
