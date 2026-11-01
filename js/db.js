@@ -75,6 +75,16 @@ export async function initDb() {
   return { mode: MODE };
 }
 
+// ตัด/ต่อการเชื่อมต่อ Firestore ชั่วคราว — ใช้ตอนเปิดใบพิมพ์ (เหตุผลดู printSheet ใน intake-form.js)
+// ระหว่างตัด ข้อมูลใหม่ยังไม่เข้า + การเขียนจะรอในคิว แล้วส่งเองเมื่อต่อกลับ · โหมด mock ไม่มีอะไรให้ตัด
+export async function pauseNetwork() {
+  if (MODE === 'firestore' && fb) await fb.fsMod.disableNetwork(fb.store);
+}
+
+export async function resumeNetwork() {
+  if (MODE === 'firestore' && fb) await fb.fsMod.enableNetwork(fb.store);
+}
+
 // ─── Auth ───
 export function onAuthChanged(cb) {
   if (MODE === 'firestore') {

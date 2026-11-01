@@ -13,6 +13,7 @@ import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween }
 import { PET_TYPES, INTAKE_TERMS, INTAKE_CONSENT } from './config-shop.js';
 import { matchCustomer } from './customers.js';
 import { icons, brandLogo } from './icons.js';
+import { pauseNetwork, resumeNetwork } from './db.js';
 
 function petLabel(id) { return (PET_TYPES.find(p => p.id === id) || {}).label || id || ''; }
 
@@ -142,6 +143,11 @@ export function buildIntakeSheet(bookingRaw, customers = []) {
 //   • เรียก sync ทันทีหลังสร้างใบใหญ่ → iOS ไม่ทันเพนต์/ยีลด์ → หน้าต่างพิมพ์ช้ามาก/ไม่ขึ้น
 //   วิธีที่ชัวร์: เรนเดอร์ใบให้เห็นก่อน แล้วผู้ใช้ "แตะปุ่มพิมพ์" = gesture สด บนใบที่เพนต์แล้ว
 //   → iOS เปิดหน้าต่างพิมพ์/บันทึก PDF ได้ทันทีทั้งใน Safari และโหมดติดตั้งเป็นแอป (standalone)
+//
+// ⚠️ ทำไมต้องตัด Firestore ระหว่างเปิดใบ:
+//   Safari บน iOS ไม่เปิดหน้าต่างพิมพ์ถ้ามี request ค้าง (รอจนหมดก่อน และไม่แจ้ง error — ทดสอบบน iPhone จริง)
+//   onSnapshot เปิดการเชื่อมต่อค้างไว้ตลอด กดพิมพ์จึงเงียบ → ตัดตั้งแต่เปิดใบ ต่อกลับตอนปิดใบ
+//   ต้องตัดก่อนแตะปุ่ม ไม่ใช่ในจังหวะแตะ เพราะการตัดเป็น async แล้ว print() ต้องอยู่ใน gesture
 // filename: ตั้งชื่อเอกสารชั่วคราว → เบราว์เซอร์ใช้เป็นชื่อไฟล์แนะนำตอน "บันทึกเป็น PDF"
 // ทางออกปิดใบมี 4 ทาง: ปุ่มปิด · ปุ่ม "กลับ" ท้ายใบ · ปุ่ม Esc · ปุ่มย้อนกลับของเครื่อง
 export function printSheet(sheetEl, { filename } = {}) {
@@ -159,6 +165,10 @@ export function printSheet(sheetEl, { filename } = {}) {
   const prevTitle = document.title;
   if (filename) document.title = filename;
 
+  // ปุ่มพิมพ์กดได้เมื่อตัดการเชื่อมต่อเสร็จ · ตัดไม่สำเร็จก็ยังให้ลองพิมพ์ ไม่ล็อกปุ่มค้าง
+  printBtn.disabled = true;
+  pauseNetwork().catch(console.error).finally(() => { printBtn.disabled = false; });
+
   // ดัน history 1 ชั้น เพื่อให้ปุ่มย้อนกลับ/ปัดกลับ ปิดใบแทนที่จะออกจากแอป
   // (ไม่เปลี่ยน URL จึงไม่ไปกวน router ที่ฟัง hashchange อยู่)
   let pushedState = false;
@@ -173,6 +183,7 @@ export function printSheet(sheetEl, { filename } = {}) {
     if (filename) document.title = prevTitle;
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('popstate', onPop);
+    resumeNetwork().catch(console.error);
     if (pushedState && !fromPopstate) history.back();
   };
 
