@@ -701,20 +701,15 @@ function buildRegSheet(f, d, opts = {}) {
   checkBox.appendChild(grid);
   sheet.appendChild(checkBox);
 
-  // ── ภาพถ่าย / จุดสังเกต-ตำหนิ ตอนรับเข้า ──
-  const photoBox = el('div', { class: 'intake-box' }, [
-    el('h3', { text: 'ภาพถ่าย / จุดสังเกต-ตำหนิ ตอนรับเข้า' }),
-  ]);
+  // ── ภาพสัตว์ตอนรับเข้า (แสดงเฉพาะใบที่แนบรูปตอนเซ็นบนจอ · ไม่มีรูปไม่ต้องเว้นช่องว่าง) ──
   if (opts.intakePhoto) {
-    photoBox.appendChild(el('div', { class: 'intake-photo' }, [
-      el('img', { src: opts.intakePhoto, alt: 'ภาพสัตว์ตอนรับเข้า' }),
+    sheet.appendChild(el('div', { class: 'intake-box' }, [
+      el('h3', { text: 'ภาพสัตว์ตอนรับเข้า' }),
+      el('div', { class: 'intake-photo' }, [
+        el('img', { src: opts.intakePhoto, alt: 'ภาพสัตว์ตอนรับเข้า' }),
+      ]),
     ]));
-  } else {
-    photoBox.appendChild(el('div', { class: 'intake-photo-blank', text: 'พื้นที่ติดรูป / วาดจุดสังเกต-ตำหนิ' }));
   }
-  photoBox.appendChild(el('div', { class: 'intake-check-note', style: 'margin-top:6px', text: 'บันทึกจุดสังเกต/ตำหนิ (ข้อความ):' }));
-  photoBox.appendChild(el('div', { class: 'intake-check-fill' }, [el('span', { class: 'blank grow' }), el('span', { class: 'blank grow' })]));
-  sheet.appendChild(photoBox);
 
   // ── กฎระเบียบ/ข้อตกลง (verbatim จาก config-shop.js) ──
   const termsBox = el('div', { class: 'intake-box intake-terms' }, [
