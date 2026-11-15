@@ -125,6 +125,21 @@ function latestWeightOf(cust, appts, who, petName) {
   });
   return best ? best.kg : null;
 }
+// ลักษณะขนครั้งล่าสุดของน้องชื่อนี้ (คิว Grooming ที่มีอาบน้ำ — ตัดขนอย่างเดียวไม่ได้เลือกขน)
+// ใช้เติมให้เองตอนพิมพ์ชื่อน้องในใบใหม่ กันลืมกด "ใช้ข้อมูลเดิม" แล้วราคาผิด
+function latestCoatOf(appts, who, petName) {
+  const n = normName(petName);
+  if (!n) return null;
+  const p = phone9(who.phone);
+  let best = null;
+  (appts || []).forEach(a => {
+    if (a.type !== 'grooming' || a.status === 'ยกเลิก') return;
+    if (!((p.length === 9 && phone9(a.phone) === p) || (who.customerName && a.customerName === who.customerName))) return;
+    const pt = petsOf(a).find(x => normName(x.petName) === n && x.coatType && groomServiceOf(x) !== 'cut');
+    if (pt && (!best || String(a.date) > best.at)) best = { petType: pt.petType || 'dog', coatType: pt.coatType, at: String(a.date) };
+  });
+  return best;
+}
 async function saveProfileWeights(a, pets) {
   const custs = await getAll('customers');
   const c = findCustomer(custs, a);
@@ -849,6 +864,15 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
     const petRow = (pet, idx) => {
       const nameI = el('input', { value: pet.petName || '', placeholder: 'ชื่อน้อง', 'aria-label': `ชื่อน้องตัวที่ ${idx + 1}` });
       nameI.oninput = () => { pet.petName = nameI.value; refreshSide(); };
+      // พิมพ์ชื่อเสร็จ (ออกจากช่อง) → ใบใหม่เติมชนิดสัตว์+ลักษณะขนจากครั้งก่อนให้เอง (มีผลกับราคา)
+      if (isNew && !isEx) nameI.onchange = () => {
+        const last = latestCoatOf(_appts, draft, pet.petName);
+        if (!last || (last.petType === pet.petType && last.coatType === pet.coatType)) return;
+        if (last.petType !== pet.petType) { pet.petType = last.petType; pet.size = ''; } // ตารางไซส์หมา/แมวคนละชุด
+        pet.coatType = last.coatType;
+        toast(`${pet.petName.trim()} · ใช้ลักษณะขนครั้งก่อน`);
+        rerender();
+      };
       const rm = draft.pets.length > 1 ? el('button', { type: 'button', class: 'btn sm ghost bf-rm', html: icons.trash, 'aria-label': `ลบน้องตัวที่ ${idx + 1}` }) : null;
       if (rm) rm.onclick = () => { draft.pets.splice(idx, 1); rerender(); };
       const sub = (t) => el('div', { class: 'ap-sub', text: t });
