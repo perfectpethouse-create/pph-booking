@@ -109,10 +109,21 @@ function findCustomer(custs, a) {
   const p = phone9(a.phone);
   return custs.find(c => p.length === 9 && phone9(c.phone) === p) || custs.find(c => a.customerName && c.name === a.customerName) || null;
 }
-// น้ำหนักในโปรไฟล์ของน้องชื่อนี้ (ถ้ามี) — ใช้เติมช่องชั่ง และเติมไซส์ตอนจองครั้งถัดไป
-export function profileWeightOf(cust, petName) {
-  const p = (cust?.pets || []).find(x => normName(x.name) && normName(x.name) === normName(petName));
-  return p ? kgOf(p.weight) : null;
+// น้ำหนักที่ชั่งล่าสุดของน้องชื่อนี้ — เทียบโปรไฟล์ (weightAt) กับคิวเก่าที่ชั่งแล้ว ใช้ค่าที่ใหม่กว่า
+// ลูกค้าที่ยังไม่มีโปรไฟล์ก็ได้น้ำหนักจากคิวเก่า · ใช้เติมช่องชั่ง และเติมไซส์ตอนจองครั้งถัดไป
+function latestWeightOf(cust, appts, who, petName) {
+  const n = normName(petName);
+  if (!n) return null;
+  const pp = (cust?.pets || []).find(x => normName(x.name) === n);
+  let best = pp && kgOf(pp.weight) ? { kg: kgOf(pp.weight), at: pp.weightAt || '' } : null;
+  const p = phone9(who.phone);
+  (appts || []).forEach(a => {
+    if (a.status === 'ยกเลิก') return;
+    if (!((p.length === 9 && phone9(a.phone) === p) || (who.customerName && a.customerName === who.customerName))) return;
+    const pt = petsOf(a).find(x => normName(x.petName) === n && kgOf(x.weightKg));
+    if (pt && (!best || String(a.date) > best.at)) best = { kg: kgOf(pt.weightKg), at: String(a.date) };
+  });
+  return best ? best.kg : null;
 }
 async function saveProfileWeights(a, pets) {
   const custs = await getAll('customers');
@@ -131,12 +142,12 @@ async function saveProfileWeights(a, pets) {
 }
 async function openWeighIn(a) {
   const s = getSettings();
-  const custs = await getAll('customers');
+  const [custs, appts] = await Promise.all([getAll('customers'), getAll('appointments')]); // เปิดจากหน้าพนักงานได้ _appts อาจว่าง
   const cust = findCustomer(custs, a);
   const pets = petsOf(a).map(p => ({ ...p }));
   const booked = Number(a.priceBooked ?? a.price) || 0;
   const inputs = pets.map(p => {
-    const pre = kgOf(p.weightKg) ?? profileWeightOf(cust, p.petName);
+    const pre = kgOf(p.weightKg) ?? latestWeightOf(cust, appts, a, p.petName);
     return el('input', { type: 'text', inputmode: 'decimal', value: pre != null ? String(pre) : '', placeholder: 'เช่น 6.2', 'aria-label': `น้ำหนัก ${p.petName || 'น้อง'} (กก.)` });
   });
   const lines = pets.map(() => el('div', { class: 'wi-res' }));
@@ -818,7 +829,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
             }
             // ไซส์ตามน้ำหนักที่ชั่งล่าสุด (ในคิวก่อน หรือในโปรไฟล์น้อง) — แทนไซส์ที่ลูกค้าเคยกะไว้
             if (isNew && !isEx) draft.pets.forEach(pt => {
-              const w = kgOf(pt.weightKg) ?? profileWeightOf(c, pt.petName);
+              const w = latestWeightOf(c, _appts, draft, pt.petName) ?? kgOf(pt.weightKg);
               const sz = w && groomSizeFromWeight(pt.petType || 'dog', w);
               if (sz) { pt.size = sz; pt.weightKg = w; }
             });
@@ -900,7 +911,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
           body.push(sub('ลักษณะขน'), chipGroup((COAT_TYPES[pet.petType] || []).map(x => [x.id, x.label]), pet.coatType, 'ลักษณะขน', v => { pet.coatType = v; rerender(); }));
         }
         // น้ำหนักจริงล่าสุดของน้องตัวนี้ → บอกไซส์ที่ควรเป็น (กดใช้ได้ถ้ายังไม่ตรง)
-        const kg = kgOf(pet.weightKg) ?? profileWeightOf(findCustomer(custs, draft), pet.petName);
+        const kg = kgOf(pet.weightKg) ?? latestWeightOf(findCustomer(custs, draft), _appts, draft, pet.petName);
         const kgSize = kg && groomSizeFromWeight(pet.petType || 'dog', kg);
         if (kgSize) {
           const use = pet.size === kgSize ? null : el('button', { type: 'button', class: 'bf-chip on', text: `ใช้ไซส์ ${kgSize.toUpperCase()}` });
