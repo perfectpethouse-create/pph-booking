@@ -6,7 +6,7 @@ import { listen } from './db.js';
 import { el, getSettings, escapeHtml, staffCan } from './ui.js';
 import { computeBooking, formatDateTH, todayISO, addDaysISO } from './calc.js';
 import { resolvePetInfo, worstVaccine, regStateOf } from './pet-info.js';
-import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel } from './config-shop.js';
+import { groomServiceOf, groomServiceLabel, petCountOf, exerciseZoneLabel, apptUsesCourse } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
 import { mountNewsCard } from './announcements.js';
 import { shortDate, longDate, rangeOf, roomsOf, isCat } from './mobile-kit.js';
@@ -292,7 +292,7 @@ export function renderStaffToday(container) {
     mbody.appendChild(el('div', { class: 'm-list' }, list.map(a => {
       const detail = a.type === 'exercise'
         ? (a.zone ? exerciseZoneLabel(a.zone) : `ระดับ ${a.level || '-'}`)
-        : groomServiceLabel(groomServiceOf(a));
+        : groomServiceLabel(groomServiceOf(a)) + (apptUsesCourse(a) ? ' · ใช้คอร์ส' : '');
       const n = petCountOf(a);
       const cat = a.petType === 'cat';
       return el('div', { class: 'm-row m-qrow' }, [
@@ -323,7 +323,7 @@ export function renderStaffToday(container) {
     list.forEach(a => {
       const detail = a.type === 'exercise'
         ? (a.zone ? exerciseZoneLabel(a.zone) : `ระดับ ${a.level || '-'}`)
-        : groomServiceLabel(groomServiceOf(a));
+        : groomServiceLabel(groomServiceOf(a)) + (apptUsesCourse(a) ? ' · ใช้คอร์ส' : '');
       card.appendChild(el('div', { class: 'lineitem' }, [
         el('div', { class: 'li-head' }, [
           el('div', {}, [

@@ -509,8 +509,28 @@ export function petPrice(pet, type, settings) {
     return exerciseZonePrice(exerciseZoneOf(pet), settings);
   }
   if (!pet.size) return 0;
-  return groomingPrice(pet.petType, pet.size, pet.coatType, groomServiceOf(pet));
+  const svc = groomServiceOf(pet);
+  const cs = petCourses(pet);
+  if (!cs.length) return groomingPrice(pet.petType, pet.size, pet.coatType, svc);
+  // คอร์สจ่ายไว้แล้วใน POS → ส่วนที่คอร์สครอบ = ฿0 · ครอบเต็มไม่สนไซส์/ขน (ซื้อตอนเล็กก็ใช้ได้ตลอด)
+  const owe = kind => !cs.some(c => c.kind === kind);
+  return (svc !== 'cut' && owe('bath') ? groomingPrice(pet.petType, pet.size, pet.coatType, 'bath') : 0)
+    + (svc !== 'bath' && owe('cut') ? groomingPrice(pet.petType, pet.size, pet.coatType, 'cut') : 0);
 }
+
+// ── คอร์ส Grooming (ขาย/นับครั้งใน POS ของร้าน · แอปนี้แค่จองคิวและบอกครั้งที่) ──
+// แยกคอร์สอาบน้ำ / คอร์สตัดขน แบบ 10 หรือ 15 ครั้ง · น้องเก็บ courseBath / courseCut = { total, no }
+export const COURSE_TOTALS = [10, 15];
+// คอร์สที่ใช้จริงตามบริการที่จอง (ค่าค้างจากตอนเปลี่ยนบริการไม่นับ)
+export function petCourses(pet) {
+  const svc = groomServiceOf(pet);
+  return [
+    svc !== 'cut' && pet?.courseBath?.total && { kind: 'bath', label: 'อาบน้ำ', ...pet.courseBath },
+    svc !== 'bath' && pet?.courseCut?.total && { kind: 'cut', label: 'ตัดขน', ...pet.courseCut },
+  ].filter(Boolean);
+}
+export const courseText = c => `คอร์ส${c.label} ครั้งที่ ${c.no || '?'}/${c.total}`;
+export const apptUsesCourse = a => a?.type === 'grooming' && petsOf(a).some(p => petCourses(p).length);
 // เวลาที่ต้องกันไว้ต่อน้อง 1 ตัว
 export function petDuration(pet, type) {
   if (type === 'exercise') return EXERCISE_DURATION_MIN;

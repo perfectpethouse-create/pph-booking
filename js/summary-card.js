@@ -6,7 +6,7 @@ import { save } from './db.js';
 import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import {
   PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, exerciseZoneLabel, GROOMING_SIZES, COAT_TYPES,
-  groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice,
+  groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice, petCourses, courseText,
   addonIsSet, addonHasBath, exerciseAddOnPrice, exerciseGroomTime,
   DAYCARE_SIZES, DAYCARE_PRICES, DAYCARE_FIRST3H, DAYCARE_EXTRA_HOUR, DAYCARE_AFTER_20, LATE_CHECKOUT_GRACE_MIN,
 } from './config-shop.js';
@@ -227,7 +227,7 @@ function describePet(pet, type) {
   const coat = service === 'cut' ? '' : ((coats.find(x => x.id === pet.coatType) || {}).label || '');
   return {
     title: groomServiceLabel(service),
-    detail: [petLabel(pet.petType), size, coat].filter(Boolean).join(' · '),
+    detail: [petLabel(pet.petType), size, coat, ...petCourses(pet).map(courseText)].filter(Boolean).join(' · '),
   };
 }
 // บรรยายบริการเสริม (add-on อาบน้ำ/ตัดขน) ของน้องออกกำลังกาย 1 ตัว — คืน null ถ้าไม่มี

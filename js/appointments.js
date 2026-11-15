@@ -22,6 +22,7 @@ import {
   EXERCISE_ADDON_NONE, EXERCISE_ADDON_OPTIONS, addonIsSet, addonHasBath,
   exerciseGroomTime, addonGroomIssue,
   exerciseAddOnPrice, addonGroomPet,
+  COURSE_TOTALS, apptUsesCourse,
 } from './config-shop.js';
 import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
@@ -109,6 +110,11 @@ function findCustomer(custs, a) {
   const p = phone9(a.phone);
   return custs.find(c => p.length === 9 && phone9(c.phone) === p) || custs.find(c => a.customerName && c.name === a.customerName) || null;
 }
+// คิวนี้เป็นของลูกค้ารายนี้ไหม (เบอร์ 9 หลักท้าย หรือชื่อลูกค้าตรง)
+const sameCust = (a, who) => {
+  const p = phone9(who.phone);
+  return (p.length === 9 && phone9(a.phone) === p) || (!!who.customerName && a.customerName === who.customerName);
+};
 // น้ำหนักที่ชั่งล่าสุดของน้องชื่อนี้ — เทียบโปรไฟล์ (weightAt) กับคิวเก่าที่ชั่งแล้ว ใช้ค่าที่ใหม่กว่า
 // ลูกค้าที่ยังไม่มีโปรไฟล์ก็ได้น้ำหนักจากคิวเก่า · ใช้เติมช่องชั่ง และเติมไซส์ตอนจองครั้งถัดไป
 function latestWeightOf(cust, appts, who, petName) {
@@ -116,10 +122,8 @@ function latestWeightOf(cust, appts, who, petName) {
   if (!n) return null;
   const pp = (cust?.pets || []).find(x => normName(x.name) === n);
   let best = pp && kgOf(pp.weight) ? { kg: kgOf(pp.weight), at: pp.weightAt || '' } : null;
-  const p = phone9(who.phone);
   (appts || []).forEach(a => {
-    if (a.status === 'ยกเลิก') return;
-    if (!((p.length === 9 && phone9(a.phone) === p) || (who.customerName && a.customerName === who.customerName))) return;
+    if (a.status === 'ยกเลิก' || !sameCust(a, who)) return;
     const pt = petsOf(a).find(x => normName(x.petName) === n && kgOf(x.weightKg));
     if (pt && (!best || String(a.date) > best.at)) best = { kg: kgOf(pt.weightKg), at: String(a.date) };
   });
@@ -130,15 +134,28 @@ function latestWeightOf(cust, appts, who, petName) {
 function latestCoatOf(appts, who, petName) {
   const n = normName(petName);
   if (!n) return null;
-  const p = phone9(who.phone);
   let best = null;
   (appts || []).forEach(a => {
-    if (a.type !== 'grooming' || a.status === 'ยกเลิก') return;
-    if (!((p.length === 9 && phone9(a.phone) === p) || (who.customerName && a.customerName === who.customerName))) return;
+    if (a.type !== 'grooming' || a.status === 'ยกเลิก' || !sameCust(a, who)) return;
     const pt = petsOf(a).find(x => normName(x.petName) === n && x.coatType && groomServiceOf(x) !== 'cut');
     if (pt && (!best || String(a.date) > best.at)) best = { petType: pt.petType || 'dog', coatType: pt.coatType, at: String(a.date) };
   });
   return best;
+}
+// ครั้งที่ถัดไปของคอร์สนี้ = ครั้งที่ของคิวคอร์สล่าสุด (รวมคิวที่จองล่วงหน้า) + 1
+//   ไม่นับคิวยกเลิก/ไม่มา · ใช้คิวล่าสุดตามวัน ไม่ใช่เลขสูงสุด → ซื้อคอร์สใหม่แล้วเริ่ม 1 ได้
+//   คืน total + 1 = คอร์สนี้ครบแล้ว · ตัวเลขเป็นแค่ข้อเสนอ พนักงานเช็กกับ POS เสมอ
+function nextCourseNo(appts, who, petName, key, total) {
+  const n = normName(petName);
+  let best = null;
+  (appts || []).forEach(a => {
+    if (a.type !== 'grooming' || a.status === 'ยกเลิก' || a.status === 'ไม่มา' || !sameCust(a, who)) return;
+    const c = petsOf(a).find(x => normName(x.petName) === n && x[key]?.total === total)?.[key];
+    if (!c) return;
+    const at = String(a.date) + String(a.time || '');
+    if (!best || at > best.at || (at === best.at && (c.no || 0) > best.no)) best = { at, no: c.no || 0 };
+  });
+  return n && best ? best.no + 1 : 1;
 }
 async function saveProfileWeights(a, pets) {
   const custs = await getAll('customers');
@@ -265,6 +282,7 @@ function pendingStatusCard(type) {
   ].filter(Boolean));
 }
 
+const COURSE_KEYS = [['courseBath', 'อาบน้ำ'], ['courseCut', 'ตัดขน']];
 // น้องเปล่า 1 ตัวตามประเภทโซน — ใช้ตอนเริ่มการ์ดใหม่/กด "เพิ่มน้อง"
 function blankPet(type) {
   return type === 'exercise'
@@ -643,6 +661,7 @@ function buildSlotBoard(type, date) {
           // โซนออกกำลังกายที่มี add-on → มีคิวกรูมผูกอยู่ · คิวกรูมที่มาจากการเล่น → บอกที่มา
           (a.type === 'exercise' && Number(a.addOnTotal) > 0) ? '+ กรูม' : null,
           (a.type === 'grooming' && a.source === 'exercise-addon') ? 'เสริมจากเล่น' : null,
+          apptUsesCourse(a) ? 'คอร์ส' : null,
         ].filter(Boolean);
         const chip = el('button', {
           class: 'd-appt' + (a.status === 'เสร็จแล้ว' || a.status === 'มาแล้ว' ? ' done' : a.status === 'ไม่มา' ? ' noshow' : ''),
@@ -848,6 +867,17 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
               const sz = w && groomSizeFromWeight(pt.petType || 'dog', w);
               if (sz) { pt.size = sz; pt.weightKg = w; }
             });
+            // คอร์สครั้งก่อน → เติมครั้งที่ถัดไป · ครบแล้วเอาออก ให้พนักงานเลือกคอร์สใหม่หลังต่อใน POS
+            if (isNew && !isEx) {
+              const done = [];
+              draft.pets.forEach(pt => COURSE_KEYS.forEach(([k, label]) => {
+                if (!pt[k]?.total) return;
+                const no = nextCourseNo(_appts, draft, pt.petName, k, pt[k].total);
+                if (no > pt[k].total) { delete pt[k]; done.push(`${pt.petName || 'น้อง'} คอร์ส${label}`); }
+                else pt[k] = { total: pt[k].total, no };
+              }));
+              if (done.length) toast(`คอร์สครบแล้ว: ${done.join(', ')} · ถ้าต่อคอร์สแล้ว เลือกคอร์สใหม่ได้เลย`);
+            }
             // รอบที่เลือกไว้อาจใช้ไม่ได้กับบริการครั้งก่อน (เช่นมีตัดขน แต่เลือกรอบ 19:00)
             if (draft.time && !slotsFor(draft.type, cardService(draft)).includes(draft.time)) draft.time = '';
             usedPrev = true;
@@ -934,6 +964,22 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
         if (pet.groomService !== 'cut') {
           body.push(sub('ลักษณะขน'), chipGroup((COAT_TYPES[pet.petType] || []).map(x => [x.id, x.label]), pet.coatType, 'ลักษณะขน', v => { pet.coatType = v; rerender(); }));
         }
+        // คอร์ส (ซื้อ/นับใน POS) — ส่วนที่ใช้คอร์สคิด ฿0 · ครั้งที่ไว้บอกลูกค้าบนการ์ด
+        const svc = pet.groomService || 'bath';
+        COURSE_KEYS.forEach(([k, label]) => {
+          if ((k === 'courseBath' && svc === 'cut') || (k === 'courseCut' && svc === 'bath')) return;
+          const c = pet[k];
+          body.push(sub(`คอร์ส${label}`), chipGroup([['', 'ไม่ใช้'], ...COURSE_TOTALS.map(t => [String(t), `${t} ครั้ง`])], c?.total ? String(c.total) : '', `คอร์ส${label}`, v => {
+            if (!v) delete pet[k];
+            else { const total = Number(v); const no = nextCourseNo(_appts, draft, pet.petName, k, total); pet[k] = { total, no: no > total ? 1 : no }; }
+            rerender();
+          }));
+          if (c?.total) {
+            const noI = el('input', { type: 'text', inputmode: 'numeric', value: c.no ? String(c.no) : '', placeholder: 'ครั้งที่', 'aria-label': `คอร์ส${label} ครั้งที่`, style: 'width:72px' });
+            noI.oninput = () => { const n = parseInt(noI.value, 10); c.no = n > 0 ? Math.min(n, c.total) : null; refreshSide(); };
+            body.push(el('label', { class: 'ap-note' }, [el('span', { text: 'ครั้งที่' }), noI, el('span', { text: `/ ${c.total} · เช็กกับ POS` })]));
+          }
+        });
         // น้ำหนักจริงล่าสุดของน้องตัวนี้ → บอกไซส์ที่ควรเป็น (กดใช้ได้ถ้ายังไม่ตรง)
         const kg = kgOf(pet.weightKg) ?? latestWeightOf(findCustomer(custs, draft), _appts, draft, pet.petName);
         const kgSize = kg && groomSizeFromWeight(pet.petType || 'dog', kg);
