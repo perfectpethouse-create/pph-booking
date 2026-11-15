@@ -22,7 +22,7 @@ import {
   EXERCISE_ADDON_NONE, EXERCISE_ADDON_OPTIONS, addonIsSet, addonHasBath,
   exerciseGroomTime, addonGroomIssue,
   exerciseAddOnPrice, addonGroomPet,
-  COURSE_TOTALS, apptUsesCourse,
+  COURSE_TOTALS, apptUsesCourse, petCourses, courseText,
 } from './config-shop.js';
 import {
   buildAppointmentCard, buildAppointmentText, downloadCardPNG, shareCard, copyText,
@@ -1026,7 +1026,7 @@ export function openAppointmentForm(existing, dateHint = todayISO(), prefill = {
           lines.push([`${nm} · ${splitParen(EXERCISE_ZONES.find(z => z.id === (p.zone || 'field'))?.label || '')[0]}`, petPrice(p, 'exercise', s)]);
           if (addonIsSet(p.addOn)) lines.push([`${SERVICE_SHORT[p.addOn]} ${(p.gSize || '').toUpperCase()}${draft.time ? ` · ${exerciseGroomTime(draft.time)} น.` : ''}`, exerciseAddOnPrice(p)]);
         } else {
-          lines.push([`${nm} · ${SERVICE_SHORT[p.groomService || 'bath']}${p.size ? ' ' + p.size.toUpperCase() : ''}`, petPrice(p, 'grooming', s)]);
+          lines.push([[`${nm} · ${SERVICE_SHORT[p.groomService || 'bath']}${p.size ? ' ' + p.size.toUpperCase() : ''}`, ...petCourses(p).map(courseText)].join(' · '), petPrice(p, 'grooming', s)]);
         }
       });
       let capPill = null;
