@@ -205,10 +205,14 @@ export async function saveSettings(obj) {
   }
 }
 
-export function listenSettings(cb) {
+export function listenSettings(cb, onError) {
   if (MODE === 'firestore') {
     const { doc, onSnapshot } = fb.fsMod;
-    return onSnapshot(doc(fb.store, 'settings', 'app'), async () => cb(await getSettings()));
+    return onSnapshot(doc(fb.store, 'settings', 'app'), (snap) => {
+      // ต่อเน็ตไม่ติด: snapshot แคชว่าง ≠ "ไม่มีเอกสาร" · ถ้าใช้ค่าเริ่มต้น พี่เลี้ยงจะกลายเป็นเจ้าของ → รอของจริง
+      if (snap.metadata.fromCache && !snap.exists()) return;
+      cb({ ...defaultSettings(), ...(snap.exists() ? snap.data() : {}) });
+    }, onError);
   }
   listeners.settings = listeners.settings || new Set();
   const wrapped = async () => cb(await getSettings());

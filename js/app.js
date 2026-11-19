@@ -115,6 +115,15 @@ function showApp(user) {
   // "รอ settings รอบแรกก่อน" ค่อยเปิดหน้าแรก ไม่งั้นพี่เลี้ยงจะเห็น
   // แดชบอร์ดเจ้าของ (มียอดเงิน) แวบหนึ่งก่อนถูกเด้งออก
   let firstNavPending = !getSettings();
+  // โหลด settings ไม่ได้ = ค้าง "กำลังโหลด…" เงียบๆ ตลอด (เคยเกิดบน iPhone) → บอกสาเหตุ + ให้กดโหลดใหม่เอง
+  const loadFailed = (err) => {
+    if (!firstNavPending) return;
+    if (err) console.error(err);
+    contentEl.innerHTML = '<div class="muted" style="padding:30px;text-align:center">'
+      + '<p>โหลดข้อมูลร้านไม่สำเร็จ · เช็กอินเทอร์เน็ตแล้วลองใหม่</p>'
+      + `<p style="font-size:12px">${err ? escapeHtml(err.code || err.message || String(err)) : 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ใน 15 วินาที'}</p>`
+      + '<button class="btn" onclick="location.reload()">โหลดใหม่</button></div>';
+  };
   if (!settingsUnsub) settingsUnsub = listenSettings((s) => {
     setSettingsCache(s);
     applyRoleUI();
@@ -123,7 +132,8 @@ function showApp(user) {
       navigate(location.hash.replace('#', '') || defaultRoute());
       initNewsPopup(); // เด้งข่าวปักหมุด (ถ้ามี) หลังหน้าแรกพร้อม — กันเด้งทับจอโหลด
     }
-  });
+  }, loadFailed);
+  setTimeout(() => loadFailed(), 15000);
 
   if (!firstNavPending) {
     applyRoleUI();
