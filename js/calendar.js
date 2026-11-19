@@ -297,22 +297,31 @@ function buildMobileCalendar(getBookings, reg) {
     const days = new Date(y, mth + 1, 0).getDate();
     for (let d = 1; d <= days; d++) {
       const iso = isoOf(y, mth, d);
-      const free = freeOf(iso);
-      // เกณฑ์สี: เต็ม = ไม่เหลือ · ใกล้เต็ม = เหลือไม่ถึง 1 ใน 4 ของความจุ
-      const level = !totalCap ? 'lo' : free <= 0 ? 'full' : free <= totalCap / 4 ? 'mid' : 'lo';
+      // แบบเดียวกับปฏิทินบนคอม: ห้องที่จอง/ความจุ + ชิปสุนัข/แมว → เห็นปราดเดียวว่าวันไหนใครมาพัก
+      const perPet = { dog: 0, cat: 0 };
+      Object.entries(occ[iso] || {}).forEach(([k, n]) => {
+        const p = k.split('|')[1];
+        if (!pet || p === pet) perPet[p] = (perPet[p] || 0) + n;
+      });
+      const used = perPet.dog + perPet.cat;
+      // เกณฑ์สีเดียวกับคอม: ว่างเยอะ < 70% ≤ เริ่มเต็ม < 100% ≤ เต็ม/เกิน
+      const level = !used ? 'free' : totalCap && used >= totalCap ? 'full' : used >= totalCap * 0.7 ? 'mid' : 'lo';
+      const petRow = el('div', { class: 'm-cc-pets' });
+      if (perPet.dog) petRow.appendChild(el('i', { class: 'pet-dog', html: `${icons.dog}${perPet.dog}` }));
+      if (perPet.cat) petRow.appendChild(el('i', { class: 'pet-cat', html: `${icons.cat}${perPet.cat}` }));
       const cell = el('button', {
         class: `m-cc ${level}` + (iso < today ? ' past' : '') + (iso === selected ? ' sel' : '') + (iso === today ? ' today' : ''),
-        'aria-label': `${d} ${MONTHS[mth]} ${free <= 0 ? 'เต็ม' : 'ว่าง ' + free + ' ห้อง'}`,
-      }, [el('span', { text: String(d) }), el('small', { text: free <= 0 ? (free < 0 ? `เกิน ${-free}` : 'เต็ม') : `ว่าง ${free}` })]);
+        'aria-label': `${d} ${MONTHS[mth]} ` + (used ? `จอง ${used} จาก ${totalCap} ห้อง · สุนัข ${perPet.dog} · แมว ${perPet.cat}` : 'ว่าง'),
+      }, [el('span', { text: String(d) }), el('small', { text: used ? `${used}/${totalCap}` : 'ว่าง' }), petRow]);
       cell.onclick = () => { selected = iso; draw(); };
       grid.appendChild(cell);
     }
     node.appendChild(el('div', { class: 'm-calcard' }, [
       grid,
       el('div', { class: 'm-legend' }, [
-        el('span', {}, [el('i', { class: 'lo' }), 'ว่างมาก']),
-        el('span', {}, [el('i', { class: 'mid' }), 'ใกล้เต็ม']),
-        el('span', {}, [el('i', { class: 'full' }), 'เต็ม']),
+        el('span', {}, [el('i', { class: 'lo' }), 'ว่างเยอะ']),
+        el('span', {}, [el('i', { class: 'mid' }), 'เริ่มเต็ม']),
+        el('span', {}, [el('i', { class: 'full' }), 'เต็ม/เกิน']),
       ]),
     ]));
 

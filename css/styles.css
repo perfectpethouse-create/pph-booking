@@ -1518,12 +1518,18 @@ body.modal-open { overflow: hidden; }
   .m-cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
   .m-cal-wd { font-size: 11px; font-weight: 600; color: var(--muted); text-align: center; padding-bottom: 4px; }
   .m-cc {
-    aspect-ratio: 1 / 1.12; min-width: 0; border: none; border-radius: 12px; cursor: pointer; padding: 0;
+    min-height: 62px; min-width: 0; border: none; border-radius: 12px; cursor: pointer; padding: 5px 0;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
     font-family: inherit; font-size: 14px; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums;
     -webkit-tap-highlight-color: transparent;
   }
   .m-cc small { font-size: 9.5px; font-weight: 600; line-height: 1; white-space: nowrap; }
+  .m-cc.free { background: var(--card); box-shadow: inset 0 0 0 1px var(--hairline-soft); } .m-cc.free small { color: var(--muted); font-weight: 500; }
+  .m-cc-pets { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: 2px; }
+  .m-cc-pets i { display: inline-flex; align-items: center; gap: 1px; padding: 1px 4px; border-radius: 980px; font-style: normal; font-size: 9.5px; font-weight: 700; line-height: 1.1; }
+  .m-cc-pets svg { width: 9px; height: 9px; }
+  .m-cc-pets .pet-dog { background: rgba(0, 122, 255, 0.12); color: #0A63C9; }
+  .m-cc-pets .pet-cat { background: rgba(175, 82, 222, 0.12); color: #8A38B8; }
   .m-cc.lo { background: var(--green-tint); } .m-cc.lo small { color: #1E7A37; }
   .m-cc.mid { background: var(--orange-tint); } .m-cc.mid small { color: #A15C00; }
   .m-cc.full { background: var(--red-tint); } .m-cc.full small { color: #C0281C; }
@@ -1531,6 +1537,7 @@ body.modal-open { overflow: hidden; }
   .m-cc.today { box-shadow: inset 0 0 0 2px var(--accent); }
   .m-cc.sel { background: var(--ink); color: #fff; box-shadow: none; opacity: 1; }
   .m-cc.sel small { color: rgba(255, 255, 255, 0.78); }
+  .m-cc.sel .m-cc-pets i { background: rgba(255, 255, 255, 0.18); color: #fff; }
   .m-legend { display: flex; justify-content: center; gap: 14px; margin-top: 12px; font-size: 12px; color: var(--muted); }
   .m-legend span { display: flex; align-items: center; gap: 5px; }
   .m-legend i { width: 11px; height: 11px; border-radius: 3px; }
