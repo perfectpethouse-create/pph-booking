@@ -116,6 +116,7 @@ function stayBucket(f, today) {
 }
 // กลุ่มเรียงตามความสำคัญต่อการปฏิบัติงาน (บนลงล่าง)
 const REG_GROUPS = [
+  { key: 'overdue', label: 'เลยกำหนดออก · ยังไม่กดเช็คเอาท์', icon: 'logout' },
   { key: 'today', label: 'วันนี้', icon: 'calendar' },
   { key: 'staying', label: 'กำลังพักอยู่', icon: 'home' },
   { key: 'upcoming', label: 'รอเข้าพัก', icon: 'login' },
@@ -155,7 +156,11 @@ function effectiveBucket(f, today) {
   const s = getStay(f);
   if (s === 'cancelled') return 'cancelled';
   if (s === 'checkedout') return 'past';
-  if (s === 'checkedin') return f.checkOut === today ? 'today' : 'staying';
+  if (s === 'checkedin') {
+    if (f.checkOut === today) return 'today';
+    // เลยวันออกแต่ยังไม่มีใครกดเช็คเอาท์ → แยกกลุ่มให้เห็น ไม่ปนกับ "กำลังพัก"
+    return f.checkOut && f.checkOut < today ? 'overdue' : 'staying';
+  }
   return stayBucket(f, today);
 }
 // ── จับคู่ใบเช็คอิน ↔ ใบจอง (bookings) ด้วย เบอร์โทร + วันเข้าพัก ──
@@ -339,6 +344,8 @@ export function renderRegistrations(container) {
       ['all', 'ทั้งหมด'], ['today', 'วันนี้'], ['staying', 'กำลังพัก'],
       ['upcoming', 'รอเข้าพัก'], ['past', 'เช็คเอาท์แล้ว'], ['cancelled', 'ยกเลิก'],
     ];
+    const overdueN = _forms.filter(f => effectiveBucket(f, todayISO()) === 'overdue').length;
+    if (overdueN) tabs.splice(1, 0, ['overdue', `เลยกำหนดออก (${overdueN})`]);
     segWrap.appendChild(el('div', { class: 'seg', style: 'flex-wrap:wrap' }, tabs.map(([k, lb]) => {
       const b = el('button', { class: 'seg-btn' + (filter === k ? ' active' : ''), text: lb });
       b.onclick = () => { filter = k; drawSeg(); drawList(); };
@@ -355,6 +362,8 @@ export function renderRegistrations(container) {
     if (stay === 'waiting') {
       const hint = stayHint(f, today, bucket);
       if (hint) topPill = { text: hint.text, cls: hint.cls };
+    } else if (bucket === 'overdue') {
+      topPill = { text: `เลยวันออก ${regDayDiff(f.checkOut, today)} วัน`, cls: 'red' };
     } else {
       topPill = { text: STAY_META[stay].label, cls: STAY_META[stay].pill };
     }
