@@ -2,7 +2,7 @@
 // registrations.js — กล่องรับ "ใบลงทะเบียนเข้าพัก" จาก perfectbkk.com/checkin.html
 // ลูกค้ากรอกเองก่อนมาถึง → พนักงานเปิดดูรายละเอียด + กดนำเข้าเป็นลูกค้า/สัตว์เลี้ยง
 // ═══════════════════════════════════════════════════════════════
-import { listen, save, remove } from './db.js';
+import { listen, save, remove, getOne } from './db.js';
 import { el, toast, openModal, confirmDialog, escapeHtml, getSettings } from './ui.js';
 import { formatDateTH, todayISO, computeBooking, formatBaht, addDaysISO } from './calc.js';
 import { icons, brandLogo } from './icons.js';
@@ -506,9 +506,11 @@ function openDetail(f) {
     wrap.appendChild(box);
   });
 
-  // เอกสาร & ลายเซ็นที่ลูกค้าแนบมาจากลิงก์ (checkin.html)
-  const docs = onlineDocsBox(f);
-  if (docs) wrap.appendChild(docs);
+  // เอกสาร & ลายเซ็นที่ลูกค้าแนบมาจากลิงก์ (checkin.html) — รูปเก็บแยก โหลดตอนเปิดใบ
+  const docsSlot = el('div', {});
+  wrap.appendChild(docsSlot);
+  withPhotos(f).then(fp => { const docs = onlineDocsBox(fp); if (docs) docsSlot.replaceWith(docs); })
+    .catch(e => { console.error(e); docsSlot.textContent = 'โหลดรูปไม่สำเร็จ'; });
 
   if (d.consent?.agreed) {
     wrap.appendChild(el('p', { class: 'muted', style: 'font-size:12px', text: `ยอมรับเงื่อนไขแล้ว · ลงชื่อ: ${d.consent.signName || '-'} · ส่งเมื่อ ${d.submittedAt || '-'}` }));
@@ -536,7 +538,7 @@ function openDetail(f) {
     toast('เลือกปลายทาง "บันทึกเป็น PDF" ในหน้าต่างที่เปิดขึ้น');
     printRegistration(f);
   };
-  signBtn.onclick = () => { m.close(); openSignPad(f, d); };
+  signBtn.onclick = async () => { m.close(); openSignPad(await withPhotos(f), d); };
   importBtn.onclick = async () => {
     await importToCustomer(f, d);
     m.close();
@@ -577,22 +579,56 @@ function onlineDocsBox(f) {
 // ลบเฉพาะรูปบัตรของใบที่เช็คเอาท์เกิน 90 วัน (PDPA) — ลายเซ็น/รูปน้อง/ข้อมูลเก็บเป็นประวัติ
 // ทำงานเบื้องหลังเมื่อมีคนเปิดแอป (แบบเดียวกับการเก็บกวาด roomHolds ใน public-availability.js)
 export const ID_PHOTO_KEEP_DAYS = 90;
+const hasIdPhoto = (f) => !!(f.idPhoto || f.photoKeys?.includes('idPhoto'));
 export function idPhotoExpired(f, today = todayISO()) {
   const out = f.checkOut || parseRaw(f).stay?.checkout || '';
-  return !!(f.idPhoto && out && addDaysISO(out, ID_PHOTO_KEEP_DAYS) < today);
+  return !!(hasIdPhoto(f) && out && addDaysISO(out, ID_PHOTO_KEEP_DAYS) < today);
 }
+
+// ── รูป/ลายเซ็นเก็บแยกที่ checkinPhotos/{id เดียวกับใบ} ──
+// ใบเช็คอินถูกโหลดทั้งหมดทุกครั้งที่ล็อกอิน · รูปฝังในใบ = หลาย MB → มือถือช้า/ค้าง
+// ฟอร์มบนเว็บยังส่งรูปมากับใบ → แอปย้ายออกให้เอง · ใบเก็บแค่ photoKeys (มีรูปอะไรบ้าง)
+const PHOTO_FIELDS = ['petPhotos', 'idPhoto', 'signOwner', 'signStaff', 'intakePhoto'];
+const filled = (v) => Array.isArray(v) ? v.some(Boolean) : !!v;
+export const hasInlinePhotos = (f) => PHOTO_FIELDS.some(k => filled(f[k]));
+// ใบ + รูป (สำหรับหน้ารายละเอียด/พิมพ์/เซ็น) — ไม่แก้ f เดิม กันรูปถูกเซฟกลับเข้าใบ
+export async function withPhotos(f) {
+  if (!f.photoKeys?.length) return f;
+  const p = await getOne('checkinPhotos', f.id);
+  return { ...f, ...(p || {}), id: f.id };
+}
+// เขียนรูปลงที่ใหม่ให้สำเร็จก่อน แล้วค่อยล้างออกจากใบ → ไม่มีรูปหายแม้หลุดกลางทาง
+export async function storePhotos(f, photos) {
+  const keys = PHOTO_FIELDS.filter(k => filled(photos[k]));
+  if (!keys.length) return;
+  await save('checkinPhotos', { id: f.id, ...Object.fromEntries(keys.map(k => [k, photos[k]])) });
+  const photoKeys = [...new Set([...(f.photoKeys || []), ...keys])];
+  await save('checkinForms', { id: f.id, photoKeys, ...Object.fromEntries(keys.map(k => [k, null])) });
+}
+const _moving = new Set();
 let _cleanupStarted = false;
 export function startIdPhotoCleanup() {
   if (_cleanupStarted) return;
   _cleanupStarted = true;
-  listen('checkinForms', arr => {
-    arr.filter(f => idPhotoExpired(f)).forEach(f =>
-      save('checkinForms', { id: f.id, idPhoto: '', idPhotoPurgedAt: Date.now() }).catch(e => console.warn('ลบรูปบัตรไม่สำเร็จ', e)));
+  listen('checkinForms', async arr => {
+    for (const f of arr.filter(f => hasInlinePhotos(f) && !_moving.has(f.id))) {
+      _moving.add(f.id);
+      try { await storePhotos(f, f); } catch (e) { console.warn('ย้ายรูปออกจากใบไม่สำเร็จ', f.id, e); }
+      finally { _moving.delete(f.id); }
+    }
+    // ลบรูปบัตรที่ครบ 90 วัน (เฉพาะใบที่ย้ายรูปแล้ว — ใบที่ยังไม่ย้ายรอรอบหน้า)
+    for (const f of arr.filter(f => !hasInlinePhotos(f) && idPhotoExpired(f))) {
+      try {
+        await save('checkinPhotos', { id: f.id, idPhoto: null });
+        await save('checkinForms', { id: f.id, photoKeys: f.photoKeys.filter(k => k !== 'idPhoto'), idPhotoPurgedAt: Date.now() });
+      } catch (e) { console.warn('ลบรูปบัตรไม่สำเร็จ', e); }
+    }
   }, { orderBy: null });
 }
 
 // พิมพ์ใบยืนยันเข้าพัก (ให้ลูกค้าเซ็นรับทราบ) — ใช้ทั้งในหน้ารายละเอียดและปุ่มลัดหน้างานวันนี้
-export function printRegistration(f) {
+export async function printRegistration(form) {
+  const f = await withPhotos(form);
   const opts = { signOwner: f.signOwner, signStaff: f.signStaff, intakePhoto: f.intakePhoto, signedAt: f.signedAt };
   printSheet(buildRegSheet(f, parseRaw(f), opts), { filename: `ใบยืนยันเข้าพัก-${bookingRef(f)}` });
 }
@@ -862,9 +898,11 @@ function openSignPad(f, d) {
     const signStaff = staffPad.dataURL() || f.signStaff || null;
     if (!signOwner && !signStaff && !photoData) { toast('กรุณาเซ็นอย่างน้อย 1 ฝ่าย หรือแนบรูป'); return; }
     const opts = { signOwner, signStaff, intakePhoto: photoData, signedAt: Date.now() };
-    Object.assign(f, opts);
     saveBtn.disabled = true;
-    await save('checkinForms', { ...f });
+    // f ตรงนี้คือสำเนาที่รวมรูปแล้ว (withPhotos) → เซฟเฉพาะฟิลด์ใบ รูปไปที่ checkinPhotos
+    await storePhotos(f, opts);
+    await save('checkinForms', { id: f.id, signedAt: opts.signedAt });
+    Object.assign(f, opts);
     m.close();
     toast('บันทึกลายเซ็นแล้ว');
     printSheet(buildRegSheet(f, d, opts), { filename: `ใบยืนยันเข้าพัก-${bookingRef(f)}` });

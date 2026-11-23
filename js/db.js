@@ -35,6 +35,7 @@ const LS = {
   bookings: 'pph_bookings',
   customers: 'pph_customers',
   checkinForms: 'pph_checkin_forms', // ใบลงทะเบียนจากเว็บ perfectbkk.com/checkin.html
+  checkinPhotos: 'pph_checkin_photos', // รูป/ลายเซ็นของใบลงทะเบียน (id เดียวกับใบ) แยกไว้ไม่ให้ใบหนัก
   bookingRequests: 'pph_booking_requests',
   roomHolds: 'pph_room_holds', // การกันห้องชั่วคราว 2 ชม. จากหน้าจองออนไลน์ // คำขอจองจากฟอร์มจองบนเว็บ (index/app/exercise-zone)
   appointments: 'pph_appointments', // นัดหมายรายรอบ: Grooming / โซนออกกำลังกาย
@@ -145,6 +146,16 @@ export async function getAll(col) {
     return snap.docs.map(d => ({ id: d.id, ...d.data() }));
   }
   return mockRead(col);
+}
+
+// อ่านเอกสารเดียว (ไม่มี = null)
+export async function getOne(col, id) {
+  if (MODE === 'firestore') {
+    const { doc, getDoc } = fb.fsMod;
+    const snap = await getDoc(doc(fb.store, col, id));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  }
+  return mockRead(col).find(x => x.id === id) || null;
 }
 
 // สร้าง/แก้ไข เอกสาร (ถ้ามี obj.id = แก้ไข ไม่มี = สร้างใหม่)
@@ -278,11 +289,11 @@ export async function savePublicStats(memberCount) {
 //    (ยกเว้น roomHolds / publicAvailability — เป็นข้อมูลชั่วคราว/คำนวณใหม่ได้ ไม่ต้องสำรอง)
 //    ไม่งั้นเจ้าของร้านสำรองแล้วกู้คืน ข้อมูลชุดนั้นจะหายเงียบๆ โดยไม่มีคำเตือน
 export async function exportAll() {
-  const [bookings, customers, checkinForms, bookingRequests, appointments, announcements, announcementReads, settings] = await Promise.all([
-    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getAll('bookingRequests'),
+  const [bookings, customers, checkinForms, checkinPhotos, bookingRequests, appointments, announcements, announcementReads, settings] = await Promise.all([
+    getAll('bookings'), getAll('customers'), getAll('checkinForms'), getAll('checkinPhotos'), getAll('bookingRequests'),
     getAll('appointments'), getAll('announcements'), getAll('announcementReads'), getSettings(),
   ]);
-  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, bookingRequests, appointments, announcements, announcementReads, settings };
+  return { exportedAt: new Date().toISOString(), bookings, customers, checkinForms, checkinPhotos, bookingRequests, appointments, announcements, announcementReads, settings };
 }
 
 export async function importAll(data) {
@@ -290,6 +301,7 @@ export async function importAll(data) {
   for (const b of (data.bookings || [])) await save('bookings', b);
   for (const c of (data.customers || [])) await save('customers', c);
   for (const f of (data.checkinForms || [])) await save('checkinForms', f);
+  for (const f of (data.checkinPhotos || [])) await save('checkinPhotos', f);
   for (const r of (data.bookingRequests || [])) await save('bookingRequests', r);
   // ไฟล์สำรองเก่า (ก่อนมีระบบนัดหมาย) จะไม่มีคีย์นี้ — ข้ามไปเฉยๆ ไม่ใช่ error
   for (const a of (data.appointments || [])) await save('appointments', a);
