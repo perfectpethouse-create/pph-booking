@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { el, toast, getSettings, currentUser } from './ui.js';
 import { save } from './db.js';
-import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween } from './calc.js';
+import { computeBooking, computeAddOn, addOnPriceText, formatBaht, formatDateTH, nightsBetween } from './calc.js';
 import {
   PET_TYPES, EXERCISE_SIZES, EXERCISE_LEVELS, exerciseZoneLabel, GROOMING_SIZES, COAT_TYPES,
   groomServiceOf, groomServiceLabel, petsOf, petCountOf, petPrice, petCourses, courseText,
@@ -57,7 +57,7 @@ export function buildCustomerCard(bookingRaw) {
     b.addOns.forEach(a => {
       const c = computeAddOn(a);
       const label = c.qty > 1 ? `${a.name} ×${c.qty}` : a.name;
-      push('บริการเสริม', c.total > 0 ? `${label} ${formatBaht(c.total)}` : `${label} — ฟรี`);
+      push('บริการเสริม', `${label} ${c.total > 0 ? '' : '— '}${addOnPriceText(a)}`);
     });
   } else {
     push('Add on', 'ไม่มี');
@@ -119,7 +119,7 @@ export function buildSummaryText(bookingRaw) {
   (b.addOns || []).forEach(a => {
     const c = computeAddOn(a);
     const label = c.qty > 1 ? `${a.name} ×${c.qty}` : a.name;
-    L.push(`บริการเสริม: ${label} ${c.total > 0 ? formatBaht(c.total) : '— ฟรี'}`);
+    L.push(`บริการเสริม: ${label} ${c.total > 0 ? '' : '— '}${addOnPriceText(a)}`);
   });
   if (b.totalDiscount > 0) {
     L.push(`ยอดเต็ม (ก่อนส่วนลด): ${formatBaht(b.grossTotal)}`);

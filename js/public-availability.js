@@ -83,7 +83,8 @@ export function buildAvailability(bookings, s, today = todayISO(), groomUsed = {
     holdHours: ONLINE_HOLD_HOURS,
     addOns: [
       ...FIXED_ADDONS.map(a => ({ name: a.name, unitPrice: a.unitPrice, unit: a.unit })),
-      ...(s?.addOnServices || []).filter(a => !/late check-out/i.test(a.name))
+      // อาบน้ำ/ตัดขน และ Day Care มีช่องเฉพาะบนหน้าจองแล้ว (คิดตามน้ำหนัก/ไซส์) → ไม่ส่งรายการราคาเดียวจากหน้าตั้งค่าไปซ้ำ
+      ...(s?.addOnServices || []).filter(a => !/late check-out|อาบน้ำ|ตัดขน|grooming|day\s*care/i.test(a.name))
         .map(a => ({ name: a.name, unitPrice: Number(a.price) || 0, unit: 'ครั้ง' })),
     ],
     daycare: {

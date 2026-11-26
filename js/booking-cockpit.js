@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 import { listen } from './db.js';
 import { el, openModal, getSettings } from './ui.js';
-import { computeBooking, computeAddOn, formatBaht, formatDateTH, nightsBetween, owedOf } from './calc.js';
+import { computeBooking, computeAddOn, addOnPriceText, formatBaht, formatDateTH, nightsBetween, owedOf } from './calc.js';
 import { PET_TYPES } from './config-shop.js';
 import { matchCustomer, vaccineStatus, isLoyal, openCustomerForm } from './customers.js';
 import { openBookingForm } from './bookings.js';
@@ -223,7 +223,7 @@ export function openBookingCockpit(booking) {
     return block('บริการเสริม', icons.star, b.addOns.map(a => {
       const cc = computeAddOn(a);
       const label = cc.qty > 1 ? `${a.name} ×${cc.qty}` : a.name;
-      return kv(label, cc.total > 0 ? formatBaht(cc.total) : 'ฟรี');
+      return kv(label, addOnPriceText(a));
     }));
   }
 

@@ -47,6 +47,17 @@ export function computeAddOn(a) {
   return { ...a, qty, unitPrice, total };
 }
 
+// ข้อความราคาบริการเสริม 1 รายการ (การ์ดสรุป/ข้อความ LINE/หน้าใบจอง)
+// อาบน้ำ/ตัดขนที่ลูกค้าติ๊กมาจากเว็บ ราคาจริงรู้ตอนชั่งน้ำหนักหน้าร้าน → ไม่ขึ้นว่า "ฟรี"
+// (ร้านเลิกให้อาบน้ำฟรีแล้ว · ใบเก่าที่บันทึก "อาบน้ำ/ตัดขน (Grooming)" ราคา 0 ก็แสดงแบบนี้ด้วย)
+export const PRICE_AT_SHOP_TEXT = 'คิดตามน้ำหนักที่ชั่งหน้าร้าน';
+export function addOnPriceText(a) {
+  const c = computeAddOn(a);
+  if (c.total > 0) return formatBaht(c.total);
+  if (a.priceAtShop || /อาบน้ำ|ตัดขน|grooming/i.test(a.name || '')) return PRICE_AT_SHOP_TEXT;
+  return 'ฟรี';
+}
+
 // ผลรวมบริการเสริม
 export function addOnsTotal(addOns = []) {
   return round2(addOns.reduce((s, a) => s + computeAddOn(a).total, 0));

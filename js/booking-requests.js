@@ -449,10 +449,15 @@ function draftFromOnline(r, o, s) {
     o.wantGroom && 'สนใจอาบน้ำ–ตัดขนก่อนกลับบ้าน',
     r.note && `หมายเหตุลูกค้า: ${r.note}`,
   ].filter(Boolean).join('\n');
-  const addOns = (o.addOns || []).map(a => ({
-    kind: FIXED_ADDONS.some(f => f.name === a.name) ? 'fixed' : 'svc',
-    name: a.name, unit: a.unit || 'ครั้ง', unitPrice: Number(a.unitPrice) || 0, qty: Number(a.qty) || 1,
-  }));
+  const addOns = (o.addOns || []).map(a => a.kind === 'daycare'
+    // Day Care วันเช็คเอาท์ (ลูกค้าเลือกไซส์ตามน้ำหนักบนเว็บ) → รายการ Day Care ตามไซส์ แก้ไซส์ในฟอร์มได้
+    ? { kind: 'daycare', name: 'Day Care วันเช็คเอาท์', pet: a.pet || o.pet, size: a.size || 'm', unit: 'วัน',
+        unitPrice: Number(a.unitPrice) || 0, qty: Number(a.qty) || 1 }
+    : { kind: FIXED_ADDONS.some(f => f.name === a.name) ? 'fixed' : 'svc',
+        name: a.name, unit: a.unit || 'ครั้ง', unitPrice: Number(a.unitPrice) || 0, qty: Number(a.qty) || 1 });
+  // ติ๊กอาบน้ำ/ตัดขนมา → ใส่รายการราคา 0 ให้เห็นในใบจอง/การ์ดลูกค้าว่า "คิดตามน้ำหนักที่ชั่งหน้าร้าน"
+  // ชั่งน้ำหนักแล้วเปลี่ยนชนิดเป็น "อาบน้ำ / อาบน้ำตัดขน (ราคาตามไซส์)" ในฟอร์มใบจองได้เลย
+  if (o.wantGroom) addOns.push({ kind: 'custom', name: 'อาบน้ำ/ตัดขน', unit: 'ตัว', unitPrice: 0, qty: Number(o.pets) || 1, priceAtShop: true });
   const base = {
     customerName: r.owner || '', phone: r.phone || '',
     depositDate: todayISO(),
