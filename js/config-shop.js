@@ -268,8 +268,10 @@ export function classifyRequest(service = '') {
 }
 
 // เว็บส่งชนิดสัตว์เป็น "น้องหมา"/"น้องแมว"/"อื่นๆ" → แปลงเป็น id ในระบบ
+// คำขอที่มีทั้งหมาและแมว ("น้องหมา + น้องแมว") → ใช้ชนิดที่เขียนก่อน
 export function petIdFromWeb(pet = '') {
-  return /แมว|cat/i.test(String(pet)) ? 'cat' : 'dog';
+  const s = String(pet), cat = s.search(/แมว|cat/i), dog = s.search(/หมา|สุนัข|dog/i);
+  return cat >= 0 && (dog < 0 || cat < dog) ? 'cat' : 'dog';
 }
 
 // ช่องทางรับเงินของร้าน — ยืนยันกับเจ้าของร้าน 16 ก.ค. 2026

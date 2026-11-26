@@ -28,6 +28,12 @@ let _reqs = [];
 const PET_ICONS = { dog: icons.dog, cat: icons.cat };
 
 // ── คำขอจากหน้าจองใหม่ ──
+// ห้องในคำขอออนไลน์ — หน้าจองใหม่ส่ง lines (หมา+แมวได้หลายห้อง) · คำขอเก่ามีห้องเดียวในช่องเดี่ยว
+function onlineLines(o) {
+  if (Array.isArray(o?.lines) && o.lines.length) return o.lines;
+  return [{ pet: o.pet, roomType: o.roomType, roomLabel: o.roomLabel, rooms: o.rooms,
+    pricePerNight: o.pricePerNight, listPrice: o.listPrice, longStayDisc: o.longStayDisc }];
+}
 export function onlineOf(r) {
   if (!r?.payloadJson) return null;
   try { return JSON.parse(r.payloadJson); } catch { return null; }
@@ -42,7 +48,10 @@ function holdLeft(o) {
   return `${h}:${String(m).padStart(2, '0')} ชม.`;
 }
 async function releaseHold(r) {
-  if (r.holdId) { try { await remove('roomHolds', r.holdId); } catch (e) { console.warn('ลบการกันห้องไม่สำเร็จ', e); } }
+  // จองหมา+แมวในใบเดียว = กันห้องหลายใบ (holdId คั่นด้วย ,)
+  for (const id of String(r.holdId || '').split(',').filter(Boolean)) {
+    try { await remove('roomHolds', id); } catch (e) { console.warn('ลบการกันห้องไม่สำเร็จ', e); }
+  }
 }
 
 function typeOf(r) { return REQUEST_TYPES[classifyRequest(r.service)] || REQUEST_TYPES.other; }
@@ -244,9 +253,10 @@ function openRequestDetail(r) {
       row('ราคาประมาณ', formatBaht(o.totals?.grand || 0));
       if (o.weightKg) row('น้ำหนัก', `${o.weightKg} กก.`);
     } else if (o.kind === 'daycare') {
-      row('Day Care', `${o.daycare?.count || 1} ตัว · ไซส์ ${String(o.daycare?.size || '').toUpperCase()} · ${formatBaht(o.daycare?.unitPrice || 0)}/ตัว`);
+      (o.daycareItems || [{ pet: o.pet, ...o.daycare }]).forEach(d =>
+        row('Day Care', `${d.pet === 'cat' ? 'แมว' : 'สุนัข'} ${d.count || 1} ตัว · ไซส์ ${String(d.size || '').toUpperCase()} · ${formatBaht(d.unitPrice || 0)}/ตัว`));
     } else {
-      row('ห้อง', `${o.roomLabel || o.roomType} × ${o.rooms} ห้อง · ${formatBaht(o.pricePerNight)}/คืน${o.listPrice > o.pricePerNight ? ` (ราคาเต็ม ${formatBaht(o.listPrice)})` : ''}`);
+      onlineLines(o).forEach(l => row('ห้อง', `${l.roomLabel || l.roomType} (${l.pet === 'cat' ? 'แมว' : 'สุนัข'}) × ${l.rooms} ห้อง · ${formatBaht(l.pricePerNight)}/คืน${l.listPrice > l.pricePerNight ? ` (ราคาเต็ม ${formatBaht(l.listPrice)})` : ''}`));
       row('จำนวนคืน', `${o.nights} คืน${o.longStayPct ? ` · ลดพักยาว ${o.longStayPct}%` : ''}`);
     }
     if (o.kind !== 'groom') {
@@ -359,30 +369,37 @@ function openRequestDetail(r) {
 // บันทึกชื่อน้อง/สายพันธุ์จากคำขอเข้าฐานลูกค้า
 // (ถ้าไม่ทำ พี่เลี้ยงจะไม่เห็นชื่อน้องในหน้างานวันนี้ และใบรับฝากจะไม่มีหมวดสัตว์เลี้ยง)
 async function upsertPetFromRequest(r) {
-  if (!r.petname) return;
+  // หน้าจองใหม่ส่งชื่อแยกหมา/แมว (หลายตัวคั่นด้วย ,) → ได้น้องครบทุกตัว ชนิดถูก · คำขอเก่าใช้ petname ช่องเดียว
+  const names = onlineOf(r)?.petNames;
+  const list = names
+    ? Object.entries(names).flatMap(([species, txt]) =>
+        String(txt || '').split(/[,，、]/).map(n => n.trim()).filter(Boolean).map(name => ({ name, species })))
+    : (r.petname ? [{ name: r.petname, species: petIdFromWeb(r.pet) }] : []);
+  if (!list.length) return;
   const norm = t => (t || '').replace(/\D/g, '');
   const customers = await getAll('customers'); // อ่านสดตอนใช้ — ไฟล์นี้ไม่ได้ subscribe ลูกค้าไว้
   const existing = customers.find(c =>
     (r.phone && c.phone && norm(c.phone) === norm(r.phone)) || (c.name && c.name === r.owner));
 
-  const pet = {
-    name: r.petname,
-    species: petIdFromWeb(r.pet),
+  const newPets = list.map(({ name, species }) => ({
+    name,
+    species,
     breed: r.breed || '',
     weight: '',
     healthNotes: r.note || '',
     vaccineNotes: '',
     vaccineExpiry: '', // ให้พนักงานกรอกตอนตรวจสมุดวัคซีน
-  };
+  }));
 
   if (!existing) {
-    await save('customers', { name: r.owner || '', phone: r.phone || '', pets: [pet], notes: '' });
+    await save('customers', { name: r.owner || '', phone: r.phone || '', pets: newPets, notes: '' });
     return;
   }
   // มีลูกค้าแล้ว — เพิ่มน้องเฉพาะที่ยังไม่มีชื่อนี้ (กันซ้ำเมื่อจองหลายรอบ)
   const pets = existing.pets || [];
-  if (pets.some(p => (p.name || '').trim() === pet.name.trim())) return;
-  await save('customers', { ...existing, pets: [...pets, pet] });
+  const add = newPets.filter(np => !pets.some(p => (p.name || '').trim() === np.name));
+  if (!add.length) return;
+  await save('customers', { ...existing, pets: [...pets, ...add] });
 }
 
 // แปลงคำขอ → draft ของฟอร์มจอง (เติมเท่าที่รู้จริง ที่เหลือพนักงานกรอก)
@@ -469,16 +486,18 @@ function draftFromOnline(r, o, s) {
     notes, fromWebRequest: r.id, onlineCode: o.code,
   };
   if (o.kind === 'daycare') {
-    const d = o.daycare || {};
+    // หน้าจองใหม่: 1 รายการต่อชนิดสัตว์×ไซส์ (daycareItems) · คำขอเก่า: ไซส์เดียว (daycare)
+    const items = o.daycareItems || [{ pet: o.pet, size: o.daycare?.size, unitPrice: o.daycare?.unitPrice, count: o.daycare?.count }];
     return { ...base, checkIn: o.checkIn, checkOut: o.checkIn, lineItems: [],
-      addOns: [{ kind: 'daycare', name: 'Day Care เหมาวัน', pet: o.pet, size: d.size || 'm', unit: 'วัน',
-        unitPrice: Number(d.unitPrice) || 0, qty: Number(d.count) || 1, weightKg: o.weightKg || '' }, ...addOns] };
+      addOns: [...items.map(d => ({ kind: 'daycare', name: 'Day Care เหมาวัน', pet: d.pet || o.pet, size: d.size || 'm', unit: 'วัน',
+        unitPrice: Number(d.unitPrice) || 0, qty: Number(d.count) || 1, weightKg: o.weightKg || '' })), ...addOns] };
   }
+  const nights = Number(o.nights) || nightsBetween(o.checkIn, o.checkOut) || 1;
   return { ...base, checkIn: o.checkIn, checkOut: o.checkOut,
-    lineItems: [{ petType: o.pet, roomType: o.roomType, pricePerNight: Number(o.pricePerNight) || 0,
-      rooms: Number(o.rooms) || 1, nights: Number(o.nights) || nightsBetween(o.checkIn, o.checkOut) || 1,
-      // ส่วนลดพักยาว: ลูกค้าเห็นยอดปัดเป็นบาทเต็มบนเว็บ → บันทึกเป็นจำนวนเงินให้ตรงกันเป๊ะ
-      discountType: 'amount', discountValue: Number(o.longStayDisc) || 0 }],
+    lineItems: onlineLines(o).map(l => ({ petType: l.pet, roomType: l.roomType, pricePerNight: Number(l.pricePerNight) || 0,
+      rooms: Number(l.rooms) || 1, nights,
+      // ส่วนลดพักยาว: ลูกค้าเห็นยอดปัดเป็นบาทเต็มบนเว็บ → บันทึกเป็นจำนวนเงินต่อรายการให้ตรงกันเป๊ะ
+      discountType: 'amount', discountValue: Number(l.longStayDisc) || 0 })),
     addOns };
 }
 
