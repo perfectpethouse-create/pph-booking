@@ -641,7 +641,8 @@ export function openBookingForm(existing) {
         });
       } else if (key.startsWith('svc:')) {
         const o = addonOpts.find(o => o.name === key.slice(4));
-        Object.assign(a, { kind: 'svc', name: o?.name || '', unit: 'ครั้ง', unitPrice: o?.price || 0, qty: 1 });
+        // ไม่เจอในหน้าตั้งค่า (ถูกลบไปแล้ว) → คงชื่อ/ราคาเดิมของใบนี้ไว้
+        Object.assign(a, { kind: 'svc', name: o?.name || key.slice(4), unit: 'ครั้ง', unitPrice: o ? (o.price || 0) : (Number(a.unitPrice) || 0), qty: 1 });
       } else {
         Object.assign(a, { kind: 'custom', name: a.name || '', unit: 'ครั้ง', unitPrice: 0, qty: 1 });
       }
@@ -664,6 +665,8 @@ export function openBookingForm(existing) {
         ['daycare', 'Day Care เหมาวัน (ราคาตามไซส์)'],
         ...FIXED_ADDONS.map(f => ['fixed:' + f.name, `${f.name} (${f.unitPrice}/${f.unit})`]),
         ...addonOpts.map(o => ['svc:' + o.name, o.name]),
+        // ใบเก่าที่ใช้บริการซึ่งถูกลบออกจากหน้าตั้งค่าแล้ว → ยังโชว์ชื่อเดิม ไม่ให้ดรอปดาวน์เด้งไปข้อแรก
+        ...(a.kind === 'svc' && !addonOpts.some(o => o.name === a.name) ? [['svc:' + a.name, a.name]] : []),
         ['custom', 'กำหนดเอง'],
       ];
       const svcSel = selectEl(choices, addonKindKey(a), key => { applyAddonKind(a, key); rerender(); });

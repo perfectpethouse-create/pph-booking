@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
 // app.js — จุดเริ่มต้น: boot DB, ล็อกอิน, และ router สลับหน้า
 // ═══════════════════════════════════════════════════════════════
-import { initDb, MODE, onAuthChanged, signIn, signOutUser, listenSettings } from './db.js';
+import { initDb, MODE, onAuthChanged, signIn, signOutUser, listenSettings, saveSettings } from './db.js';
 import { el, setSettingsCache, setUser, toast, escapeHtml, isStaff, staffCan, getSettings, currentUser, confirmDialog } from './ui.js';
 import { STAFF_PERM_ITEMS } from './config-shop.js';
 import { icons, brandLogo } from './icons.js';
@@ -127,6 +127,7 @@ function showApp(user) {
   if (!settingsUnsub) settingsUnsub = listenSettings((s) => {
     setSettingsCache(s);
     applyRoleUI();
+    cleanupRetiredAddons(s);
     if (firstNavPending) {
       firstNavPending = false;
       navigate(location.hash.replace('#', '') || defaultRoute());
@@ -145,6 +146,24 @@ function showApp(user) {
     syncNavGroups();
     contentEl.innerHTML = '<p class="muted" style="padding:30px;text-align:center">กำลังโหลด…</p>';
   }
+}
+
+// ลบบริการเสริมที่ซ้ำกับตัวเลือก "ราคาตามไซส์" ออกจากหน้าตั้งค่า (เจ้าของร้านสั่งลบ 26 พ.ย. 2569)
+//   "อาบน้ำ/ตัดขน (Grooming)" ฿0 → ทำให้ใบจองขึ้นว่าฟรี (ร้านเลิกอาบน้ำฟรีแล้ว)
+//   "Day Care (เหมาวัน)" ฿450 → ราคาเดียวทุกไซส์ ทั้งที่จริงคิดตามน้ำหนัก
+// ใช้ "อาบน้ำ / อาบน้ำตัดขน / Day Care เหมาวัน (ราคาตามไซส์)" ในฟอร์มใบจองแทน
+// ทำครั้งเดียวตอนเจ้าของร้านเปิดแอป (พี่เลี้ยงไม่มีสิทธิ์แก้ settings) · ไม่มีรายการนี้แล้ว = ไม่ทำอะไร
+const RETIRED_ADDON_SERVICES = ['อาบน้ำ/ตัดขน (Grooming)', 'Day Care (เหมาวัน)'];
+let addonCleanupDone = false;
+function cleanupRetiredAddons(s) {
+  if (addonCleanupDone || isStaff()) return;
+  addonCleanupDone = true;
+  const list = s?.addOnServices || [];
+  const keep = list.filter(a => !RETIRED_ADDON_SERVICES.includes(String(a?.name || '').trim()));
+  if (keep.length === list.length) return;
+  saveSettings({ addOnServices: keep })
+    .then(() => toast('ลบบริการเสริมที่ซ้ำ (อาบน้ำ ฿0 / Day Care ฿450) ออกจากหน้าตั้งค่าแล้ว'))
+    .catch(err => { addonCleanupDone = false; console.error(err); });
 }
 
 // หน้าเริ่มต้นตามสิทธิ์: เจ้าของ = แดชบอร์ด · พี่เลี้ยง = เมนูแรกที่เปิดสิทธิ์ไว้
